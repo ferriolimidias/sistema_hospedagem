@@ -5,13 +5,12 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($method) {
     case 'GET':
-        // Rotina Autônoma: Cancelar reservas presas "Aguardando Pagamento" há mais de 15 minutos
+        // Rotina autônoma: expira holds de pagamento vencidos.
         try {
-            $stmt_expire = $pdo->prepare("UPDATE reservations SET status = 'Cancelada' WHERE status = 'Aguardando Pagamento' AND created_at < (NOW() - INTERVAL 15 MINUTE)");
-            $stmt_expire->execute();
+            cleanupExpiredPendingReservations($pdo);
         }
         catch (Exception $e) {
-        // Silencioso. Evitamos derrubar o GET se a rotina autônoma falhar por conta do fuso/banco.
+            // Silencioso: não derrubar o GET se a rotina falhar.
         }
 
 
@@ -86,6 +85,24 @@ switch ($method) {
         $checkin = convertDate($data['checkin_date']);
         $checkout = convertDate($data['checkout_date']);
 
+        // Verifica sobreposição com reservas confirmadas ou com hold ativo.
+        $stmt_conflict = $pdo->prepare("
+            SELECT id
+            FROM reservations
+            WHERE chalet_id = ?
+              AND checkin_date < ?
+              AND checkout_date > ?
+              AND (
+                    status = 'Confirmada'
+                    OR (status = 'Aguardando Pagamento' AND expires_at IS NOT NULL AND expires_at > NOW())
+                  )
+            LIMIT 1
+        ");
+        $stmt_conflict->execute([$chalet_id, $checkout, $checkin]);
+        if ($stmt_conflict->fetch()) {
+            jsonResponse(['error' => 'Período indisponível para este chalé (reserva já confirmada ou em hold).'], 409);
+        }
+
         // Tratamento do valor (pode vir "R$ 800,00" ou 800.00 numérico)
         if (is_numeric($data['total_amount'])) {
             $total = floatval($data['total_amount']);
@@ -96,7 +113,7 @@ switch ($method) {
             $total = floatval($totalText);
         }
 
-        $stmt = $pdo->prepare("INSERT INTO reservations (guest_name, guest_email, guest_phone, guests_adults, guests_children, chalet_id, checkin_date, checkout_date, total_amount, payment_rule, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO reservations (guest_name, guest_email, guest_phone, guests_adults, guests_children, chalet_id, checkin_date, checkout_date, total_amount, payment_rule, status, balance_paid, balance_paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
         $email = $data['guest_email'] ?? null;
         $phone = $data['guest_phone'] ?? null;
@@ -104,8 +121,15 @@ switch ($method) {
         $guestsChildren = isset($data['guests_children']) ? (int)$data['guests_children'] : 0;
         $status = $data['status'] ?? 'Confirmada';
         $payment_rule = $data['payment_rule'] ?? 'full';
+        $balancePaid = isset($data['balance_paid'])
+            ? (int)((bool)$data['balance_paid'])
+            : (($payment_rule === 'full' && $status === 'Confirmada') ? 1 : 0);
+        $balancePaidAt = null;
+        if ($balancePaid && $payment_rule === 'full' && $status === 'Confirmada') {
+            $balancePaidAt = date('Y-m-d H:i:s');
+        }
 
-        if ($stmt->execute([$data['guest_name'], $email, $phone, $guestsAdults, $guestsChildren, $chalet_id, $checkin, $checkout, $total, $payment_rule, $status])) {
+        if ($stmt->execute([$data['guest_name'], $email, $phone, $guestsAdults, $guestsChildren, $chalet_id, $checkin, $checkout, $total, $payment_rule, $status, $balancePaid, $balancePaidAt])) {
             jsonResponse([
                 'status' => 'success',
                 'message' => 'Reserva criada com sucesso',
@@ -128,7 +152,22 @@ switch ($method) {
             // Edição completa
             $guestsAdults = isset($data['guests_adults']) ? (int)$data['guests_adults'] : 2;
             $guestsChildren = isset($data['guests_children']) ? (int)$data['guests_children'] : 0;
-            $stmt = $pdo->prepare("UPDATE reservations SET guest_name = ?, guest_email = ?, guest_phone = ?, guests_adults = ?, guests_children = ?, chalet_id = ?, checkin_date = ?, checkout_date = ?, total_amount = ?, payment_rule = ?, status = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE reservations SET guest_name = ?, guest_email = ?, guest_phone = ?, guests_adults = ?, guests_children = ?, chalet_id = ?, checkin_date = ?, checkout_date = ?, total_amount = ?, payment_rule = ?, status = ?, balance_paid = ?, balance_paid_at = ? WHERE id = ?");
+            $balancePaid = isset($data['balance_paid'])
+                ? (int)((bool)$data['balance_paid'])
+                : ((($data['payment_rule'] ?? 'full') === 'full' && ($data['status'] ?? 'Confirmada') === 'Confirmada') ? 1 : 0);
+            $pr = $data['payment_rule'] ?? 'full';
+            $st = $data['status'] ?? 'Confirmada';
+            $stmtPrev = $pdo->prepare("SELECT balance_paid_at FROM reservations WHERE id = ? LIMIT 1");
+            $stmtPrev->execute([$_GET['id']]);
+            $prevRow = $stmtPrev->fetch();
+            $prevAt = $prevRow['balance_paid_at'] ?? null;
+            $balancePaidAt = $prevAt;
+            if ($balancePaid && $pr === 'full' && $st === 'Confirmada') {
+                $balancePaidAt = $prevAt ?: date('Y-m-d H:i:s');
+            } elseif (!$balancePaid) {
+                $balancePaidAt = null;
+            }
             if ($stmt->execute([
             $data['guest_name'],
             $data['guest_email'] ?? null,
@@ -139,8 +178,10 @@ switch ($method) {
             $data['checkin_date'],
             $data['checkout_date'],
             $data['total_amount'],
-            $data['payment_rule'] ?? 'full',
-            $data['status'] ?? 'Confirmada',
+            $pr,
+            $st,
+            $balancePaid,
+            $balancePaidAt,
             $_GET['id']
             ])) {
                 jsonResponse(['status' => 'success']);

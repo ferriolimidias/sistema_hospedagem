@@ -2,6 +2,7 @@
 /**
  * Página inicial - conteúdo carregado do banco de dados (tabela personalizacao + settings)
  */
+require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/api/db.php';
 
 // Buscar personalização diretamente do banco (db.php já faz seed se tabela vazia)

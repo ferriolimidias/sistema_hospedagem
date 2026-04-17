@@ -2,45 +2,10 @@
 /**
  * Script para inserir o conteúdo padrão da index no banco.
  * Acesse: /api/seed_defaults.php
- * Garante que a tabela settings existe e insere os dados.
+ * Requer instalação concluída e insere os dados em settings.
  */
+require_once __DIR__ . '/db.php';
 header('Content-Type: application/json; charset=utf-8');
-
-$host = '127.0.0.1';
-$db = 'recantodaserra_db';
-$user = 'root';
-$pass = '';
-$charset = 'utf8mb4';
-
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$db;charset=$charset", $user, $pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Erro de conexão', 'details' => $e->getMessage()]);
-    exit;
-}
-
-// Garante que a tabela settings existe
-$pdo->exec("
-    CREATE TABLE IF NOT EXISTS settings (
-        id INT NOT NULL AUTO_INCREMENT,
-        setting_key VARCHAR(255) NOT NULL,
-        setting_value LONGTEXT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        UNIQUE KEY setting_key (setting_key)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-");
-
-// Se a tabela já existia (ex: database.sql), garante que setting_value suporta JSON grande
-try {
-    $pdo->exec("ALTER TABLE settings MODIFY COLUMN setting_value LONGTEXT NULL");
-} catch (PDOException $e) {
-    // Ignora se coluna não existir ou já estiver correta
-}
 
 $defaultCustomization = [
     'heroTitle' => 'Seu Refúgio de Luxo na Natureza',

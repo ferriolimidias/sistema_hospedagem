@@ -86,6 +86,12 @@ switch ($method) {
                 // Tabela personalizacao pode não existir ainda
             }
 
+            $referer = (string)($_SERVER['HTTP_REFERER'] ?? '');
+            $isAdminContext = stripos($referer, '/admin/') !== false;
+            if (!$isAdminContext) {
+                unset($parsedSettings['internalApiKey']);
+            }
+
             jsonResponse((object) $parsedSettings);
         }
         break;

@@ -106,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Global Data Holders
     let chaletsData = [];
     let reservationsData = [];
+    let internalApiKey = '';
 
     async function fetchApiData() {
         try {
@@ -233,7 +234,14 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <tr>
                                     <td>
                                         <button type="button" class="btn-icon" title="Editar" data-action="edit-reservation" data-index="${index}"><i class="ph ph-pencil-simple"></i></button>
-                                        <button type="button" class="btn-icon" title="Comprovante" data-action="pdf-reservation" data-index="${index}"><i class="ph ph-file-pdf"></i></button>
+                                        ${r.contract_filename
+                                            ? `<button type="button" class="btn-icon" title="Ver Contrato PDF" data-action="pdf-reservation" data-index="${index}"><i class="ph ph-file-pdf"></i></button>`
+                                            : `<button type="button" class="btn-icon" title="Gerar Contrato Manualmente" data-action="generate-contract" data-index="${index}" style="color:#c96621"><i class="ph ph-file-plus"></i></button>`
+                                        }
+                                        ${String(r.payment_rule || '').toLowerCase() === 'half' && Number(r.balance_paid || 0) === 0
+                                            ? `<button type="button" class="btn-icon" title="Receber Saldo" data-action="pay-balance" data-index="${index}" style="color:#198754"><i class="ph ph-currency-circle-dollar"></i></button>`
+                                            : ''
+                                        }
                                         <button type="button" class="btn-icon" title="Notificar (Reenviar)" data-action="notify-reservation" data-index="${index}" style="color: #25D366"><i class="ph ph-whatsapp-logo"></i></button>
                                         <button type="button" class="btn-icon" title="Excluir" data-action="delete-reservation" data-id="${r.id}" style="color: var(--danger)"><i class="ph ph-trash"></i></button>
                                     </td>
@@ -244,6 +252,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <td>
                                         R$ ${parseFloat(r.total_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                         ${r.payment_rule === 'half' ? '<br><span class="badge warning" style="font-size:0.7rem; padding:0.15rem 0.3rem; margin-top:0.25rem; display:inline-block">Sinal de 50%</span>' : ''}
+                                        ${Number(r.balance_paid || 0) === 1
+                                            ? `<br><span class="badge success" style="font-size:0.7rem; padding:0.15rem 0.3rem; margin-top:0.25rem; display:inline-block">Total Pago</span>${r.balance_paid_at ? `<br><small style="color:#198754; font-size:0.68rem; display:block; margin-top:0.2rem;">${formatBalancePaidAtDisplay(r.balance_paid_at)}</small>` : ''}`
+                                            : ''}
                                     </td>
                                     <td>
                                         <select class="form-control status-select status-${getStatusClass(r.status)}" onchange="updateReservationStatus(${r.id}, this.value); this.className='form-control status-select status-' + (this.value === 'Confirmada' ? 'success' : this.value === 'Pendente' ? 'warning' : 'danger');" style="padding: 0.25rem 0.5rem; font-size: 0.85rem; width: auto; font-weight: 600;">
@@ -922,6 +933,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return dateString;
     }
+
+    /** Data/hora de quitação total (balance_paid_at) vinda do MySQL */
+    function formatBalancePaidAtDisplay(value) {
+        if (!value) return '';
+        const s = String(value).trim();
+        const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+        if (m) {
+            return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
+        }
+        const d = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (d) {
+            return `${d[3]}/${d[2]}/${d[1]} 00:00`;
+        }
+        return s;
+    }
     window.formatDateBRGlobal = formatDateBR;
 
     // View Renderer
@@ -1245,6 +1271,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.mercadoPagoSettings) {
                 document.getElementById('mpAccessToken').value = data.mercadoPagoSettings.accessToken || '';
             }
+            if (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '') {
+                internalApiKey = data.internalApiKey.trim();
+            }
 
             // Popula Redes Sociais
             if (data.socialSettings) {
@@ -1562,7 +1591,23 @@ document.addEventListener('DOMContentLoaded', () => {
         appContainer.querySelectorAll('[data-action="pdf-reservation"]').forEach(btn => {
             btn.onclick = () => {
                 const idx = btn.getAttribute('data-index');
-                if (window.generateReservationPDF) window.generateReservationPDF(idx !== null && idx !== '' ? parseInt(idx, 10) : 0);
+                if (window.openReservationContract) window.openReservationContract(idx !== null && idx !== '' ? parseInt(idx, 10) : 0);
+            };
+        });
+        appContainer.querySelectorAll('[data-action="generate-contract"]').forEach(btn => {
+            btn.onclick = () => {
+                const idx = btn.getAttribute('data-index');
+                if (window.generateReservationContractManual) {
+                    window.generateReservationContractManual(idx !== null && idx !== '' ? parseInt(idx, 10) : 0);
+                }
+            };
+        });
+        appContainer.querySelectorAll('[data-action="pay-balance"]').forEach(btn => {
+            btn.onclick = () => {
+                const idx = btn.getAttribute('data-index');
+                if (window.receiveReservationBalance) {
+                    window.receiveReservationBalance(idx !== null && idx !== '' ? parseInt(idx, 10) : 0);
+                }
             };
         });
         appContainer.querySelectorAll('[data-action="notify-reservation"]').forEach(btn => {
@@ -1923,83 +1968,115 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    window.generateReservationPDF = function (index) {
+    window.openReservationContract = async function (index) {
         const res = reservationsData[index];
-        const printWindow = window.open('', '_blank');
+        if (!res || !res.id || !res.contract_filename) {
+            alert('Contrato ainda não foi gerado para esta reserva.');
+            return;
+        }
 
-        const html = `
-            <!DOCTYPE html>
-            <html lang="pt-BR">
-            <head>
-                <meta charset="UTF-8">
-                <title>Comprovante de Reserva #${res.id}</title>
-                <style>
-                    body { font-family: 'Inter', sans-serif; color: #333; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 40px; }
-                    .header { text-align: center; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 30px; }
-                    .header h1 { margin: 0; color: #1a1a1a; font-size: 24px; }
-                    .header p { color: #666; margin: 5px 0 0; }
-                    .row { display: flex; justify-content: space-between; margin-bottom: 15px; border-bottom: 1px solid #f9f9f9; padding-bottom: 5px; }
-                    .label { font-weight: 600; color: #555; width: 150px; }
-                    .value { flex: 1; text-align: right; }
-                    .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 20px; }
-                    .status { display: inline-block; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px; margin-top: 10px; }
-                    .status.Confirmada { background: #d4edda; color: #155724; }
-                    .status.Pendente { background: #fff3cd; color: #856404; }
-                    .status.Cancelada { background: #f8dbdf; color: #721c24; }
-                </style>
-            </head>
-            <body onload="window.print(); window.close();">
-                <div class="header">
-                    <h1>Recanto da Serra Eco Park</h1>
-                    <p>Comprovante de Reserva Eletrônica</p>
-                    <div class="status ${res.status}">${res.status.toUpperCase()}</div>
-                </div>
-                
-                <div class="content">
-                    <div class="row">
-                        <span class="label">Nº Reserva:</span>
-                        <span class="value"><strong>#${String(res.id).padStart(3, '0')}</strong></span>
-                    </div>
-                    <div class="row">
-                        <span class="label">Hóspede:</span>
-                        <span class="value">${res.guest_name}</span>
-                    </div>
-                    <div class="row">
-                        <span class="label">Hóspedes:</span>
-                        <span class="value">${(res.guests_adults || 2) === 1 && !(res.guests_children || 0) ? '1 adulto' : (res.guests_adults || 2) === 2 && (res.guests_children || 0) === 1 ? '2 adultos + 1 criança (até 8 anos)' : (res.guests_adults || 2) + ' adultos'}</span>
-                    </div>
-                    <div class="row">
-                        <span class="label">Chalé Reservado:</span>
-                        <span class="value">${res.chalet_name}</span>
-                    </div>
-                    <div class="row">
-                        <span class="label">Check-in:</span>
-                        <span class="value">${formatDateBR(res.checkin_date)} 14:00</span>
-                    </div>
-                    <div class="row">
-                        <span class="label">Check-out:</span>
-                        <span class="value">${formatDateBR(res.checkout_date)} 12:00</span>
-                    </div>
-                    <div class="row">
-                        <span class="label">Valor Total:</span>
-                        <span class="value">
-                            <strong>R$ ${parseFloat(res.total_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
-                            ${res.payment_rule === 'half' ? '<br><small style="color:#d39e00; font-weight:bold;">(Pagamento de Sinal de 50%)</small>' : ''}
-                        </span>
-                    </div>
-                </div>
-                
-                <div class="footer">
-                    <p>Este comprovante foi gerado eletronicamente em ${new Date().toLocaleString('pt-BR')}.</p>
-                    <p>Dúvidas? Entre em contato pelos nossos canais oficiais de atendimento.</p>
-                </div>
-            </body>
-            </html>
-        `;
+        if (!internalApiKey) {
+            alert('Chave interna não disponível. Abra Configurações e recarregue os dados.');
+            return;
+        }
 
-        printWindow.document.open();
-        printWindow.document.write(html);
-        printWindow.document.close();
+        try {
+            const req = await fetch(`../api/download_contract.php?id=${encodeURIComponent(res.id)}`, {
+                method: 'GET',
+                headers: { 'X-Internal-Key': internalApiKey }
+            });
+            if (!req.ok) {
+                const err = await req.json().catch(() => ({}));
+                throw new Error(err.error || 'Falha ao abrir contrato');
+            }
+
+            const blob = await req.blob();
+            const fileUrl = URL.createObjectURL(blob);
+            window.open(fileUrl, '_blank');
+            setTimeout(() => URL.revokeObjectURL(fileUrl), 60000);
+        } catch (e) {
+            console.error(e);
+            alert('Não foi possível abrir o contrato PDF.');
+        }
+    }
+
+    window.generateReservationContractManual = async function (index) {
+        const res = reservationsData[index];
+        if (!res || !res.id) {
+            alert('Reserva inválida para geração de contrato.');
+            return;
+        }
+        if (!internalApiKey) {
+            alert('Chave interna não disponível. Abra Configurações e recarregue os dados.');
+            return;
+        }
+
+        try {
+            const req = await fetch('../api/generate_contract.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Internal-Key': internalApiKey
+                },
+                body: JSON.stringify({ reservation_id: res.id })
+            });
+            const data = await req.json().catch(() => ({}));
+            if (!req.ok || !data.success) {
+                throw new Error(data.error || 'Falha ao gerar contrato');
+            }
+
+            alert('Contrato gerado com sucesso.');
+            await fetchApiData();
+            renderView('reservations');
+        } catch (e) {
+            console.error(e);
+            alert('Não foi possível gerar o contrato manualmente.');
+        }
+    }
+
+    window.receiveReservationBalance = async function (index) {
+        const res = reservationsData[index];
+        if (!res || !res.id) {
+            alert('Reserva inválida para baixa de saldo.');
+            return;
+        }
+        if (String(res.payment_rule || '').toLowerCase() !== 'half') {
+            alert('A ação de recebimento de saldo é aplicável apenas para reservas de sinal (50%).');
+            return;
+        }
+        if (Number(res.balance_paid || 0) === 1) {
+            alert('Esta reserva já está com saldo quitado.');
+            return;
+        }
+        if (!internalApiKey) {
+            alert('Chave interna não disponível. Abra Configurações e recarregue os dados.');
+            return;
+        }
+
+        const ok = confirm('Confirma o recebimento físico do saldo desta reserva?');
+        if (!ok) return;
+
+        try {
+            const req = await fetch('../api/pay_balance.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Internal-Key': internalApiKey
+                },
+                body: JSON.stringify({ reservation_id: res.id })
+            });
+            const data = await req.json().catch(() => ({}));
+            if (!req.ok || !data.success) {
+                throw new Error(data.error || 'Falha ao receber saldo');
+            }
+
+            alert('Saldo recebido e baixa registrada com sucesso.');
+            await fetchApiData();
+            renderView('reservations');
+        } catch (e) {
+            console.error(e);
+            alert('Não foi possível registrar a baixa do saldo.');
+        }
     }
 
     window.handleAdicionarChale = async function (e) {

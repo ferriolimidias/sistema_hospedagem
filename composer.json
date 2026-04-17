@@ -1,0 +1,11 @@
+{
+  "name": "recantos-da-serra/sistema-hospedagem",
+  "description": "Sistema de hospedagem com checkout Mercado Pago",
+  "type": "project",
+  "require": {
+    "dompdf/dompdf": "^3.1"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}

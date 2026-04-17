@@ -1,7 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Shared State
     let allChalets = {};
-    let allReservationsData = [];
+    const availabilityCache = new Map();
+    let latestAvailabilityRequest = 0;
     let currentChalet = 'Chalé Alpino';
 
     /* =========================================
@@ -124,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Availability Modal
     const availabilityModal = document.getElementById('availabilityModal');
     const closeAvailabilityModalBtn = document.getElementById('closeAvailabilityModal');
+    let modalSummaryDebounceTimer = null;
 
     const availabilityForm = document.getElementById('availabilityForm');
     const finalBookingForm = document.getElementById('finalBookingForm');
@@ -217,21 +219,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.getElementById('modalCheckin').addEventListener('change', updateModalSummary);
-    document.getElementById('modalCheckout').addEventListener('change', updateModalSummary);
-
-    function checkAvailability(chaletName, checkinStr, checkoutStr) {
-        // Find if this chalet has any confirmed/pending reservation that overlaps
-        const overlapping = allReservationsData.some(r => {
-            if (r.chalet_name !== chaletName || r.status === 'Cancelada') return false;
-
-            // Checkin and checkout overlap condition
-            return (checkinStr < r.checkout_date && checkoutStr > r.checkin_date);
-        });
-        return !overlapping;
+    function scheduleUpdateModalSummary() {
+        if (modalSummaryDebounceTimer) clearTimeout(modalSummaryDebounceTimer);
+        modalSummaryDebounceTimer = setTimeout(() => {
+            updateModalSummary();
+        }, 250);
     }
 
-    function updateModalSummary() {
+    document.getElementById('modalCheckin').addEventListener('change', scheduleUpdateModalSummary);
+    document.getElementById('modalCheckout').addEventListener('change', scheduleUpdateModalSummary);
+
+    async function checkAvailability(chaletId, checkinStr, checkoutStr) {
+        if (!chaletId || !checkinStr || !checkoutStr) return false;
+
+        const cacheKey = `${chaletId}|${checkinStr}|${checkoutStr}`;
+        if (availabilityCache.has(cacheKey)) {
+            return availabilityCache.get(cacheKey);
+        }
+
+        try {
+            const qs = new URLSearchParams({
+                chalet_id: String(chaletId),
+                start_date: checkinStr,
+                end_date: checkoutStr
+            });
+            const res = await fetch(`api/availability.php?${qs.toString()}`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || `API ${res.status}`);
+            }
+            const available = !!data.is_available;
+            availabilityCache.set(cacheKey, available);
+            return available;
+        } catch (error) {
+            console.warn("Falha ao consultar disponibilidade em tempo real", error);
+            return false;
+        }
+    }
+
+    async function updateModalSummary() {
         const checkinStr = document.getElementById('modalCheckin').value;
         const checkoutStr = document.getElementById('modalCheckout').value;
 
@@ -262,16 +288,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const chalet = allChalets[currentChalet];
+        const chaletId = chalet && chalet.id ? chalet.id : null;
         const basePrice = chalet && chalet.price != null ? parseFloat(chalet.price) : 0;
 
         let nights = 1;
         let total = 0;
 
-        // Verify Availability
-        const isAvailable = checkAvailability(currentChalet, checkinStr, checkoutStr);
+        // Verify availability against backend (Confirmada + hold ativo)
+        if (!chaletId) {
+            availMsg.className = 'availability-alert-unavailable';
+            availMsg.innerHTML = '<i class="ph ph-warning"></i> Não foi possível validar a disponibilidade deste chalé.';
+            availMsg.style.display = 'flex';
+            nightsEl.textContent = '0';
+            totalEl.textContent = 'R$ 0,00';
+            return;
+        }
+
+        const requestId = ++latestAvailabilityRequest;
+        const isAvailable = await checkAvailability(chaletId, checkinStr, checkoutStr);
+        if (requestId !== latestAvailabilityRequest) {
+            return;
+        }
+
         if (!isAvailable) {
             availMsg.className = 'availability-alert-unavailable';
-            availMsg.innerHTML = '<i class="ph ph-bell"></i> O chalé não está disponível neste período. Por favor, escolha outra data.';
+            availMsg.innerHTML = '<i class="ph ph-bell"></i> Infelizmente estas datas acabaram de ser reservadas ou estão em processo de pagamento.';
             availMsg.style.display = 'flex';
             nightsEl.textContent = '0';
             totalEl.textContent = 'R$ 0,00';
@@ -400,10 +441,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 grid.innerHTML = '';
                 let countDisp = 0;
 
-                chalets.forEach((chalet, idx) => {
+                for (const [idx, chalet] of chalets.entries()) {
                     // Check availability
-                    if (!checkAvailability(chalet.name, filterCheckin, filterCheckout)) {
-                        return; // Pula
+                    if (chalet.id && filterCheckin && filterCheckout) {
+                        const available = await checkAvailability(chalet.id, filterCheckin, filterCheckout);
+                        if (!available) {
+                            continue; // Pula
+                        }
                     }
 
                     countDisp++;
@@ -504,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     `;
                     grid.appendChild(card);
-                });
+                }
 
                 if (countDisp === 0) {
                     grid.innerHTML = '<p style="text-align:center;width:100%;grid-column:1/-1;">Nenhum chalé disponível para as datas selecionadas. Tente em outro período!</p>';
@@ -546,13 +590,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 checkout: checkout,
                 total: totalText
             };
-
-            let finalValueToPay = reserva.total;
-            if (paymentRule === 'half') {
-                let numericTotal = parseFloat(reserva.total.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()) || 0;
-                let halfValStr = (numericTotal / 2).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-                finalValueToPay = `R\$ ${halfValStr}`;
-            }
 
             const guestsOptEl = document.getElementById('modalGuestsOption');
             const guestsVal = guestsOptEl ? guestsOptEl.value : '2_0';
@@ -598,20 +635,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Tratamento das propriedades legadas (com id já obtido)
-            const legacyFormDados = {
-                clientName: formDados.guest_name,
-                clientEmail: formDados.guest_email,
-                clientPhone: formDados.guest_phone,
-                chaletName: formDados.chalet_name,
-                checkin: formDados.checkin_date,
-                checkout: formDados.checkout_date,
-                total: finalValueToPay,
-                id: reservationId
-            };
-
-            // 2. Integração MercadoPago (Gera o link e redireciona)
-            const mpSuccess = await createMercadoPagoPreference(legacyFormDados, reservationId);
+            // 2. Integração MercadoPago (gera preferência no backend e redireciona)
+            const mpSuccess = await createMercadoPagoPreference(reservationId);
 
             if (!mpSuccess) {
                 // MercadoPago falhou ou não está configurado - NÃO confirmar reserva nem enviar notificações
@@ -628,91 +653,33 @@ document.addEventListener('DOMContentLoaded', () => {
     /* =========================================
        MERCADOPAGO INTEGRATION LOGIC
        ========================================= */
-    async function createMercadoPagoPreference(reserva, reservationId) {
-        let settings = null;
-        const stored = localStorage.getItem('mercadoPagoSettings');
-        if (stored) {
-            try {
-                settings = JSON.parse(stored);
-            } catch (e) {
-                console.warn("Erro ao ler credenciais do MercadoPago do cache", e);
-            }
-        }
-        if (!settings || !settings.accessToken) {
-            try {
-                const res = await fetch('api/settings.php?v=' + Date.now());
-                const data = await res.json();
-                settings = data.mercadoPagoSettings;
-            } catch (e) {
-                console.warn("Erro ao buscar MercadoPago da API", e);
-            }
-        }
-        if (!settings || !settings.accessToken) {
-            alert("Mercado Pago não está configurado. Configure no painel administrativo para processar pagamentos.");
-            return false;
-        }
-
-        const accessToken = settings.accessToken;
-        if (!accessToken) return false;
-
-        // Clean string from "R$ " and parse to float
-        let unitPriceText = reserva.total.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
-        let unitPrice = parseFloat(unitPriceText) || 0;
-
-        // Build base URL (HTTPS necessário para webhook em produção)
-        const baseUrl = window.location.origin + window.location.pathname;
-        const baseDir = baseUrl.replace(/\/[^/]*$/, '') || baseUrl;
-        const webhookUrl = baseDir + (baseDir.endsWith('/') ? '' : '/') + 'api/mp_webhook.php';
-
-        const preferenceData = {
-            items: [
-                {
-                    title: `Reserva - ${reserva.chaletName}`,
-                    description: `Check-in: ${reserva.checkin} | Check-out: ${reserva.checkout}`,
-                    quantity: 1,
-                    currency_id: 'BRL',
-                    unit_price: unitPrice
-                }
-            ],
-            payer: {
-                name: reserva.clientName.split(' ')[0],
-                surname: reserva.clientName.split(' ').slice(1).join(' ') || '',
-                email: reserva.clientEmail
-            },
-            back_urls: {
-                success: `${baseUrl}?payment_success=true&reservation_id=${reservationId}`,
-                failure: `${baseUrl}?payment_failed=true&reservation_id=${reservationId}`,
-                pending: `${baseUrl}?payment_pending=true&reservation_id=${reservationId}`
-            },
-            auto_return: "approved",
-            external_reference: String(reservationId),
-            notification_url: webhookUrl.startsWith('https') ? webhookUrl : null
-        };
-
+    async function createMercadoPagoPreference(reservationId) {
         try {
-            const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
+            const response = await fetch('api/create_preference.php', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accessToken}`
+                    'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(preferenceData)
+                body: JSON.stringify({ reservation_id: reservationId })
             });
 
-            if (response.ok) {
-                const preference = await response.json();
+            const data = await response.json().catch(() => ({}));
 
-                // Redirect user to Mercado Pago Checkout Pro
-                if (preference.init_point) {
-                    window.location.href = preference.init_point;
-                    return true;
-                }
-            } else {
-                console.error("Erro na resposta do MercadoPago:", await response.text());
+            if (!response.ok) {
+                console.error("Erro ao criar preferência no backend:", data);
                 alert("Houve um erro com o gateway de pagamento. Confirme as chaves e tente novamente.");
+                return false;
             }
+
+            if (data && data.init_point) {
+                window.location.href = data.init_point;
+                return true;
+            }
+
+            console.error("Resposta inválida ao criar preferência:", data);
+            alert("Não foi possível iniciar o checkout do Mercado Pago.");
         } catch (error) {
-            console.error("Erro ao comunicar com a API do MercadoPago", error);
+            console.error("Erro ao comunicar com o backend de pagamento", error);
             alert("Erro de conexão com o MercadoPago.");
         }
 
@@ -735,15 +702,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 let countDisp = 0;
 
-                chalets.forEach((chalet, idx) => {
+                for (const [idx, chalet] of chalets.entries()) {
                     // Armazena por índice (openChaletDetails) e por nome (updateModalSummary)
                     allChalets[idx] = chalet;
                     allChalets[chalet.name] = chalet;
 
                     // Se foi pedido filtro, ignora os indisponíveis
-                    if (filterCheckin && filterCheckout) {
-                        if (!checkAvailability(chalet.name, filterCheckin, filterCheckout)) {
-                            return; // Pula este chalé
+                    if (filterCheckin && filterCheckout && chalet.id) {
+                        const available = await checkAvailability(chalet.id, filterCheckin, filterCheckout);
+                        if (!available) {
+                            continue; // Pula este chalé
                         }
                     }
 
@@ -804,7 +772,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     `;
                     chaletsGrid.appendChild(card);
-                });
+                }
 
                 if (countDisp === 0) {
                     chaletsGrid.innerHTML = '<p style="text-align:center;width:100%;grid-column:1/-1;">Nenhum chalé disponível para as datas selecionadas.</p>';
@@ -1037,18 +1005,6 @@ document.addEventListener('DOMContentLoaded', () => {
         heroSlideshowInterval = setInterval(() => goToSlide(heroCurrentIndex + 1), 5000);
     }
 
-    async function loadReservations() {
-        try {
-            const res = await fetch('api/reservations.php');
-            const data = await res.json();
-            if (Array.isArray(data)) {
-                allReservationsData = data;
-            }
-        } catch (e) {
-            console.warn("Failed to load reservations", e);
-        }
-    }
-
     // Initialize - usar dados iniciais do PHP se disponível, depois carregar settings (logo/social) e chalés
     (async function init() {
         const initial = window.__INITIAL_CUSTOMIZATION;
@@ -1057,7 +1013,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         await loadSettings();
         loadChalets();
-        loadReservations();
     })();
 
     // Global Lightbox and Slider Functions

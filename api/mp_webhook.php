@@ -9,6 +9,7 @@
  * Ou a notification_url na preferência já envia para este endpoint.
  */
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/contract_service.php';
 
 // MP envia POST com JSON ou query params
 $input = file_get_contents('php://input');
@@ -76,11 +77,24 @@ if ($reservationId <= 0) {
     exit;
 }
 
-// Atualizar reserva para Confirmada
-$stmt = $pdo->prepare("UPDATE reservations SET status = 'Confirmada' WHERE id = ? AND status = 'Aguardando Pagamento'");
+// Atualizar reserva para Confirmada e marcar saldo quitado quando for pagamento integral.
+$stmt = $pdo->prepare("
+    UPDATE reservations
+    SET status = 'Confirmada',
+        balance_paid = CASE WHEN LOWER(payment_rule) = 'full' THEN 1 ELSE balance_paid END,
+        balance_paid_at = CASE WHEN LOWER(payment_rule) = 'full' THEN NOW() ELSE balance_paid_at END
+    WHERE id = ? AND status = 'Aguardando Pagamento'
+");
 $stmt->execute([$reservationId]);
 
 if ($stmt->rowCount() > 0) {
+    // Gera contrato PDF automaticamente no momento da confirmação.
+    try {
+        generateContractForReservation($pdo, $reservationId);
+    } catch (Throwable $e) {
+        error_log('MP Webhook: Falha ao gerar contrato da reserva #' . $reservationId . ' - ' . $e->getMessage());
+    }
+
     // Buscar dados da reserva e enviar WhatsApp
     $stmtRes = $pdo->prepare("SELECT r.*, c.name as chalet_name FROM reservations r LEFT JOIN chalets c ON r.chalet_id = c.id WHERE r.id = ?");
     $stmtRes->execute([$reservationId]);
