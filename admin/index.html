@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | Recantos da Serra</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Admin CSS -->
+    <link rel="stylesheet" href="admin.css">
+</head>
+
+<body>
+
+    <div class="admin-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="ph ph-mountains"></i>
+                    <span>Recantos</span>
+                </div>
+                <button class="toggle-btn" id="toggleSidebar" aria-label="Toggle Menu">
+                    <i class="ph ph-list"></i>
+                </button>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-view="dashboard">
+                    <i class="ph ph-squares-four"></i>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-view="reservations">
+                    <i class="ph ph-calendar-check"></i>
+                    <span class="nav-text">Reservas</span>
+                </a>
+                <a href="#" class="nav-item" data-view="chalets">
+                    <i class="ph ph-house-line"></i>
+                    <span class="nav-text">Chalés</span>
+                </a>
+                <a href="#" class="nav-item" data-view="settings">
+                    <i class="ph ph-gear"></i>
+                    <span class="nav-text">Configurações</span>
+                </a>
+                <a href="#" class="nav-item" data-view="customization">
+                    <i class="ph ph-paint-brush"></i>
+                    <span class="nav-text">Personalização</span>
+                </a>
+                <a href="#" class="nav-item" data-view="users">
+                    <i class="ph ph-users-three"></i>
+                    <span class="nav-text">Usuários</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <a href="../index.php" class="nav-item" target="_blank">
+                    <i class="ph ph-arrow-square-out"></i>
+                    <span class="nav-text">Ver Site</span>
+                </a>
+                <a href="#" class="nav-item logout">
+                    <i class="ph ph-sign-out"></i>
+                    <span class="nav-text">Sair</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-header">
+                <button class="mobile-toggle" id="mobileToggle" aria-label="Open Menu">
+                    <i class="ph ph-list"></i>
+                </button>
+                <div class="header-search">
+                    <i class="ph ph-magnifying-glass"></i>
+                    <input type="text" placeholder="Buscar reservas, hóspedes...">
+                </div>
+                <div class="header-profile">
+                    <i class="ph ph-bell"></i>
+                    <div class="avatar">
+                        <img src="https://ui-avatars.com/api/?name=Admin+Root&background=c96621&color=fff" alt="Admin">
+                    </div>
+                </div>
+            </header>
+
+            <!-- Render Area for Views -->
+            <div class="content-wrapper" id="app">
+                <!-- Content injected by admin.js -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals Container -->
+    <div id="modalContainer"></div>
+
+    <script src="admin.js?v=104"></script>
+</body>
+
+</html>

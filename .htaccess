@@ -1,0 +1,8 @@
+# Redirecionar index.html para index.php (página carregada do banco)
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^index\.html$ index.php [L,R=301]
+</IfModule>
+
+# Diretório padrão (apenas index.php - evita servir index.html com conteúdo antigo)
+DirectoryIndex index.php

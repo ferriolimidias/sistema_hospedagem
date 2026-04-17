@@ -1,0 +1,3 @@
+# Servir index.html como página padrão e desabilitar listagem de diretórios
+DirectoryIndex index.html
+Options -Indexes
