@@ -1,6 +1,215 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * Raiz do projeto (pasta que contém /api e /images).
+ */
+function projectRootPath(): string
+{
+    return dirname(__DIR__);
+}
+
+/**
+ * Caminho absoluto da pasta images/.
+ */
+function projectImagesRoot(): string
+{
+    return projectRootPath() . DIRECTORY_SEPARATOR . 'images';
+}
+
+/**
+ * Devolve o caminho Web relativo (ex.: images/hero.png) se o ficheiro existir no disco; caso contrário string vazia.
+ * Equivalente a: file_exists(__DIR__ . '/../images/hero.png') ? 'images/hero.png' : ''
+ */
+function assetRelativeIfExists(string $relativeWebPath): string
+{
+    $relativeWebPath = str_replace('\\', '/', $relativeWebPath);
+    $full = projectRootPath() . '/' . $relativeWebPath;
+    return is_file($full) ? $relativeWebPath : '';
+}
+
+/**
+ * Primeiro nome de ficheiro da lista que existir em images/.
+ *
+ * @param list<string> $basenames Apenas o nome do ficheiro (ex.: 'logo.png')
+ */
+function firstExistingAssetRelPath(array $basenames): string
+{
+    foreach ($basenames as $name) {
+        $rel = 'images/' . ltrim(str_replace('\\', '/', (string) $name), '/');
+        if (assetRelativeIfExists($rel) !== '') {
+            return $rel;
+        }
+    }
+    return '';
+}
+
+/**
+ * Lista caminhos relativos para imagens de hero (ficheiros hero* na raiz de images/).
+ *
+ * @return list<string>
+ */
+function discoverHeroImagePaths(): array
+{
+    $dir = projectImagesRoot();
+    if (!is_dir($dir)) {
+        $one = assetRelativeIfExists('images/hero.png');
+        return $one !== '' ? [$one] : [];
+    }
+    $paths = [];
+    foreach (['png', 'jpg', 'jpeg', 'webp'] as $ext) {
+        foreach (glob($dir . '/hero*.' . $ext) ?: [] as $full) {
+            if (is_file($full)) {
+                $paths[] = 'images/' . basename($full);
+            }
+        }
+    }
+    $paths = array_values(array_unique($paths));
+    sort($paths);
+    $hero = assetRelativeIfExists('images/hero.png');
+    if ($hero !== '' && in_array('images/hero.png', $paths, true)) {
+        $paths = array_values(array_unique(array_merge(['images/hero.png'], array_diff($paths, ['images/hero.png']))));
+    }
+    if ($paths === [] && $hero !== '') {
+        return [$hero];
+    }
+    return $paths;
+}
+
+/**
+ * Após criar tabelas: insere personalização, logos em settings e chalés de demonstração quando as tabelas estão vazias.
+ */
+function runInitialDataSeed(PDO $pdo): void
+{
+    $heroJson = json_encode(discoverHeroImagePaths(), JSON_UNESCAPED_UNICODE);
+    if ($heroJson === '[]' || $heroJson === false) {
+        $heroJson = '[]';
+    }
+
+    $aboutImg = assetRelativeIfExists('images/chalet3.png');
+    if ($aboutImg === '') {
+        $aboutImg = firstExistingAssetRelPath(['about.png', 'about.jpg', 'chalet3.jpg']);
+    }
+
+    $testi1 = firstExistingAssetRelPath(['testi1.png', 'testi1.jpg']);
+    $testi2 = firstExistingAssetRelPath(['testi2.png', 'testi2.jpg']);
+    $testi3 = firstExistingAssetRelPath(['testi3.png', 'testi3.jpg']);
+    $favicon = firstExistingAssetRelPath(['favicon.ico', 'favicon.png']);
+
+    $stmt = $pdo->query('SELECT COUNT(*) FROM personalizacao');
+    $pc = $stmt ? (int) $stmt->fetchColumn() : 0;
+    if ($pc === 0) {
+        $aboutText = "Nascido do desejo de integrar conforto absoluto à natureza intocada, o Recantos da Serra oferece uma hospedagem ímpar. Nossos chalés foram projetados para se fundirem com a paisagem, garantindo privacidade, luxo e uma vista de tirar o fôlego.\n\nAcorde com o canto dos pássaros, desfrute de um café da manhã artesanal e relaxe em uma banheira de hidromassagem com vista para o vale.";
+        $ins = $pdo->prepare(
+            'INSERT INTO personalizacao (
+                hero_titulo, hero_subtitulo, hero_imagens, about_titulo, about_texto, about_imagem,
+                chalets_subtitulo, chalets_titulo, chalets_desc,
+                feat1_titulo, feat1_desc, feat2_titulo, feat2_desc, feat3_titulo, feat3_desc, feat4_titulo, feat4_desc, feat5_titulo, feat5_desc,
+                testi1_nome, testi1_local, testi1_texto, testi1_imagem,
+                testi2_nome, testi2_local, testi2_texto, testi2_imagem,
+                testi3_nome, testi3_local, testi3_texto, testi3_imagem,
+                loc_endereco, loc_carro, loc_map_link, wa_numero, wa_mensagem,
+                footer_desc, footer_endereco, footer_email, footer_telefone, footer_copyright, favicon
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?
+            )'
+        );
+        $ins->execute([
+            'Seu Refúgio de Luxo na Natureza',
+            'Desconecte-se da rotina e viva momentos inesquecíveis em nossos chalés exclusivos na serra.',
+            $heroJson,
+            'Uma experiência imersiva',
+            $aboutText,
+            $aboutImg,
+            'Nossas Acomodações',
+            'Escolha seu Refúgio',
+            'Designs únicos pensados para proporcionar o máximo de conforto em meio às montanhas.',
+            'Wi-Fi rápido 📶',
+            'Internet de alta velocidade para você ficar conectado.',
+            'Cozinha completa 🍳',
+            'Cozinha equipada para preparar suas refeições com conforto.',
+            'Estacionamento 🚗',
+            'Vaga de estacionamento para seu veículo.',
+            'Ambiente confortável 🛏️',
+            'Espaço aconchegante para relaxar e descansar.',
+            'Pet friendly 🐾',
+            'Seu amigo de quatro patas é muito bem-vindo aqui.',
+            'Mariana Costa',
+            'São Paulo, SP',
+            'Simplesmente perfeito! O chalé panorâmico nos proporcionou uma vista maravilhosa ao amanhecer. O atendimento e o café da manhã artesanal são impecáveis. Voltaremos com certeza!',
+            $testi1,
+            'Pedro Henrique',
+            'Belo Horizonte, MG',
+            'O Ninho de Inverno é o lugar mais aconchegante que já fiquei. A lareira, a adega e o silêncio da montanha criam um ambiente super romântico. Vale cada centavo.',
+            $testi2,
+            'Juliana A. & Thor',
+            'Campinas, SP',
+            'Muito bom poder viajar com nossa cachorrinha e ser tão bem recebidos. A estrutura A-Frame é linda e tudo estava extremamente limpo e organizado. Nota 10!',
+            $testi3,
+            'Recanto da Serra Eco Park - Serra da Mantiqueira, MG',
+            'Apenas 2h30 da capital. Estrada 100% asfaltada até a entrada.',
+            'https://www.google.com/maps/search/?api=1&query=Recanto+da+Serra+Eco+Park',
+            '5535999999999',
+            'Olá, gostaria de mais informações sobre os chalés!',
+            'Luxo, conforto e natureza em perfeita harmonia.',
+            'Serra da Mantiqueira, MG',
+            'contato@recantosdaserra.com',
+            '(35) 99999-9999',
+            '© ' . date('Y') . ' Recantos da Serra. Todos os direitos reservados.',
+            $favicon,
+        ]);
+    }
+
+    $logo = firstExistingAssetRelPath(['logo.png', 'logo.jpg']);
+    $logoLight = firstExistingAssetRelPath(['logo_light.png', 'logo-light.png', 'logo_light.jpg']);
+    if ($logo !== '') {
+        $st = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+        $st->execute(['company_logo']);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row || trim((string) ($row['setting_value'] ?? '')) === '') {
+            $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)')
+                ->execute(['company_logo', $logo]);
+        }
+    }
+    if ($logoLight !== '') {
+        $st = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+        $st->execute(['company_logo_light']);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row || trim((string) ($row['setting_value'] ?? '')) === '') {
+            $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)')
+                ->execute(['company_logo_light', $logoLight]);
+        }
+    }
+
+    $stmt = $pdo->query('SELECT COUNT(*) FROM chalets');
+    $cc = $stmt ? (int) $stmt->fetchColumn() : 0;
+    if ($cc === 0) {
+        $demos = [
+            ['Chalé Panorâmico', 'Luxo', 'Refúgio com vista panorâmica e todo o conforto para a sua estadia.', 'images/chalet1.png', ['chalet1.jpg']],
+            ['Ninho de Inverno', 'Romântico', 'Ambiente aconchegante com lareira e privacidade.', 'images/chalet2.png', ['chalet2.jpg']],
+            ['Chalé A-Frame', 'Família', 'Estrutura em A-Frame ideal para família e pets.', 'images/chalet3.png', ['chalet3.jpg']],
+        ];
+        $insC = $pdo->prepare(
+            'INSERT INTO chalets (name, type, badge, price, description, full_description, status, main_image, images)
+             VALUES (?, ?, NULL, 500.00, ?, ?, \'Ativo\', ?, NULL)'
+        );
+        foreach ($demos as $d) {
+            $main = assetRelativeIfExists($d[3]);
+            if ($main === '' && isset($d[4])) {
+                $main = firstExistingAssetRelPath($d[4]);
+            }
+            $insC->execute([$d[0], $d[1], $d[2], $d[2], $main !== '' ? $main : null]);
+        }
+    }
+}
+
 function runInitialSchema(PDO $pdo): void
 {
     $queries = [
@@ -158,5 +367,7 @@ function runInitialSchema(PDO $pdo): void
     } catch (PDOException $e) {
         // Coluna já existe.
     }
+
+    runInitialDataSeed($pdo);
 }
 
