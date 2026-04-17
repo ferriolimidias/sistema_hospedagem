@@ -88,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             @chmod($configPath, 0640);
 
-            $pdo->beginTransaction();
+            // Sem transação: CREATE/ALTER TABLE no MySQL fazem commit implícito e quebrariam begin/commit.
             runInitialSchema($pdo);
 
             $stmt = $pdo->prepare('SELECT id FROM admins WHERE email = ? LIMIT 1');
@@ -107,7 +107,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'admin',
                 json_encode(['dashboard', 'reservas', 'chales', 'usuarios', 'configuracoes']),
             ]);
-            $pdo->commit();
 
             // Bloqueia reutilização direta do instalador após sucesso.
             $lockPath = __DIR__ . '/config/.installed.lock';
@@ -123,9 +122,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Refresh: 3; URL=/index.php');
         } catch (Throwable $e) {
             if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {
-                $pdo->rollBack();
+                try {
+                    $pdo->rollBack();
+                } catch (Throwable) {
+                    // Ignora: após DDL o MySQL pode já não ter transação ativa.
+                }
             }
-            $errors[] = 'Falha na instalação: ' . $e->getMessage();
+            $detail = $e->getMessage();
+            if ($e instanceof PDOException && isset($e->errorInfo[2]) && (string)$e->errorInfo[2] !== '') {
+                $detail .= ' [' . (string)$e->errorInfo[2] . ']';
+            }
+            $errors[] = 'Falha na instalação: ' . $detail;
         }
     }
 }
