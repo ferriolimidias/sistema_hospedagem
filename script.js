@@ -58,11 +58,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function parseGuestsOption(guestsVal, fallbackAdults = 1) {
-        const [ad, ch] = String(guestsVal || '').split('_').map(Number);
+        const raw = String(guestsVal ?? '').trim();
+        if (raw === '') {
+            return { adults: fallbackAdults, children: 0 };
+        }
+        if (raw.indexOf('_') === -1) {
+            const n = parseInt(raw, 10);
+            if (n > 0) {
+                return { adults: n, children: 0 };
+            }
+            return { adults: fallbackAdults, children: 0 };
+        }
+        const [ad, ch] = raw.split('_').map(Number);
         return {
             adults: ad > 0 ? ad : fallbackAdults,
-            children: ch >= 0 ? ch : 0
+            children: Number.isFinite(ch) && ch >= 0 ? ch : 0
         };
+    }
+
+    /** Valor do <select>: "1".."N" ou legado "N_M" (adultos_crianças). */
+    function totalGuestsFromSelection(guestsVal) {
+        const p = parseGuestsOption(guestsVal, 1);
+        return Math.max(0, p.adults) + Math.max(0, p.children);
     }
 
     function renderGuestOptions(selectEl, maxGuests, preferredValue) {
@@ -71,16 +88,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const frag = document.createDocumentFragment();
         for (let i = 1; i <= cap; i++) {
             const opt = document.createElement('option');
-            opt.value = `${i}_0`;
-            opt.textContent = i === 1 ? '1 hóspede' : `${i} hóspedes`;
+            opt.value = String(i);
+            opt.textContent = i === 1 ? '1 Hóspede' : `${i} Hóspedes`;
             frag.appendChild(opt);
         }
         selectEl.innerHTML = '';
         selectEl.appendChild(frag);
-        const safePreferred = preferredValue && selectEl.querySelector(`option[value="${preferredValue}"]`)
-            ? preferredValue
-            : `${Math.min(2, cap)}_0`;
-        selectEl.value = safePreferred;
+        const prefToken = String(preferredValue ?? '').trim().split('_')[0];
+        let prefNum = parseInt(prefToken, 10);
+        if (!(prefNum >= 1 && prefNum <= cap)) {
+            prefNum = Math.min(2, cap);
+        }
+        selectEl.value = String(prefNum);
     }
 
     function isUsableImageSrc(src) {
@@ -382,16 +401,22 @@ document.addEventListener('DOMContentLoaded', () => {
             modalCout.value = dAtm.toISOString().split('T')[0];
         }
 
-        // Sincroniza opção de hóspedes do formulário inicial para o modal
+        // Hóspedes: sempre de 1 até max_guests do chalé (API); alinha com a seleção do formulário da CTA quando válida
         const guestsOptionEl = document.getElementById('guestsOption');
         const modalGuestsEl = document.getElementById('modalGuestsOption');
         const chaletByName = allChalets[chaletName];
-        const selectedFromTop = guestsOptionEl ? guestsOptionEl.value : '';
-        const maxGuests = chaletByName && chaletByName.max_guests != null ? chaletByName.max_guests : 4;
-        renderGuestOptions(modalGuestsEl, maxGuests, selectedFromTop);
-        if (guestsOptionEl && guestsOptionEl.options.length === 0) {
-            renderGuestOptions(guestsOptionEl, maxGuests, selectedFromTop || `${Math.min(2, Math.max(1, parseInt(String(maxGuests), 10) || 4))}_0`);
+        const maxGuests = chaletByName && chaletByName.max_guests != null
+            ? Math.max(1, parseInt(String(chaletByName.max_guests), 10) || 4)
+            : 4;
+        const rawTop = guestsOptionEl && guestsOptionEl.value ? guestsOptionEl.value : '';
+        const topNum = parseInt(String(rawTop).split('_')[0], 10);
+        let preferredModal = String(Math.min(2, maxGuests));
+        if (topNum >= 1 && topNum <= maxGuests) {
+            preferredModal = String(topNum);
+        } else if (topNum > maxGuests) {
+            preferredModal = String(maxGuests);
         }
+        renderGuestOptions(modalGuestsEl, maxGuests, preferredModal);
 
         document.querySelectorAll('#bookingExtrasList input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
         const hct = document.getElementById('hasCouponToggle');
@@ -640,10 +665,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const guestsOptEl = document.getElementById('modalGuestsOption');
-        const guestsVal = guestsOptEl ? guestsOptEl.value : '1_0';
+        const guestsVal = guestsOptEl ? guestsOptEl.value : '2';
         const parsedGuests = parseGuestsOption(guestsVal, 1);
         const guestsAdults = parsedGuests.adults;
         const guestsChildren = parsedGuests.children;
+        const totalHospedesSelecionados = totalGuestsFromSelection(guestsVal);
 
         const lodging = computeLodgingSubtotal(chalet, checkinStr, checkoutStr);
         const extraGuest = computeExtraGuestSubtotal(chalet, guestsAdults, guestsChildren, nights);
@@ -675,8 +701,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (extraGuest > 0 && extraRow && extraEl && extraLabelEl) {
             const baseG = Math.max(1, parseInt(String(chalet.base_guests ?? 2), 10) || 2);
             const fee = parseFloat(String(chalet.extra_guest_fee ?? 0)) || 0;
-            const totalG = guestsAdults + guestsChildren;
-            const extraCount = Math.max(0, totalG - baseG);
+            const hospedesExtras = Math.max(0, totalHospedesSelecionados - baseG);
+            const extraCount = hospedesExtras;
             extraLabelEl.textContent = `Hóspedes extra (${extraCount} × R$ ${fee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} × ${nights} noites):`;
             extraEl.textContent = `R$ ${extraGuest.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
             extraRow.style.display = '';
@@ -812,7 +838,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const nights = countNightsBetween(filterCheckin, filterCheckout);
                     const guestsOptTop = document.getElementById('guestsOption');
-                    const gv = guestsOptTop && guestsOptTop.value ? guestsOptTop.value : '1_0';
+                    const gv = guestsOptTop && guestsOptTop.value ? guestsOptTop.value : '2';
                     const parsedTopGuests = parseGuestsOption(gv, 1);
                     const gAdults = parsedTopGuests.adults;
                     const gChildren = parsedTopGuests.children;
@@ -910,7 +936,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             const guestsOptEl = document.getElementById('modalGuestsOption');
-            const guestsVal = guestsOptEl ? guestsOptEl.value : '1_0';
+            const guestsVal = guestsOptEl ? guestsOptEl.value : '2';
             const parsedGuests = parseGuestsOption(guestsVal, 1);
             const guestsAdults = parsedGuests.adults;
             const guestsChildren = parsedGuests.children;
@@ -1104,6 +1130,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     `;
                     chaletsGrid.appendChild(card);
+                }
+
+                const guestsTop = document.getElementById('guestsOption');
+                if (guestsTop && chalets.length > 0) {
+                    const globalMax = Math.max(
+                        1,
+                        ...chalets.map((c) => Math.max(1, parseInt(String(c.max_guests ?? 4), 10) || 4))
+                    );
+                    const prev = guestsTop.value;
+                    renderGuestOptions(guestsTop, globalMax, prev || String(Math.min(2, globalMax)));
                 }
 
                 if (countDisp === 0) {

@@ -321,9 +321,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                     <div class="form-group"><label for="checkout">Check-out</label><input type="date" id="checkout" required></div>
                     <div class="form-group"><label for="guestsOption">Hóspedes</label>
                         <select id="guestsOption">
-                            <option value="1_0">1 adulto</option>
-                            <option value="2_0" selected>2 adultos</option>
-                            <option value="2_1">2 adultos + 1 criança (até 8 anos)</option>
+                            <option value="">Selecione...</option>
                         </select>
                     </div>
                     <button type="button" id="btnVerifyAvailability" class="btn btn-primary btn-block">Verificar e Reservar</button>
@@ -399,9 +397,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                     <div class="form-group" style="flex: 1; margin:0; min-width: 120px;"><label>Check-out</label><input type="date" id="modalCheckout" class="form-control" required></div>
                     <div class="form-group" style="flex: 1; margin:0; min-width: 200px;"><label>Hóspedes</label>
                         <select id="modalGuestsOption" class="form-control">
-                            <option value="1_0">1 adulto</option>
-                            <option value="2_0" selected>2 adultos</option>
-                            <option value="2_1">2 adultos + 1 criança (até 8 anos)</option>
+                            <option value="">Selecione...</option>
                         </select>
                     </div>
                 </div>
