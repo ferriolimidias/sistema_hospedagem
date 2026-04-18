@@ -10,13 +10,50 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
 
 be_require_internal_key($pdo);
 
+function fs_load_payment_policies(PDO $pdo): array
+{
+    $fallback = ['half' => 50.0, 'full' => 100.0];
+    try {
+        $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'payment_policies' LIMIT 1");
+        $stmt->execute();
+        $raw = $stmt->fetchColumn();
+        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_array($decoded) || count($decoded) === 0) return $fallback;
+        $clean = [];
+        foreach ($decoded as $item) {
+            if (!is_array($item)) continue;
+            $code = strtolower(trim((string)($item['code'] ?? '')));
+            $pct = isset($item['percent_now']) ? (float)$item['percent_now'] : -1;
+            if ($code === '' || $pct <= 0) continue;
+            $clean[$code] = max(0.0, min(100.0, $pct));
+        }
+        if (!count($clean)) return $fallback;
+        return $clean;
+    } catch (Throwable $e) {
+        return $fallback;
+    }
+}
+
 try {
     $revenue = (float) $pdo->query("SELECT COALESCE(SUM(total_amount), 0) FROM reservations WHERE status = 'Confirmada'")->fetchColumn();
 
-    $balanceHalf = (float) $pdo->query("
-        SELECT COALESCE(SUM(total_amount / 2), 0) FROM reservations
-        WHERE status = 'Confirmada' AND LOWER(payment_rule) = 'half' AND balance_paid = 0
-    ")->fetchColumn();
+    $policies = fs_load_payment_policies($pdo);
+    $stmtBal = $pdo->prepare("
+        SELECT total_amount, payment_rule
+        FROM reservations
+        WHERE status = 'Confirmada'
+          AND balance_paid = 0
+    ");
+    $stmtBal->execute();
+    $balanceHalf = 0.0;
+    foreach ($stmtBal->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $rule = strtolower((string)($row['payment_rule'] ?? 'full'));
+        $pct = isset($policies[$rule]) ? (float)$policies[$rule] : ($rule === 'half' ? 50.0 : 100.0);
+        if ($pct >= 100.0) continue;
+        $total = (float)($row['total_amount'] ?? 0);
+        $remaining = $total * ((100.0 - $pct) / 100.0);
+        $balanceHalf += $remaining;
+    }
 
     $monthStart = date('Y-m-01');
     $monthEnd = date('Y-m-t');

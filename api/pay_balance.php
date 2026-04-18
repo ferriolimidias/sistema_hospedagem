@@ -2,6 +2,43 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/contract_access.php';
 
+function loadPaymentPolicies(PDO $pdo): array
+{
+    $fallback = [
+        ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50.0],
+        ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100.0],
+    ];
+    try {
+        $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'payment_policies' LIMIT 1");
+        $stmt->execute();
+        $raw = $stmt->fetchColumn();
+        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_array($decoded) || count($decoded) === 0) return $fallback;
+        $clean = [];
+        foreach ($decoded as $item) {
+            if (!is_array($item)) continue;
+            $code = strtolower(trim((string)($item['code'] ?? '')));
+            $pct = isset($item['percent_now']) ? (float)$item['percent_now'] : -1;
+            $label = trim((string)($item['label'] ?? ''));
+            if ($code === '' || $pct <= 0) continue;
+            $clean[] = ['code' => $code, 'label' => $label, 'percent_now' => max(0.0, min(100.0, $pct))];
+        }
+        return count($clean) ? $clean : $fallback;
+    } catch (Throwable $e) {
+        return $fallback;
+    }
+}
+
+function findPaymentPolicyByCode(array $policies, string $code): array
+{
+    foreach ($policies as $policy) {
+        if (strtolower((string)($policy['code'] ?? '')) === strtolower($code)) return $policy;
+    }
+    return strtolower($code) === 'half'
+        ? ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50.0]
+        : ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100.0];
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     jsonResponse(['error' => 'Método não permitido'], 405);
 }
@@ -45,6 +82,7 @@ function appendBalanceAuditLog(int $reservationId): void
 }
 
 try {
+    $policies = loadPaymentPolicies($pdo);
     $stmtLoad = $pdo->prepare("
         SELECT id, status, payment_rule, balance_paid, guest_name, guest_email, guest_phone, total_amount, checkin_date, checkout_date, chalet_id
         FROM reservations
@@ -65,8 +103,10 @@ try {
         ], 409);
     }
 
-    if (strtolower((string)($row['payment_rule'] ?? '')) !== 'half') {
-        jsonResponse(['error' => 'Esta reserva não utiliza pagamento em duas parcelas (50%).'], 409);
+    $policy = findPaymentPolicyByCode($policies, strtolower((string)($row['payment_rule'] ?? 'full')));
+    $percentNow = (float)($policy['percent_now'] ?? 100.0);
+    if ($percentNow >= 100.0) {
+        jsonResponse(['error' => 'Esta reserva já foi configurada para quitação total no primeiro pagamento.'], 409);
     }
 
     if ((int)($row['balance_paid'] ?? 0) === 1) {
@@ -79,7 +119,6 @@ try {
             balance_paid_at = NOW()
         WHERE id = ?
           AND status = 'Confirmada'
-          AND LOWER(payment_rule) = 'half'
           AND balance_paid = 0
         LIMIT 1
     ");

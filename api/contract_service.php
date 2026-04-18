@@ -20,7 +20,85 @@ function ensureContractsStorageDir(): string
     return $contractsDir;
 }
 
-function buildContractHtml(array $res): string
+function loadPaymentPoliciesForContract(PDO $pdo): array
+{
+    $fallback = [
+        ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50.0],
+        ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100.0],
+    ];
+    try {
+        $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'payment_policies' LIMIT 1");
+        $stmt->execute();
+        $raw = $stmt->fetchColumn();
+        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_array($decoded) || count($decoded) === 0) return $fallback;
+        $clean = [];
+        foreach ($decoded as $item) {
+            if (!is_array($item)) continue;
+            $code = strtolower(trim((string)($item['code'] ?? '')));
+            $label = trim((string)($item['label'] ?? ''));
+            $pct = isset($item['percent_now']) ? (float)$item['percent_now'] : -1;
+            if ($code === '' || $pct <= 0) continue;
+            $clean[] = ['code' => $code, 'label' => $label, 'percent_now' => max(0.0, min(100.0, $pct))];
+        }
+        return count($clean) > 0 ? $clean : $fallback;
+    } catch (Throwable $e) {
+        return $fallback;
+    }
+}
+
+function findPaymentPolicyForContract(array $policies, string $code): array
+{
+    foreach ($policies as $policy) {
+        if (strtolower((string)($policy['code'] ?? '')) === strtolower($code)) return $policy;
+    }
+    return strtolower($code) === 'half'
+        ? ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50.0]
+        : ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100.0];
+}
+
+function loadContractPresentationConfig(PDO $pdo): array
+{
+    $checkinTime = '14:00';
+    $checkoutTime = '12:00';
+    $companyName = '';
+
+    try {
+        $stmtSettings = $pdo->query("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('checkin_time', 'checkout_time', 'company_name')");
+        foreach ($stmtSettings ? $stmtSettings->fetchAll(PDO::FETCH_ASSOC) : [] as $row) {
+            $k = (string) ($row['setting_key'] ?? '');
+            $v = trim((string) ($row['setting_value'] ?? ''));
+            if ($k === 'checkin_time' && $v !== '') $checkinTime = $v;
+            if ($k === 'checkout_time' && $v !== '') $checkoutTime = $v;
+            if ($k === 'company_name' && $v !== '') $companyName = $v;
+        }
+    } catch (Throwable $e) {
+        // Mantém defaults para evitar quebra da geração do contrato.
+    }
+
+    if ($companyName === '') {
+        try {
+            $stmtPers = $pdo->query("SELECT hero_titulo FROM personalizacao ORDER BY id DESC LIMIT 1");
+            $heroTitle = trim((string) ($stmtPers ? $stmtPers->fetchColumn() : ''));
+            if ($heroTitle !== '') {
+                $companyName = $heroTitle;
+            }
+        } catch (Throwable $e) {
+            // Sem personalização disponível.
+        }
+    }
+    if ($companyName === '') {
+        $companyName = 'Hospedagem';
+    }
+
+    return [
+        'checkin_time' => $checkinTime,
+        'checkout_time' => $checkoutTime,
+        'company_name' => $companyName,
+    ];
+}
+
+function buildContractHtml(array $res, array $cfg, array $paymentPolicy): string
 {
     $guestName = htmlspecialchars((string)($res['guest_name'] ?? ''), ENT_QUOTES, 'UTF-8');
     $guestEmail = htmlspecialchars((string)($res['guest_email'] ?? '-'), ENT_QUOTES, 'UTF-8');
@@ -31,12 +109,15 @@ function buildContractHtml(array $res): string
     $createdAt = htmlspecialchars((string)($res['created_at'] ?? date('Y-m-d H:i:s')), ENT_QUOTES, 'UTF-8');
     $reservationId = (int)($res['id'] ?? 0);
     $total = number_format((float)($res['total_amount'] ?? 0), 2, ',', '.');
-    $paymentRule = strtolower((string)($res['payment_rule'] ?? 'full'));
-    $paidNow = $paymentRule === 'half' ? ((float)$res['total_amount'] / 2) : (float)$res['total_amount'];
+    $paidNowPct = (float)($paymentPolicy['percent_now'] ?? 100);
+    $paidNow = ((float)$res['total_amount'] * $paidNowPct) / 100;
     $paidNowFormatted = number_format($paidNow, 2, ',', '.');
-    $ruleLabel = $paymentRule === 'half' ? 'Sinal de 50%' : 'Pagamento integral';
+    $ruleLabel = trim((string)($paymentPolicy['label'] ?? '')) ?: 'Condição de pagamento';
+    $checkinTime = htmlspecialchars((string)($cfg['checkin_time'] ?? '14:00'), ENT_QUOTES, 'UTF-8');
+    $checkoutTime = htmlspecialchars((string)($cfg['checkout_time'] ?? '12:00'), ENT_QUOTES, 'UTF-8');
+    $companyName = htmlspecialchars((string)($cfg['company_name'] ?? 'Hospedagem'), ENT_QUOTES, 'UTF-8');
     $logoPath = __DIR__ . '/../images/logo.png';
-    $logoHtml = file_exists($logoPath) ? '<img src="' . $logoPath . '" alt="Logo">' : '<h1>Recantos da Serra</h1>';
+    $logoHtml = file_exists($logoPath) ? '<img src="' . $logoPath . '" alt="Logo">' : '<h1>' . $companyName . '</h1>';
 
     return <<<HTML
 <!doctype html>
@@ -91,7 +172,7 @@ function buildContractHtml(array $res): string
   <div class="section box">
     <h2>Regras de Check-in / Check-out</h2>
     <ul>
-      <li>Check-in a partir das 15:00 e check-out até 12:00.</li>
+      <li>Check-in a partir das {$checkinTime} e check-out até {$checkoutTime}.</li>
       <li>Documento oficial com foto é obrigatório no check-in.</li>
       <li>Danos ao imóvel ou enxoval serão cobrados conforme avaliação.</li>
       <li>Cancelamentos e alterações seguem política vigente no ato da reserva.</li>
@@ -108,7 +189,7 @@ function buildContractHtml(array $res): string
   </div>
 
   <div class="signature">
-    <div class="line">Recantos da Serra - Responsável pela hospedagem</div>
+    <div class="line">{$companyName} - Responsável pela hospedagem</div>
     <div class="line">Hóspede</div>
   </div>
 </body>
@@ -136,6 +217,9 @@ function generateContractForReservation(PDO $pdo, int $reservationId): array
     if (!$res) {
         throw new RuntimeException('Reserva não encontrada.');
     }
+    $cfg = loadContractPresentationConfig($pdo);
+    $policies = loadPaymentPoliciesForContract($pdo);
+    $paymentPolicy = findPaymentPolicyForContract($policies, strtolower((string)($res['payment_rule'] ?? 'full')));
 
     $contractsDir = ensureContractsStorageDir();
     $filename = sprintf('contract_%d_%s.pdf', $reservationId, date('Ymd_His'));
@@ -146,7 +230,7 @@ function generateContractForReservation(PDO $pdo, int $reservationId): array
     $options->set('defaultFont', 'DejaVu Sans');
 
     $dompdf = new Dompdf($options);
-    $dompdf->loadHtml(buildContractHtml($res), 'UTF-8');
+    $dompdf->loadHtml(buildContractHtml($res, $cfg, $paymentPolicy), 'UTF-8');
     $dompdf->setPaper('A4', 'portrait');
     $dompdf->render();
 

@@ -123,6 +123,18 @@ switch ($method) {
         if ($guestsChildren < 0) {
             $guestsChildren = 0;
         }
+        $totalGuests = $guestsAdults + $guestsChildren;
+        $maxGuests = isset($chaletRow['max_guests']) ? (int) $chaletRow['max_guests'] : 4;
+        if ($maxGuests < 1) {
+            $maxGuests = 1;
+        }
+        if ($totalGuests > $maxGuests) {
+            jsonResponse([
+                'error' => 'Quantidade de hóspedes excede a capacidade máxima do chalé.',
+                'max_guests' => $maxGuests,
+                'requested_guests' => $totalGuests
+            ], 400);
+        }
 
         $lodgingTotal = pricing_reservation_total($chaletRow, $checkin, $checkout, $guestsAdults, $guestsChildren);
         $extraIds = be_parse_extra_service_ids_from_payload($data);
@@ -202,6 +214,20 @@ switch ($method) {
             // Edição completa
             $guestsAdults = isset($data['guests_adults']) ? (int)$data['guests_adults'] : 2;
             $guestsChildren = isset($data['guests_children']) ? (int)$data['guests_children'] : 0;
+            $totalGuests = max(0, $guestsAdults) + max(0, $guestsChildren);
+            $stmtCap = $pdo->prepare("SELECT max_guests FROM chalets WHERE id = ? LIMIT 1");
+            $stmtCap->execute([$data['chalet_id']]);
+            $maxGuests = (int) ($stmtCap->fetchColumn() ?: 4);
+            if ($maxGuests < 1) {
+                $maxGuests = 1;
+            }
+            if ($totalGuests > $maxGuests) {
+                jsonResponse([
+                    'error' => 'Quantidade de hóspedes excede a capacidade máxima do chalé.',
+                    'max_guests' => $maxGuests,
+                    'requested_guests' => $totalGuests
+                ], 400);
+            }
             $stmt = $pdo->prepare("UPDATE reservations SET guest_name = ?, guest_email = ?, guest_phone = ?, guests_adults = ?, guests_children = ?, chalet_id = ?, checkin_date = ?, checkout_date = ?, total_amount = ?, payment_rule = ?, status = ?, balance_paid = ?, balance_paid_at = ? WHERE id = ?");
             $balancePaid = isset($data['balance_paid'])
                 ? (int)((bool)$data['balance_paid'])

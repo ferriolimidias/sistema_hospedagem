@@ -2,10 +2,12 @@
    ADMIN VARIABLES
    ========================================= */
 :root {
-    --primary: #c96621;
+    --primary-color: #c96621;
+    --secondary-color: #C89B5F;
+    --primary: var(--primary-color);
     /* Brand Green */
     --primary-light: #fbebe0;
-    --secondary: #C89B5F;
+    --secondary: var(--secondary-color);
     /* Brand Gold */
     --bg-main: #F4F7F6;
     --bg-surface: #FFFFFF;
@@ -494,7 +496,7 @@ button {
 }
 
 .btn:hover {
-    background-color: #1a3226;
+    background-color: var(--secondary);
 }
 
 /* Secretaria pode editar, mas não pode cadastrar novo chalé */

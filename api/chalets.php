@@ -3,6 +3,21 @@ require_once 'db.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
+function chaletImagePathUsable($path): bool
+{
+    $p = trim((string)$path);
+    if ($p === '') return false;
+    if (preg_match('/^https?:\/\//i', $p) === 1) return true;
+    if (strpos($p, 'data:image/') === 0) return true;
+    $clean = ltrim(str_replace('\\', '/', $p), '/');
+    return is_file(__DIR__ . '/../' . $clean);
+}
+
+function chaletNormalizeImagePath($path): string
+{
+    return chaletImagePathUsable($path) ? trim((string)$path) : '';
+}
+
 switch ($method) {
     case 'GET':
         // Busca chalés
@@ -13,6 +28,11 @@ switch ($method) {
             if ($chalet) {
                 // Decode JSON images if present
                 $chalet['images'] = !empty($chalet['images']) ? json_decode($chalet['images'], true) : [];
+                $chalet['main_image'] = chaletNormalizeImagePath($chalet['main_image'] ?? '');
+                $chalet['images'] = array_values(array_filter(array_map(
+                    static fn($img) => chaletNormalizeImagePath($img),
+                    is_array($chalet['images']) ? $chalet['images'] : []
+                )));
                 // Busca feriados relacionados
                 $stmtHol = $pdo->prepare("SELECT custom_date as date, price, description as descr FROM chalet_custom_prices WHERE chalet_id = ?");
                 $stmtHol->execute([$chalet['id']]);
@@ -37,6 +57,11 @@ switch ($method) {
             foreach ($chalets as &$c) {
                 $c['holidays'] = $holidaysByChalet[$c['id']] ?? [];
                 $c['images'] = !empty($c['images']) ? json_decode($c['images'], true) : [];
+                $c['main_image'] = chaletNormalizeImagePath($c['main_image'] ?? '');
+                $c['images'] = array_values(array_filter(array_map(
+                    static fn($img) => chaletNormalizeImagePath($img),
+                    is_array($c['images']) ? $c['images'] : []
+                )));
             }
 
             jsonResponse($chalets);

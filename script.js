@@ -57,6 +57,45 @@ document.addEventListener('DOMContentLoaded', () => {
         return Math.round(extra * fee * nights * 100) / 100;
     }
 
+    function parseGuestsOption(guestsVal, fallbackAdults = 1) {
+        const [ad, ch] = String(guestsVal || '').split('_').map(Number);
+        return {
+            adults: ad > 0 ? ad : fallbackAdults,
+            children: ch >= 0 ? ch : 0
+        };
+    }
+
+    function renderGuestOptions(selectEl, maxGuests, preferredValue) {
+        if (!selectEl) return;
+        const cap = Math.max(1, parseInt(String(maxGuests ?? 4), 10) || 4);
+        const frag = document.createDocumentFragment();
+        for (let i = 1; i <= cap; i++) {
+            const opt = document.createElement('option');
+            opt.value = `${i}_0`;
+            opt.textContent = i === 1 ? '1 hóspede' : `${i} hóspedes`;
+            frag.appendChild(opt);
+        }
+        selectEl.innerHTML = '';
+        selectEl.appendChild(frag);
+        const safePreferred = preferredValue && selectEl.querySelector(`option[value="${preferredValue}"]`)
+            ? preferredValue
+            : `${Math.min(2, cap)}_0`;
+        selectEl.value = safePreferred;
+    }
+
+    function isUsableImageSrc(src) {
+        const v = String(src || '').trim();
+        return v !== '' && v.toLowerCase() !== 'null' && v.toLowerCase() !== 'undefined';
+    }
+
+    function buildSlideMarkup(src, alt, isActive) {
+        const cls = `slide ${isActive ? 'active' : ''}`;
+        if (!isUsableImageSrc(src)) {
+            return `<div class="${cls} image-fallback"></div>`;
+        }
+        return `<img src="${src}" class="${cls}" alt="${alt}" onclick="openLightbox('${src}')" onerror="this.outerHTML='<div class=&quot;${cls} image-fallback&quot;></div>'">`;
+    }
+
     /* =========================================
        NAVBAR SCROLL EFFECT
        ========================================= */
@@ -183,9 +222,60 @@ document.addEventListener('DOMContentLoaded', () => {
     const finalBookingForm = document.getElementById('finalBookingForm');
     const toast = document.getElementById('successToast');
 
-    let bookingOptions = { show_coupon_field: false, show_extras_section: false, extra_services: [] };
+    let bookingOptions = { show_coupon_field: false, show_extras_section: false, extra_services: [], payment_policies: [] };
     window.__couponPreview = null;
     window.__lastModalSubtotalPreCoupon = 0;
+
+    function normalizePaymentPolicies(rawPolicies) {
+        const fallback = [
+            { code: 'half', label: 'Sinal de 50% para reserva', percent_now: 50 },
+            { code: 'full', label: 'Pagamento 100% Antecipado', percent_now: 100 }
+        ];
+        if (!Array.isArray(rawPolicies) || rawPolicies.length === 0) return fallback;
+        const clean = rawPolicies
+            .map((p) => ({
+                code: String(p && p.code ? p.code : '').trim().toLowerCase(),
+                label: String(p && p.label ? p.label : '').trim(),
+                percent_now: Number(p && p.percent_now != null ? p.percent_now : NaN)
+            }))
+            .filter((p) => p.code && p.label && Number.isFinite(p.percent_now) && p.percent_now > 0)
+            .map((p) => ({ ...p, percent_now: Math.min(100, Math.max(0, p.percent_now)) }));
+        return clean.length > 0 ? clean : fallback;
+    }
+
+    function renderPaymentOptionsUI() {
+        const list = document.getElementById('paymentOptionsList');
+        if (!list) return;
+        const policies = normalizePaymentPolicies(bookingOptions.payment_policies);
+        list.innerHTML = policies.map((policy, idx) => {
+            const checked = idx === 0 ? 'checked' : '';
+            const nowLabel = policy.percent_now >= 100 ? 'Total a debitar agora' : `Total a debitar agora (${policy.percent_now}%):`;
+            const note = policy.percent_now >= 100
+                ? ''
+                : '<span class="payment-option-note">(O restante será pago no check-in)</span>';
+            return `
+                <label class="payment-option">
+                    <input type="radio" name="paymentRule" value="${policy.code}" data-percent-now="${policy.percent_now}" onchange="updatePaymentPreview()" ${checked}>
+                    <span class="payment-option-content">
+                        <span class="payment-option-title">${policy.label}</span>
+                        <span class="payment-option-detail">${nowLabel} R$ <span class="payment-rule-preview" data-policy-code="${policy.code}">0,00</span></span>
+                        ${note}
+                    </span>
+                </label>
+            `;
+        }).join('');
+        if (typeof window.updatePaymentPreview === 'function') {
+            window.updatePaymentPreview();
+        }
+    }
+
+    function getPaymentPolicyByCode(code) {
+        const policies = normalizePaymentPolicies(bookingOptions.payment_policies);
+        const k = String(code || '').toLowerCase();
+        return policies.find((p) => p.code === k) || (k === 'half'
+            ? { code: 'half', label: 'Sinal de 50% para reserva', percent_now: 50 }
+            : { code: 'full', label: 'Pagamento 100% Antecipado', percent_now: 100 });
+    }
 
     function getSelectedExtrasTotal() {
         const list = document.getElementById('bookingExtrasList');
@@ -235,6 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 extrasList.innerHTML = '';
             }
         }
+        renderPaymentOptionsUI();
     }
 
     async function loadBookingOptions() {
@@ -244,10 +335,16 @@ document.addEventListener('DOMContentLoaded', () => {
             bookingOptions = {
                 show_coupon_field: !!data.show_coupon_field,
                 show_extras_section: !!data.show_extras_section,
-                extra_services: Array.isArray(data.extra_services) ? data.extra_services : []
+                extra_services: Array.isArray(data.extra_services) ? data.extra_services : [],
+                payment_policies: normalizePaymentPolicies(data.payment_policies)
             };
         } catch {
-            bookingOptions = { show_coupon_field: false, show_extras_section: false, extra_services: [] };
+            bookingOptions = {
+                show_coupon_field: false,
+                show_extras_section: false,
+                extra_services: [],
+                payment_policies: normalizePaymentPolicies([])
+            };
         }
         renderBookingOptionsUI();
     }
@@ -288,7 +385,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // Sincroniza opção de hóspedes do formulário inicial para o modal
         const guestsOptionEl = document.getElementById('guestsOption');
         const modalGuestsEl = document.getElementById('modalGuestsOption');
-        if (guestsOptionEl && modalGuestsEl) modalGuestsEl.value = guestsOptionEl.value;
+        const chaletByName = allChalets[chaletName];
+        const selectedFromTop = guestsOptionEl ? guestsOptionEl.value : '';
+        const maxGuests = chaletByName && chaletByName.max_guests != null ? chaletByName.max_guests : 4;
+        renderGuestOptions(modalGuestsEl, maxGuests, selectedFromTop);
+        if (guestsOptionEl && guestsOptionEl.options.length === 0) {
+            renderGuestOptions(guestsOptionEl, maxGuests, selectedFromTop || `${Math.min(2, Math.max(1, parseInt(String(maxGuests), 10) || 4))}_0`);
+        }
 
         document.querySelectorAll('#bookingExtrasList input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
         const hct = document.getElementById('hasCouponToggle');
@@ -537,10 +640,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const guestsOptEl = document.getElementById('modalGuestsOption');
-        const guestsVal = guestsOptEl ? guestsOptEl.value : '2_0';
-        const [ad, ch] = (guestsVal || '2_0').split('_').map(Number);
-        const guestsAdults = ad || 2;
-        const guestsChildren = ch || 0;
+        const guestsVal = guestsOptEl ? guestsOptEl.value : '1_0';
+        const parsedGuests = parseGuestsOption(guestsVal, 1);
+        const guestsAdults = parsedGuests.adults;
+        const guestsChildren = parsedGuests.children;
 
         const lodging = computeLodgingSubtotal(chalet, checkinStr, checkoutStr);
         const extraGuest = computeExtraGuestSubtotal(chalet, guestsAdults, guestsChildren, nights);
@@ -601,7 +704,7 @@ document.addEventListener('DOMContentLoaded', () => {
         totalEl.textContent = `R$ ${grand.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
         confirmBtn.disabled = false;
 
-        // Atualiza as opções de pagamento (100% ou 50%) baseadas neste total
+        // Atualiza as opções de pagamento baseadas nas políticas dinâmicas
         if (typeof window.updatePaymentPreview === 'function') {
             window.updatePaymentPreview();
         }
@@ -611,16 +714,13 @@ document.addEventListener('DOMContentLoaded', () => {
     window.updatePaymentPreview = function () {
         const totalText = document.getElementById('summaryTotal').textContent;
         const numericTotal = parseFloat(totalText.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()) || 0;
-
-        const fullPreview = document.getElementById('fullTotalPreview');
-        const halfPreview = document.getElementById('halfTotalPreview');
-
-        if (fullPreview) {
-            fullPreview.textContent = numericTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-        }
-        if (halfPreview) {
-            halfPreview.textContent = (numericTotal / 2).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-        }
+        document.querySelectorAll('#paymentOptionsList .payment-option input[name="paymentRule"]').forEach((input) => {
+            const pct = parseFloat(input.getAttribute('data-percent-now') || '100') || 100;
+            const amount = (numericTotal * pct) / 100;
+            const code = input.value;
+            const preview = document.querySelector(`#paymentOptionsList .payment-rule-preview[data-policy-code="${code}"]`);
+            if (preview) preview.textContent = amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+        });
     }
 
     function formatDate(dateString) {
@@ -697,11 +797,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Resolve imagens (Main + Galeria)
                     const imgIndex = (idx % 3) + 1;
                     const fallbackImg = `images/chalet${imgIndex}.png`;
-                    let mainImg = chalet.main_image ? chalet.main_image : fallbackImg;
+                    let mainImg = isUsableImageSrc(chalet.main_image) ? chalet.main_image : fallbackImg;
 
                     let galleryImgs = [mainImg];
                     if (chalet.images && Array.isArray(chalet.images)) {
-                        galleryImgs = [...new Set([mainImg, ...chalet.images])];
+                        galleryImgs = [...new Set([mainImg, ...chalet.images.filter(isUsableImageSrc)])];
                     }
 
                     // Determina a badge baseado na etiqueta configurada
@@ -712,10 +812,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const nights = countNightsBetween(filterCheckin, filterCheckout);
                     const guestsOptTop = document.getElementById('guestsOption');
-                    const gv = guestsOptTop && guestsOptTop.value ? guestsOptTop.value : '2_0';
-                    const [ga, gc] = gv.split('_').map(Number);
-                    const gAdults = ga || 2;
-                    const gChildren = gc || 0;
+                    const gv = guestsOptTop && guestsOptTop.value ? guestsOptTop.value : '1_0';
+                    const parsedTopGuests = parseGuestsOption(gv, 1);
+                    const gAdults = parsedTopGuests.adults;
+                    const gChildren = parsedTopGuests.children;
                     const lodgingPart = computeLodgingSubtotal(chalet, filterCheckin, filterCheckout);
                     const extraPart = computeExtraGuestSubtotal(chalet, gAdults, gChildren, nights);
                     const totalPrice = Math.round((lodgingPart + extraPart) * 100) / 100;
@@ -725,7 +825,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Monta HTML do Slider 
                     let sliderHtml = `<div class="chalet-slider" id="modal-slider-${chalet.id}" style="aspect-ratio: 16/9;">`;
                     galleryImgs.forEach((src, i) => {
-                        sliderHtml += `<img src="${src}" class="slide ${i === 0 ? 'active' : ''}" alt="${chalet.name}" onclick="openLightbox('${src}')">`;
+                        sliderHtml += buildSlideMarkup(src, chalet.name, i === 0);
                     });
                     if (galleryImgs.length > 1) {
                         sliderHtml += `
@@ -810,10 +910,10 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             const guestsOptEl = document.getElementById('modalGuestsOption');
-            const guestsVal = guestsOptEl ? guestsOptEl.value : '2_0';
-            const [ad, ch] = (guestsVal || '2_0').split('_').map(Number);
-            const guestsAdults = ad || 2;
-            const guestsChildren = ch || 0;
+            const guestsVal = guestsOptEl ? guestsOptEl.value : '1_0';
+            const parsedGuests = parseGuestsOption(guestsVal, 1);
+            const guestsAdults = parsedGuests.adults;
+            const guestsChildren = parsedGuests.children;
 
             // Extrair Dados do Formulário (chalet_id quando disponível para maior confiabilidade)
             const chaletForReserva = allChalets[reserva.chaletName];
@@ -952,11 +1052,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Resolve imagens (Main + Galeria)
                     const imgIndex = (idx % 3) + 1;
                     const fallbackImg = `images/chalet${imgIndex}.png`;
-                    let mainImg = chalet.main_image ? chalet.main_image : fallbackImg;
+                    let mainImg = isUsableImageSrc(chalet.main_image) ? chalet.main_image : fallbackImg;
 
                     let galleryImgs = [mainImg];
                     if (chalet.images && Array.isArray(chalet.images)) {
-                        galleryImgs = [...new Set([mainImg, ...chalet.images])];
+                        galleryImgs = [...new Set([mainImg, ...chalet.images.filter(isUsableImageSrc)])];
                     }
 
                     // Determina a badge baseado na etiqueta configurada
@@ -971,7 +1071,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Monta HTML do Slider
                     let sliderHtml = `<div class="chalet-slider" id="slider-${chalet.id}">`;
                     galleryImgs.forEach((src, i) => {
-                        sliderHtml += `<img src="${src}" class="slide ${i === 0 ? 'active' : ''}" alt="${chalet.name}" onclick="openLightbox('${src}')">`;
+                        sliderHtml += buildSlideMarkup(src, chalet.name, i === 0);
                     });
                     if (galleryImgs.length > 1) {
                         sliderHtml += `
@@ -1126,7 +1226,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     const formattedText = custom.aboutText.split('\n').filter(p => p.trim() !== '').map(p => `<p>${p}</p>`).join('');
                     $('clientAboutText').innerHTML = formattedText;
                 }
-                if ($('clientAboutImage') && custom.aboutImage) $('clientAboutImage').src = custom.aboutImage;
+                if ($('clientAboutImage') && custom.aboutImage) {
+                    $('clientAboutImage').src = custom.aboutImage;
+                    $('clientAboutImage').onerror = function () {
+                        this.style.display = 'none';
+                        const holder = document.getElementById('clientAboutImageFallback') || document.createElement('div');
+                        holder.id = 'clientAboutImageFallback';
+                        holder.className = 'image-fallback';
+                        holder.style.width = '100%';
+                        holder.style.height = '100%';
+                        holder.style.minHeight = '320px';
+                        holder.style.background = 'var(--secondary-color)';
+                        if (!holder.parentNode && this.parentNode) this.parentNode.appendChild(holder);
+                    };
+                }
 
                 // Chalets section header
                 if ($('clientChaletsSubtitle') && custom.chaletsSubtitle) $('clientChaletsSubtitle').innerHTML = custom.chaletsSubtitle;
@@ -1204,13 +1317,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (heroSlideshowInterval) clearInterval(heroSlideshowInterval);
 
-        container.innerHTML = images.map((src, i) =>
+        const usableImages = images.filter(isUsableImageSrc);
+        if (usableImages.length === 0) {
+            container.innerHTML = `<div class="hero-slide active image-fallback" data-index="0" style="background: var(--secondary-color);"></div>`;
+            if (btnPrev) btnPrev.classList.add('hidden');
+            if (btnNext) btnNext.classList.add('hidden');
+            return;
+        }
+        container.innerHTML = usableImages.map((src, i) =>
             `<div class="hero-slide ${i === 0 ? 'active' : ''}" style="background-image: url('${src}');" data-index="${i}"></div>`
         ).join('');
 
         heroCurrentIndex = 0;
 
-        if (images.length < 2) {
+        if (usableImages.length < 2) {
             if (btnPrev) btnPrev.classList.add('hidden');
             if (btnNext) btnNext.classList.add('hidden');
             return;
@@ -1298,8 +1418,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Set Hero Background
         const fallbackImg = 'images/chalet1.png';
-        const modalHeroSrc = chalet.main_image ? chalet.main_image : fallbackImg;
-        document.getElementById('chaletDetailsHero').style.backgroundImage = `url('${modalHeroSrc}')`;
+        const modalHeroSrc = isUsableImageSrc(chalet.main_image) ? chalet.main_image : fallbackImg;
+        const heroEl = document.getElementById('chaletDetailsHero');
+        if (heroEl) {
+            if (isUsableImageSrc(modalHeroSrc)) {
+                heroEl.style.backgroundImage = `url('${modalHeroSrc}')`;
+                heroEl.style.backgroundColor = '';
+            } else {
+                heroEl.style.backgroundImage = 'none';
+                heroEl.style.backgroundColor = 'var(--secondary-color)';
+            }
+        }
 
         // Set Badge
         const badgeEl = document.getElementById('chaletDetailsBadge');
@@ -1355,8 +1484,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (getRes.ok) {
                         const resData = await getRes.json();
                         const totalNum = parseFloat(resData.total_amount) || 0;
-                        const isHalf = (resData.payment_rule || '').toLowerCase() === 'half';
-                        const valorPagoNum = isHalf ? totalNum / 2 : totalNum;
+                        const policy = getPaymentPolicyByCode(resData.payment_rule || 'full');
+                        const pct = Number(policy.percent_now || 100);
+                        const valorPagoNum = (totalNum * pct) / 100;
                         const totalFmt = 'R$ ' + totalNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
                         const valorPagoFmt = 'R$ ' + valorPagoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
                         const legacyData = {
@@ -1368,7 +1498,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             checkout: resData.checkout_date,
                             total: totalFmt,
                             valorPago: valorPagoFmt,
-                            condicao: isHalf ? 'Sinal de 50%' : '100% à vista',
+                            condicao: policy.label || `${pct}% no ato da reserva`,
                             paymentRule: resData.payment_rule || 'full',
                             id: resData.id
                         };

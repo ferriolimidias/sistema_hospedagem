@@ -155,6 +155,12 @@ try {
 }
 
 try {
+    $pdo->exec("ALTER TABLE chalets ADD COLUMN max_guests INT NOT NULL DEFAULT 4 AFTER base_guests");
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
     $pdo->exec('ALTER TABLE reservations ADD COLUMN coupon_code VARCHAR(100) NULL AFTER balance_paid_at');
 } catch (PDOException $e) {
     // Coluna já existe.
@@ -194,6 +200,52 @@ try {
     $pdo->exec('ALTER TABLE reservations ADD COLUMN fnrh_data TEXT NULL AFTER fnrh_access_token');
 } catch (PDOException $e) {
     // Coluna já existe.
+}
+
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('checkin_time', '14:00') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) {
+    // Chave já existe ou tabela sem constraint única.
+}
+
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('checkout_time', '12:00') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) {
+    // Chave já existe ou tabela sem constraint única.
+}
+
+try {
+    $defaultPolicies = json_encode([
+        ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50],
+        ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100],
+    ], JSON_UNESCAPED_UNICODE);
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('payment_policies', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute([$defaultPolicies]);
+} catch (PDOException $e) {
+    // Chave já existe ou tabela sem constraint única.
+}
+
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('site_title', 'Pousada Mirante do Sol') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) {
+    // Chave já existe.
+}
+
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('meta_description', 'O seu refúgio com vista para o mar em Governador Celso Ramos.') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) {
+    // Chave já existe.
+}
+
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('primary_color', '#ea580c') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) {
+    // Chave já existe.
+}
+
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('secondary_color', '#1e293b') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) {
+    // Chave já existe.
 }
 
 try {

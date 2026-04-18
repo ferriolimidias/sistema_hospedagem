@@ -28,6 +28,7 @@ $row = $stmt->fetch();
 $settings = $row ? json_decode($row['setting_value'], true) : null;
 
 if (!$settings || empty($settings['url']) || empty($settings['clientInstance']) || empty($settings['clientApikey']) || empty($settings['companyInstance']) || empty($settings['companyApikey']) || empty($settings['companyPhone'])) {
+    error_log('send_webhook: Evolution API não configurada corretamente.');
     http_response_code(400);
     echo json_encode(['error' => 'Evolution API não configurada. Configure em Configurações > Integrações.']);
     exit;
@@ -43,6 +44,39 @@ $reservationMsg = $settings['reservationMsg'] ?? '';
 $welcomeMsg = $settings['welcomeMsg'] ?? '';
 $event = (string)($input['event'] ?? 'reservation_confirmed');
 
+$runtimeCfg = [
+    'checkin_time' => '14:00',
+    'checkout_time' => '12:00',
+    'house_rules' => '',
+    'wifi_name' => '',
+    'wifi_password' => '',
+    'company_name' => '',
+];
+try {
+    $stmtRuntime = $pdo->query("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('checkin_time', 'checkout_time', 'house_rules', 'wifi_name', 'wifi_password', 'company_name')");
+    foreach ($stmtRuntime ? $stmtRuntime->fetchAll(PDO::FETCH_ASSOC) : [] as $rowCfg) {
+        $keyCfg = (string) ($rowCfg['setting_key'] ?? '');
+        $valCfg = trim((string) ($rowCfg['setting_value'] ?? ''));
+        if ($keyCfg !== '' && array_key_exists($keyCfg, $runtimeCfg) && $valCfg !== '') {
+            $runtimeCfg[$keyCfg] = $valCfg;
+        }
+    }
+} catch (Throwable $e) {
+    error_log('send_webhook: falha ao carregar settings de runtime - ' . $e->getMessage());
+}
+if ($runtimeCfg['company_name'] === '') {
+    try {
+        $stmtBrand = $pdo->query("SELECT hero_titulo FROM personalizacao ORDER BY id DESC LIMIT 1");
+        $heroBrand = trim((string) ($stmtBrand ? $stmtBrand->fetchColumn() : ''));
+        if ($heroBrand !== '') {
+            $runtimeCfg['company_name'] = $heroBrand;
+        }
+    } catch (Throwable $e) {
+        error_log('send_webhook: falha ao obter marca na personalização - ' . $e->getMessage());
+    }
+}
+$companyDisplayName = $runtimeCfg['company_name'] !== '' ? $runtimeCfg['company_name'] : 'Hospedagem';
+
 // Formatar datas DD/MM/YYYY
 $fmtDate = function ($s) {
     if (!$s) return $s;
@@ -57,7 +91,7 @@ $checkinBR = $fmtDate($input['checkin'] ?? '');
 $checkoutBR = $fmtDate($input['checkout'] ?? '');
 $totalReserva = $input['total'] ?? '';
 $valorPago = $input['valorPago'] ?? $input['total'] ?? '';
-$condicao = $input['condicao'] ?? '100% à vista';
+$condicao = $input['condicao'] ?? 'Condição de pagamento configurada';
 $reservationId = isset($input['id']) ? (int)$input['id'] : 0;
 
 $numCliente = preg_replace('/\D/', '', $input['clientPhone']);
@@ -72,7 +106,18 @@ if ($event === 'balance_paid') {
         $msgClient = preg_replace('/\{checkin\}/iu', $checkinBR, $msgClient);
         $msgClient = preg_replace('/\{checkout\}/iu', $checkoutBR, $msgClient);
     } else {
-        $msgClient = "*Recantos da Serra*\n\nOlá, {$input['clientName']}! Confirmamos o recebimento do saldo da sua reserva. ✅\n\nEstamos ansiosos para recebê-lo(a) em *" . ($input['chaletName'] ?? '') . "*.\n📶 Wi-Fi: Rede *Recantos-Guest* | Senha *BemVindo123*\n🏡 Regras da casa: silêncio após 22h e check-out até 12:00.\n\nQualquer dúvida, responda esta mensagem.";
+        $wifiLine = '';
+        if ($runtimeCfg['wifi_name'] !== '') {
+            $wifiLine = "\n📶 Wi-Fi: Rede *{$runtimeCfg['wifi_name']}*";
+            if ($runtimeCfg['wifi_password'] !== '') {
+                $wifiLine .= " | Senha *{$runtimeCfg['wifi_password']}*";
+            }
+        }
+        $rulesText = trim((string) $runtimeCfg['house_rules']);
+        if ($rulesText === '') {
+            $rulesText = 'Check-in a partir de ' . $runtimeCfg['checkin_time'] . ' e check-out até ' . $runtimeCfg['checkout_time'] . '.';
+        }
+        $msgClient = "*{$companyDisplayName}*\n\nOlá, {$input['clientName']}! Confirmamos o recebimento do saldo da sua reserva. ✅\n\nEstamos ansiosos para recebê-lo(a) em *" . ($input['chaletName'] ?? '') . "*.{$wifiLine}\n🏡 Regras da casa: {$rulesText}\n\nQualquer dúvida, responda esta mensagem.";
     }
 } elseif ($reservationMsg && trim($reservationMsg) !== '') {
     $msgClient = $reservationMsg;
@@ -88,7 +133,7 @@ if ($event === 'balance_paid') {
     $linhaValor = !empty($input['valorPago'])
         ? "💰 Valor pago ({$condicao}): *{$valorPago}*\n💰 Total da reserva: *{$totalReserva}*" . (($input['paymentRule'] ?? '') === 'half' ? "\n(O restante será pago no check-in)" : '')
         : "💰 Total: *{$totalReserva}*";
-    $msgClient = "*Recantos da Serra*\n\nOlá, {$input['clientName']}! Sua reserva foi confirmada com sucesso. 🎉\n\n*Detalhes da sua estadia:*\n🏠 Acomodação: *" . ($input['chaletName'] ?? '') . "*\n📅 Check-in: *{$checkinBR}*\n📅 Check-out: *{$checkoutBR}*\n{$linhaValor}\n\nAguardamos ansiosamente a sua chegada. Para qualquer dúvida, responda essa mensagem.";
+    $msgClient = "*{$companyDisplayName}*\n\nOlá, {$input['clientName']}! Sua reserva foi confirmada com sucesso. 🎉\n\n*Detalhes da sua estadia:*\n🏠 Acomodação: *" . ($input['chaletName'] ?? '') . "*\n📅 Check-in: *{$checkinBR}*\n📅 Check-out: *{$checkoutBR}*\n{$linhaValor}\n\nAguardamos ansiosamente a sua chegada. Para qualquer dúvida, responda essa mensagem.";
 }
 
 // Tenta incluir link seguro do contrato PDF quando existir arquivo gerado.
@@ -129,6 +174,7 @@ if ($reservationId > 0) {
         }
     } catch (Throwable $e) {
         // Não interrompe envio da mensagem por falha de link do contrato.
+        error_log('send_webhook: falha ao compor links auxiliares da reserva #' . $reservationId . ' - ' . $e->getMessage());
     }
 }
 
@@ -161,6 +207,11 @@ $sendToEvolution = function ($instance, $apikey, $number, $text) use ($url) {
 
 $clienteOk = $sendToEvolution($clientInstance, $clientApikey, $formatPhoneClient, $msgClient);
 $empresaOk = $sendToEvolution($companyInstance, $companyApikey, $companyPhone, $msgEmpresa);
+if ($clienteOk && $empresaOk) {
+    error_log('send_webhook: envio concluído reserva #' . ($reservationId > 0 ? $reservationId : 0) . ' evento=' . $event);
+} else {
+    error_log('send_webhook: falha no envio reserva #' . ($reservationId > 0 ? $reservationId : 0) . ' evento=' . $event . ' cliente=' . ($clienteOk ? 'ok' : 'erro') . ' empresa=' . ($empresaOk ? 'ok' : 'erro'));
+}
 
 echo json_encode([
     'success' => $clienteOk,

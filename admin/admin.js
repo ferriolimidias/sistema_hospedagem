@@ -109,15 +109,41 @@ document.addEventListener('DOMContentLoaded', () => {
     let chaletsData = [];
     let reservationsData = [];
     let internalApiKey = '';
+    let paymentPolicies = [
+        { code: 'half', label: 'Sinal de 50% para reserva', percent_now: 50 },
+        { code: 'full', label: 'Pagamento 100% Antecipado', percent_now: 100 }
+    ];
+
+    function normalizePaymentPolicies(rawPolicies) {
+        if (!Array.isArray(rawPolicies) || rawPolicies.length === 0) return paymentPolicies;
+        const clean = rawPolicies
+            .map((p) => ({
+                code: String(p && p.code ? p.code : '').trim().toLowerCase(),
+                label: String(p && p.label ? p.label : '').trim(),
+                percent_now: Number(p && p.percent_now != null ? p.percent_now : NaN)
+            }))
+            .filter((p) => p.code && p.label && Number.isFinite(p.percent_now) && p.percent_now > 0)
+            .map((p) => ({ ...p, percent_now: Math.min(100, Math.max(0, p.percent_now)) }));
+        return clean.length > 0 ? clean : paymentPolicies;
+    }
+
+    function getPaymentPolicy(ruleCode) {
+        const key = String(ruleCode || '').toLowerCase();
+        return paymentPolicies.find((p) => p.code === key) || (key === 'half'
+            ? { code: 'half', label: 'Sinal de 50% para reserva', percent_now: 50 }
+            : { code: 'full', label: 'Pagamento 100% Antecipado', percent_now: 100 });
+    }
 
     async function fetchApiData() {
         try {
-            const [resChalets, resReservations] = await Promise.all([
+            const [resChalets, resReservations, resBookingOptions] = await Promise.all([
                 fetch('../api/chalets.php').then(res => res.json()),
-                fetch('../api/reservations.php').then(res => res.json())
+                fetch('../api/reservations.php').then(res => res.json()),
+                fetch('../api/booking_options.php').then(res => res.json()).catch(() => ({}))
             ]);
             chaletsData = Array.isArray(resChalets) ? resChalets : [];
             reservationsData = Array.isArray(resReservations) ? resReservations : [];
+            paymentPolicies = normalizePaymentPolicies(resBookingOptions.payment_policies);
             window.reservationsDataGlobal = reservationsData; // Expose to global
         } catch (e) {
             console.error("Erro ao buscar dados da API:", e);
@@ -437,7 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                             ? `<button type="button" class="btn-icon" title="Ver Contrato PDF" data-action="pdf-reservation" data-index="${index}"><i class="ph ph-file-pdf"></i></button>`
                                             : `<button type="button" class="btn-icon" title="Gerar Contrato Manualmente" data-action="generate-contract" data-index="${index}" style="color:#c96621"><i class="ph ph-file-plus"></i></button>`
                                         }
-                                        ${String(r.payment_rule || '').toLowerCase() === 'half' && Number(r.balance_paid || 0) === 0
+                                        ${getPaymentPolicy(r.payment_rule || 'full').percent_now < 100 && Number(r.balance_paid || 0) === 0
                                             ? `<button type="button" class="btn-icon" title="Receber Saldo" data-action="pay-balance" data-index="${index}" style="color:#198754"><i class="ph ph-currency-circle-dollar"></i></button>`
                                             : ''
                                         }
@@ -450,7 +476,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <td>${formatDateBR(r.checkin_date)} até ${formatDateBR(r.checkout_date)}</td>
                                     <td>
                                         R$ ${parseFloat(r.total_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                        ${r.payment_rule === 'half' ? '<br><span class="badge warning" style="font-size:0.7rem; padding:0.15rem 0.3rem; margin-top:0.25rem; display:inline-block">Sinal de 50%</span>' : ''}
+                                        ${getPaymentPolicy(r.payment_rule || 'full').percent_now < 100 ? `<br><span class="badge warning" style="font-size:0.7rem; padding:0.15rem 0.3rem; margin-top:0.25rem; display:inline-block">${getPaymentPolicy(r.payment_rule || 'full').label}</span>` : ''}
                                         ${Number(r.balance_paid || 0) === 1
                                             ? `<br><span class="badge success" style="font-size:0.7rem; padding:0.15rem 0.3rem; margin-top:0.25rem; display:inline-block">Total Pago</span>${r.balance_paid_at ? `<br><small style="color:#198754; font-size:0.68rem; display:block; margin-top:0.2rem;">${formatBalancePaidAtDisplay(r.balance_paid_at)}</small>` : ''}`
                                             : ''}
@@ -527,7 +553,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="card stat-card">
                     <div class="stat-icon warning"><i class="ph ph-hourglass"></i></div>
                     <div class="stat-info">
-                        <h3>Saldo a receber (50%)</h3>
+                        <h3>Saldo a receber (reservas parciais)</h3>
                         <p id="finBalance">R$ —</p>
                     </div>
                 </div>
@@ -609,6 +635,38 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </form>
                 </div> <!-- Closing missing div -->
+
+                <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
+                    <h3 style="margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                        <i class="ph ph-palette" style="color: var(--primary); margin-right: 0.5rem; vertical-align: bottom;"></i>
+                        Identidade Visual e SEO
+                    </h3>
+                    <form id="identitySeoForm">
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label>Título do Site (SEO)</label>
+                            <input type="text" class="form-control" id="seoSiteTitle" placeholder="Pousada Mirante do Sol">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label>Descrição do Site (Meta Description)</label>
+                            <textarea class="form-control" id="seoMetaDescription" rows="3" placeholder="O seu refúgio com vista para o mar em Governador Celso Ramos."></textarea>
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label>Cor Primária</label>
+                                <input type="color" class="form-control" id="seoPrimaryColor" value="#ea580c" style="height: 44px; padding: 0.35rem;">
+                            </div>
+                            <div class="form-group">
+                                <label>Cor Secundária</label>
+                                <input type="color" class="form-control" id="seoSecondaryColor" value="#1e293b" style="height: 44px; padding: 0.35rem;">
+                            </div>
+                        </div>
+                        <div style="margin-top: 1.25rem; text-align: right;">
+                            <button type="button" class="btn btn-primary" id="saveIdentitySeoBtn">
+                                <i class="ph ph-floppy-disk"></i> Salvar Identidade e SEO
+                            </button>
+                        </div>
+                    </form>
+                </div>
 
                 <!-- Company Logo Customization -->
                 <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
@@ -707,8 +765,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Data de Check-in">{checkin}</small>
                                     <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Data de Check-out">{checkout}</small>
                                     <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Valor total da reserva">{total}</small>
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Valor efetivamente pago (50% ou 100%)">{valor_pago}</small>
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Condição: 100% à vista ou Sinal de 50%">{condicao}</small>
+                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Valor efetivamente pago na entrada">{valor_pago}</small>
+                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Condição aplicada para a reserva">{condicao}</small>
                                     <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="ID da Reserva">{id}</small>
                                 </div>
                             </div>
@@ -1253,6 +1311,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('saveMpBtn').addEventListener('click', saveMpSettings);
                 document.getElementById('saveLogoBtn').addEventListener('click', saveLogoSettings);
                 document.getElementById('saveSocialBtn').addEventListener('click', saveSocialSettings);
+                document.getElementById('saveIdentitySeoBtn').addEventListener('click', saveIdentitySeoSettings);
             }
             if (viewName === 'customization') {
                 await loadAllSettings();
@@ -1391,6 +1450,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
         await saveSettingsToAPI(settings);
         alert('Access Token do MercadoPago salvo no Banco de Dados!');
+    }
+
+    function hexToRgb(hex) {
+        const raw = String(hex || '').trim().replace('#', '');
+        const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
+        if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+        const num = parseInt(full, 16);
+        return {
+            r: (num >> 16) & 255,
+            g: (num >> 8) & 255,
+            b: num & 255,
+        };
+    }
+
+    function applyAdminTheme(primaryColor, secondaryColor) {
+        const root = document.documentElement;
+        const primary = (primaryColor && /^#[0-9a-fA-F]{6}$/.test(primaryColor)) ? primaryColor : '#ea580c';
+        const secondary = (secondaryColor && /^#[0-9a-fA-F]{6}$/.test(secondaryColor)) ? secondaryColor : '#1e293b';
+        root.style.setProperty('--primary-color', primary);
+        root.style.setProperty('--secondary-color', secondary);
+        root.style.setProperty('--primary', primary);
+        root.style.setProperty('--secondary', secondary);
+        const rgb = hexToRgb(primary);
+        if (rgb) {
+            root.style.setProperty('--primary-light', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.14)`);
+        }
+    }
+
+    async function saveIdentitySeoSettings() {
+        const siteTitleEl = document.getElementById('seoSiteTitle');
+        const metaEl = document.getElementById('seoMetaDescription');
+        const primaryEl = document.getElementById('seoPrimaryColor');
+        const secondaryEl = document.getElementById('seoSecondaryColor');
+        const settings = {
+            site_title: siteTitleEl ? siteTitleEl.value : '',
+            meta_description: metaEl ? metaEl.value : '',
+            primary_color: primaryEl ? primaryEl.value : '#ea580c',
+            secondary_color: secondaryEl ? secondaryEl.value : '#1e293b'
+        };
+        applyAdminTheme(settings.primary_color, settings.secondary_color);
+        await saveSettingsToAPI(settings);
+        alert('Identidade visual e SEO salvos com sucesso!');
     }
 
     async function saveSettingsToAPI(dataObj) {
@@ -1539,6 +1640,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('socialFacebook').value = data.socialSettings.facebook || '';
                 document.getElementById('socialTripadvisor').value = data.socialSettings.tripadvisor || '';
             }
+            const seoSiteTitle = document.getElementById('seoSiteTitle');
+            if (seoSiteTitle) seoSiteTitle.value = data.site_title || 'Pousada Mirante do Sol';
+            const seoMetaDescription = document.getElementById('seoMetaDescription');
+            if (seoMetaDescription) seoMetaDescription.value = data.meta_description || 'O seu refúgio com vista para o mar em Governador Celso Ramos.';
+            const seoPrimaryColor = document.getElementById('seoPrimaryColor');
+            if (seoPrimaryColor) seoPrimaryColor.value = data.primary_color || '#ea580c';
+            const seoSecondaryColor = document.getElementById('seoSecondaryColor');
+            if (seoSecondaryColor) seoSecondaryColor.value = data.secondary_color || '#1e293b';
+            applyAdminTheme(data.primary_color || '#ea580c', data.secondary_color || '#1e293b');
 
             // Popula Logo Preview
             if (data.company_logo) {
@@ -1794,8 +1904,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm(`Deseja reenviar a notificação para ${r.guest_name}?`)) return;
 
         const totalNum = parseFloat(r.total_amount) || 0;
-        const isHalf = (r.payment_rule || '').toLowerCase() === 'half';
-        const valorPagoNum = isHalf ? totalNum / 2 : totalNum;
+        const policy = getPaymentPolicy(r.payment_rule || 'full');
+        const valorPagoNum = (totalNum * Number(policy.percent_now || 100)) / 100;
         const webhookData = {
             clientName: r.guest_name,
             clientPhone: r.guest_phone,
@@ -1804,7 +1914,7 @@ document.addEventListener('DOMContentLoaded', () => {
             checkout: formatDateBR(r.checkout_date),
             total: 'R$ ' + totalNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
             valorPago: 'R$ ' + valorPagoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
-            condicao: isHalf ? 'Sinal de 50%' : '100% à vista',
+            condicao: policy.label || 'Condição de pagamento configurada',
             paymentRule: r.payment_rule || 'full',
             id: r.id || '---'
         };
@@ -2209,8 +2319,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!id && payload.status === 'Confirmada') {
                     const chalet = chaletsData.find(c => c.id == payload.chalet_id);
                     const totalNum = parseFloat(payload.total_amount) || 0;
-                    const isHalf = (payload.payment_rule || '').toLowerCase() === 'half';
-                    const valorPagoNum = isHalf ? totalNum / 2 : totalNum;
+                    const policy = getPaymentPolicy(payload.payment_rule || 'full');
+                    const valorPagoNum = (totalNum * Number(policy.percent_now || 100)) / 100;
                     const webhookData = {
                         clientName: payload.guest_name,
                         clientPhone: payload.guest_phone,
@@ -2219,7 +2329,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         checkout: formatDateBR(payload.checkout_date),
                         total: 'R$ ' + totalNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
                         valorPago: 'R$ ' + valorPagoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
-                        condicao: isHalf ? 'Sinal de 50%' : '100% à vista',
+                        condicao: policy.label || 'Condição de pagamento configurada',
                         paymentRule: payload.payment_rule || 'full',
                         id: data.id || '---'
                     };
@@ -2309,8 +2419,8 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Reserva inválida para baixa de saldo.');
             return;
         }
-        if (String(res.payment_rule || '').toLowerCase() !== 'half') {
-            alert('A ação de recebimento de saldo é aplicável apenas para reservas de sinal (50%).');
+        if (getPaymentPolicy(res.payment_rule || 'full').percent_now >= 100) {
+            alert('A ação de recebimento de saldo é aplicável apenas para reservas parciais.');
             return;
         }
         if (Number(res.balance_paid || 0) === 1) {
@@ -2616,7 +2726,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    async function loadAdminThemeFromSettings() {
+        try {
+            const res = await fetch('../api/settings.php');
+            if (!res.ok) return;
+            const data = await res.json();
+            applyAdminTheme(data.primary_color || '#ea580c', data.secondary_color || '#1e293b');
+        } catch (e) {
+            // Usa tema padrão quando não conseguir carregar.
+        }
+    }
+
     // Initialize the admin app
+    loadAdminThemeFromSettings();
     renderView('dashboard');
     removeAddChaletButtonsForSecretary(document);
 

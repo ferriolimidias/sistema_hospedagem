@@ -2,6 +2,54 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php';
 
+function loadPaymentPolicies(PDO $pdo): array
+{
+    $fallback = [
+        ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50.0],
+        ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100.0],
+    ];
+    try {
+        $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'payment_policies' LIMIT 1");
+        $stmt->execute();
+        $raw = $stmt->fetchColumn();
+        if (!is_string($raw) || trim($raw) === '') {
+            return $fallback;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded) || count($decoded) === 0) {
+            return $fallback;
+        }
+        $clean = [];
+        foreach ($decoded as $item) {
+            if (!is_array($item)) continue;
+            $code = strtolower(trim((string)($item['code'] ?? '')));
+            $label = trim((string)($item['label'] ?? ''));
+            $pct = isset($item['percent_now']) ? (float)$item['percent_now'] : -1;
+            if ($code === '' || $pct <= 0) continue;
+            $clean[] = [
+                'code' => $code,
+                'label' => $label !== '' ? $label : strtoupper($code),
+                'percent_now' => max(0.0, min(100.0, $pct)),
+            ];
+        }
+        return count($clean) > 0 ? $clean : $fallback;
+    } catch (Throwable $e) {
+        return $fallback;
+    }
+}
+
+function findPaymentPolicyByCode(array $policies, string $code): array
+{
+    foreach ($policies as $policy) {
+        if (strtolower((string)($policy['code'] ?? '')) === strtolower($code)) {
+            return $policy;
+        }
+    }
+    return strtolower($code) === 'half'
+        ? ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50.0]
+        : ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100.0];
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonResponse(['error' => 'Método não permitido'], 405);
 }
@@ -34,17 +82,23 @@ try {
         jsonResponse(['error' => 'Reserva não encontrada'], 404);
     }
 
+    $paymentPolicies = loadPaymentPolicies($pdo);
+
     // Idempotência: reaproveita link de checkout ainda válido.
     $existingInitPoint = trim((string)($reservation['mp_init_point'] ?? ''));
     $expiresAt = $reservation['expires_at'] ?? null;
     if ($existingInitPoint !== '' && !empty($expiresAt) && strtotime((string)$expiresAt) > time()) {
         $idempotentRule = strtolower((string)($reservation['payment_rule'] ?? 'full'));
         $idempotentTotal = round((float)($reservation['total_amount'] ?? 0), 2);
-        $idempotentAmount = $idempotentRule === 'half' ? round($idempotentTotal / 2, 2) : $idempotentTotal;
+        $idempotentPolicy = findPaymentPolicyByCode($paymentPolicies, $idempotentRule);
+        $idempotentPct = (float)($idempotentPolicy['percent_now'] ?? 100);
+        $idempotentAmount = round(($idempotentTotal * $idempotentPct) / 100, 2);
         jsonResponse([
             'success' => true,
             'reservation_id' => $reservationId,
             'payment_rule' => $idempotentRule,
+            'percent_now' => $idempotentPct,
+            'payment_label' => (string)($idempotentPolicy['label'] ?? $idempotentRule),
             'charged_amount' => $idempotentAmount,
             'init_point' => $existingInitPoint,
             'idempotent' => true
@@ -92,8 +146,9 @@ try {
     }
 
     $paymentRule = strtolower((string)($reservation['payment_rule'] ?? 'full'));
-    $isHalf = $paymentRule === 'half';
-    $chargeAmount = $isHalf ? $totalAmount / 2 : $totalAmount;
+    $selectedPolicy = findPaymentPolicyByCode($paymentPolicies, $paymentRule);
+    $percentNow = (float)($selectedPolicy['percent_now'] ?? 100);
+    $chargeAmount = ($totalAmount * $percentNow) / 100;
     $chargeAmount = round($chargeAmount, 2);
 
     if ($chargeAmount <= 0) {
@@ -196,6 +251,8 @@ try {
         'success' => true,
         'reservation_id' => $reservationId,
         'payment_rule' => $paymentRule,
+        'percent_now' => $percentNow,
+        'payment_label' => (string)($selectedPolicy['label'] ?? $paymentRule),
         'charged_amount' => $chargeAmount,
         'init_point' => $mpResponse['init_point'],
         'idempotent' => false

@@ -5,6 +5,26 @@
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/api/db.php';
 
+function isPublicImagePathUsable(string $path): bool
+{
+    $p = trim($path);
+    if ($p === '') return false;
+    if (preg_match('/^https?:\/\//i', $p) === 1) return true;
+    if (strpos($p, 'data:image/') === 0) return true;
+    $clean = ltrim(str_replace('\\', '/', $p), '/');
+    $full = __DIR__ . '/' . $clean;
+    return is_file($full);
+}
+
+function firstUsableImagePath(array $paths, string $fallback = ''): string
+{
+    foreach ($paths as $p) {
+        $s = is_string($p) ? trim($p) : '';
+        if ($s !== '' && isPublicImagePathUsable($s)) return $s;
+    }
+    return $fallback;
+}
+
 // Buscar personalização diretamente do banco (db.php já faz seed se tabela vazia)
 $c = [
     'heroTitle' => '', 'heroSubtitle' => '', 'heroImages' => ['images/hero.png'],
@@ -58,6 +78,10 @@ try {
 
 // Settings (logo, social)
 $companyLogo = ''; $companyLogoLight = ''; $social = ['instagram'=>'','facebook'=>'','tripadvisor'=>''];
+$siteTitle = 'Pousada Mirante do Sol';
+$metaDescription = 'O seu refúgio com vista para o mar em Governador Celso Ramos.';
+$primaryColor = '#ea580c';
+$secondaryColor = '#1e293b';
 try {
     $stmt = $pdo->query("SELECT setting_key, setting_value FROM settings");
     foreach ($stmt->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
@@ -66,6 +90,10 @@ try {
         if ($k === 'company_logo') $companyLogo = is_string($val) ? $val : '';
         elseif ($k === 'company_logo_light') $companyLogoLight = is_string($val) ? $val : '';
         elseif ($k === 'socialSettings' && is_array($val)) $social = array_merge($social, $val);
+        elseif ($k === 'site_title' && is_string($val) && trim($val) !== '') $siteTitle = trim($val);
+        elseif ($k === 'meta_description' && is_string($val) && trim($val) !== '') $metaDescription = trim($val);
+        elseif ($k === 'primary_color' && is_string($val) && trim($val) !== '') $primaryColor = trim($val);
+        elseif ($k === 'secondary_color' && is_string($val) && trim($val) !== '') $secondaryColor = trim($val);
     }
 } catch (Exception $e) { }
 
@@ -73,7 +101,16 @@ try {
 $h = function($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
 $aboutHtml = implode('', array_map(fn($p) => '<p>' . $h(trim($p)) . '</p>', array_filter(explode("\n", $c['aboutText'] ?? ''))));
 if (empty($aboutHtml)) $aboutHtml = '<p>' . $h($c['aboutText']) . '</p>';
-$heroFirstImg = $c['heroImages'][0] ?? 'images/hero.png';
+$c['heroImages'] = array_values(array_filter(array_map(
+    fn($p) => is_string($p) && isPublicImagePathUsable($p) ? $p : null,
+    (array)($c['heroImages'] ?? [])
+)));
+$defaultHero = firstUsableImagePath(['images/hero.png'], '');
+if (empty($c['heroImages']) && $defaultHero !== '') {
+    $c['heroImages'] = [$defaultHero];
+}
+$heroFirstImg = firstUsableImagePath($c['heroImages'], '');
+$aboutImageSrc = isPublicImagePathUsable((string)$c['aboutImage']) ? (string)$c['aboutImage'] : '';
 $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect fill='%23c96621' width='32' height='32' rx='4'/></svg>";
 ?>
 <!DOCTYPE html>
@@ -82,14 +119,22 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Recanto da Serra | Chalés Premium & Natureza</title>
-    <meta name="description" content="Descubra o luxo e a tranquilidade no Recantos da Serra. Chalés exclusivos em meio à natureza para momentos inesquecíveis.">
+    <title><?= $h($siteTitle) ?></title>
+    <meta name="description" content="<?= $h($metaDescription) ?>">
     <link rel="icon" type="image/x-icon" id="clientFavicon" href="<?= $h($faviconHref) ?>">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        :root {
+            --primary-color: <?= $h($primaryColor) ?>;
+            --secondary-color: <?= $h($secondaryColor) ?>;
+            --primary: var(--primary-color);
+            --secondary: var(--secondary-color);
+        }
+    </style>
     <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -116,7 +161,11 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
 
     <section class="hero" id="home">
         <div class="hero-slideshow" id="heroSlideshow" data-hero-images="<?= $h(json_encode($c['heroImages'])) ?>">
+            <?php if ($heroFirstImg !== ''): ?>
             <div class="hero-slide active" style="background-image: url('<?= $h($heroFirstImg) ?>');"></div>
+            <?php else: ?>
+            <div class="hero-slide active image-fallback" style="background: var(--secondary-color);"></div>
+            <?php endif; ?>
         </div>
         <div class="hero-overlay"></div>
         <button type="button" class="hero-nav hero-nav-prev hidden" id="heroNavPrev" aria-label="Imagem anterior"><i class="ph ph-caret-left"></i></button>
@@ -146,7 +195,11 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
             </div>
             <div class="about-image-wrapper">
                 <div class="about-image mask-image">
-                    <img src="<?= $h($c['aboutImage']) ?>" alt="Sobre o Recanto" id="clientAboutImage">
+                    <?php if ($aboutImageSrc !== ''): ?>
+                    <img src="<?= $h($aboutImageSrc) ?>" alt="Sobre o Recanto" id="clientAboutImage">
+                    <?php else: ?>
+                    <div id="clientAboutImageFallback" class="image-fallback" style="width:100%;height:100%;min-height:320px;background:var(--secondary-color);"></div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -325,7 +378,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 <p id="footerCopyright"><?= $h($c['footerCopyright']) ?></p>
                 <div class="developer-signature" style="font-size: 0.85rem; color: #888; display: flex; align-items: center; gap: 0.5rem;">
                     Desenvolvido com <i class="ph-fill ph-heart" style="color: var(--primary);"></i> por
-                    <a href="https://wa.me/558688953717?text=Ol%C3%A1%2C%20vim%20pelo%20site%20Recantos%20da%20Serra.%20Gostaria%20de%20mais%20informa%C3%A7%C3%B5es" target="_blank" style="display: inline-flex; align-items: center;">
+                    <a href="<?= !empty($c['waNumber']) ? 'https://wa.me/' . $h($c['waNumber']) . (!empty($c['waMessage']) ? '?text=' . urlencode($c['waMessage']) : '') : '#' ?>" target="_blank" style="display: inline-flex; align-items: center;">
                         <img src="images/logoazevedo.png" alt="Azevedo" style="height: 35px; filter: brightness(0.8); transition: filter 0.3s;" onmouseover="this.style.filter='brightness(1)'" onmouseout="this.style.filter='brightness(0.8)'">
                     </a>
                 </div>
@@ -384,23 +437,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                     <div class="form-group"><label>WhatsApp</label><input type="tel" id="bookingPhone" placeholder="11999999999" required></div>
                     <div class="form-group payment-options">
                         <label>Condição de Pagamento</label>
-                        <div class="payment-options-list">
-                            <label class="payment-option">
-                                <input type="radio" name="paymentRule" value="full" checked onchange="updatePaymentPreview()">
-                                <span class="payment-option-content">
-                                    <span class="payment-option-title">Pagar 100% agora</span>
-                                    <span class="payment-option-detail">Total a debitar: R$ <span id="fullTotalPreview">0,00</span></span>
-                                </span>
-                            </label>
-                            <label class="payment-option">
-                                <input type="radio" name="paymentRule" value="half" onchange="updatePaymentPreview()">
-                                <span class="payment-option-content">
-                                    <span class="payment-option-title">Sinal de 50%</span>
-                                    <span class="payment-option-detail">Total a debitar agora: R$ <span id="halfTotalPreview">0,00</span></span>
-                                    <span class="payment-option-note">(O restante será pago no Check-in)</span>
-                                </span>
-                            </label>
-                        </div>
+                        <div class="payment-options-list" id="paymentOptionsList"></div>
                     </div>
                     <button type="submit" class="btn btn-primary btn-block" id="confirmBookingBtn" disabled>Confirmar Reserva e Pagar</button>
                     <small style="display:block; text-align:center; margin-top:0.5rem; color:#888;">*A reserva só será confirmada após o pagamento.</small>

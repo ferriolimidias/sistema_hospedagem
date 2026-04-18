@@ -3,13 +3,15 @@
    ========================================= */
 :root {
     /* Color Palette */
-    --clr-primary: #c96621;
+    --primary-color: #c96621;
+    --secondary-color: #1A1A1A;
+    --clr-primary: var(--primary-color);
     /* Deep Forest Green */
     --clr-primary-light: #df782f;
     --clr-secondary: #C89B5F;
     /* Accent Gold/Wood */
     --clr-secondary-hover: #B5884F;
-    --clr-dark: #1A1A1A;
+    --clr-dark: var(--secondary-color);
     --clr-light: #F9F6F0;
     /* Off-White/Beige for BG */
     --clr-white: #FFFFFF;
@@ -81,6 +83,11 @@ img {
     max-width: 100%;
     height: auto;
     display: block;
+}
+
+.image-fallback {
+    background: var(--secondary-color);
+    border-radius: 8px;
 }
 
 .container {
