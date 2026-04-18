@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderGuestOptions(selectEl, maxGuests, preferredValue) {
         if (!selectEl) return;
         const cap = Math.max(1, parseInt(String(maxGuests ?? 4), 10) || 4);
+        selectEl.innerHTML = '';
         const frag = document.createDocumentFragment();
         for (let i = 1; i <= cap; i++) {
             const opt = document.createElement('option');
@@ -92,7 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
             opt.textContent = i === 1 ? '1 Hóspede' : `${i} Hóspedes`;
             frag.appendChild(opt);
         }
-        selectEl.innerHTML = '';
         selectEl.appendChild(frag);
         const prefToken = String(preferredValue ?? '').trim().split('_')[0];
         let prefNum = parseInt(prefToken, 10);
@@ -100,6 +100,25 @@ document.addEventListener('DOMContentLoaded', () => {
             prefNum = Math.min(2, cap);
         }
         selectEl.value = String(prefNum);
+        if (!selectEl.value) {
+            selectEl.value = String(Math.min(2, cap));
+        }
+    }
+
+    /**
+     * Busca segura do chalé mesmo que `allChalets` contenha índices numéricos,
+     * nomes duplicados ou falhe no lookup direto por chave.
+     */
+    function findChaletByName(name) {
+        if (!name) return null;
+        const direct = allChalets && allChalets[name];
+        if (direct && typeof direct === 'object' && direct.name) return direct;
+        const target = String(name).trim().toLowerCase();
+        const pool = Object.values(allChalets || {}).filter(
+            (c) => c && typeof c === 'object' && c.name
+        );
+        const exact = pool.find((c) => String(c.name).trim().toLowerCase() === target);
+        return exact || null;
     }
 
     function isUsableImageSrc(src) {
@@ -401,22 +420,28 @@ document.addEventListener('DOMContentLoaded', () => {
             modalCout.value = dAtm.toISOString().split('T')[0];
         }
 
-        // Hóspedes: sempre de 1 até max_guests do chalé (API); alinha com a seleção do formulário da CTA quando válida
+        // Hóspedes: busca blindada do chalé e renderização forçada do <select>
         const guestsOptionEl = document.getElementById('guestsOption');
         const modalGuestsEl = document.getElementById('modalGuestsOption');
-        const chaletByName = allChalets[chaletName];
-        const maxGuests = chaletByName && chaletByName.max_guests != null
-            ? Math.max(1, parseInt(String(chaletByName.max_guests), 10) || 4)
+        const currentChaletObj = findChaletByName(chaletName);
+        if (currentChaletObj) {
+            allChalets[chaletName] = currentChaletObj;
+        }
+        const maxG = currentChaletObj && currentChaletObj.max_guests
+            ? Math.max(1, parseInt(String(currentChaletObj.max_guests), 10) || 4)
             : 4;
         const rawTop = guestsOptionEl && guestsOptionEl.value ? guestsOptionEl.value : '';
         const topNum = parseInt(String(rawTop).split('_')[0], 10);
-        let preferredModal = String(Math.min(2, maxGuests));
-        if (topNum >= 1 && topNum <= maxGuests) {
+        let preferredModal = String(Math.min(2, maxG));
+        if (topNum >= 1 && topNum <= maxG) {
             preferredModal = String(topNum);
-        } else if (topNum > maxGuests) {
-            preferredModal = String(maxGuests);
+        } else if (topNum > maxG) {
+            preferredModal = String(maxG);
         }
-        renderGuestOptions(modalGuestsEl, maxGuests, preferredModal);
+        if (modalGuestsEl) {
+            modalGuestsEl.innerHTML = '';
+            renderGuestOptions(modalGuestsEl, maxG, preferredModal);
+        }
 
         document.querySelectorAll('#bookingExtrasList input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
         const hct = document.getElementById('hasCouponToggle');
@@ -429,11 +454,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (fb) { fb.textContent = ''; fb.style.color = ''; }
         window.__couponPreview = null;
 
-        updateModalSummary();
-
-        // Show modal
+        // Abre o modal antes de calcular para que o DOM esteja disponível no summary assíncrono.
         modal.classList.add('active');
-        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        document.body.style.overflow = 'hidden';
+
+        updateModalSummary();
+        requestAnimationFrame(() => {
+            if (modalGuestsEl && !modalGuestsEl.value) {
+                modalGuestsEl.value = String(Math.min(2, maxG));
+            }
+            updateModalSummary();
+        });
     };
 
     function closeBookingModal() {
@@ -630,7 +661,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const chalet = allChalets[currentChalet];
+        let chalet = allChalets[currentChalet];
+        if (!chalet || typeof chalet !== 'object' || !chalet.id) {
+            chalet = findChaletByName(currentChalet);
+            if (chalet && chalet.name) {
+                allChalets[chalet.name] = chalet;
+            }
+        }
         const chaletId = chalet && chalet.id ? chalet.id : null;
 
         let nights = countNightsBetween(checkinStr, checkoutStr);
