@@ -67,10 +67,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const customizationNav = document.querySelector('.nav-item[data-view="customization"]');
         const usersNav = document.querySelector('.nav-item[data-view="users"]');
         const financeiroNav = document.querySelector('.nav-item[data-view="financeiro"]');
+        const couponsNav = document.querySelector('.nav-item[data-view="coupons"]');
+        const extrasNav = document.querySelector('.nav-item[data-view="extras"]');
         if (settingsNav) settingsNav.style.display = 'none';
         if (customizationNav) customizationNav.style.display = 'none';
         if (usersNav) usersNav.style.display = 'none';
         if (financeiroNav) financeiroNav.style.display = 'none';
+        if (couponsNav) couponsNav.style.display = 'none';
+        if (extrasNav) extrasNav.style.display = 'none';
     }
 
     /* =========================================
@@ -616,25 +620,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 
                 <div class="card">
-                    <h3 style="margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">Regras de Negócio (Mock)</h3>
-                    <form>
+                    <h3 style="margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                        <i class="ph ph-clock" style="color: var(--primary); margin-right: 0.5rem; vertical-align: bottom;"></i>
+                        Regras e Horários
+                    </h3>
+                    <form id="rulesForm">
                         <div class="form-group">
-                            <label>Cobrar sinal em % na reserva</label>
-                            <input type="number" class="form-control" value="50">
+                            <label>Horário de Check-in</label>
+                            <input type="time" class="form-control" id="rulesCheckinTime" value="14:00">
+                            <small style="color:#666;">Salvo em <code>settings.checkin_time</code>. Usado em contratos, emails e WhatsApp.</small>
                         </div>
                         <div class="form-group">
-                            <label>Mínimo de Noites (Feriados)</label>
-                            <input type="number" class="form-control" value="3">
+                            <label>Horário de Check-out</label>
+                            <input type="time" class="form-control" id="rulesCheckoutTime" value="12:00">
+                            <small style="color:#666;">Salvo em <code>settings.checkout_time</code>.</small>
                         </div>
-                        <div class="form-group">
-                            <label>Horário Check-in / Check-out</label>
-                            <div style="display:flex; gap: 1rem;">
-                                <input type="time" class="form-control" value="14:00">
-                                <input type="time" class="form-control" value="12:00">
-                            </div>
+                        <div style="margin-top: 1rem; text-align: right;">
+                            <button type="button" class="btn btn-primary" id="saveRulesBtn">
+                                <i class="ph ph-floppy-disk"></i> Salvar Horários
+                            </button>
                         </div>
                     </form>
-                </div> <!-- Closing missing div -->
+                </div>
+
+                <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
+                    <h3 style="margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                        <i class="ph ph-credit-card" style="color: var(--primary); margin-right: 0.5rem; vertical-align: bottom;"></i>
+                        Políticas de Pagamento
+                    </h3>
+                    <p style="margin-bottom: 1rem; color:#666; font-size:0.9rem;">
+                        Cada política define um código (usado em <code>reservations.payment_rule</code>), o rótulo exibido ao cliente e a percentagem cobrada no ato da reserva.
+                        Mantenha sempre uma política <strong>full</strong> (100%) para pagamentos integrais.
+                    </p>
+                    <div id="paymentPoliciesList" style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:1rem;"></div>
+                    <div style="display:flex; gap:0.5rem; justify-content:space-between; align-items:center;">
+                        <button type="button" class="btn btn-outline" id="addPolicyBtn">
+                            <i class="ph ph-plus"></i> Adicionar política
+                        </button>
+                        <button type="button" class="btn btn-primary" id="savePoliciesBtn">
+                            <i class="ph ph-floppy-disk"></i> Salvar Políticas
+                        </button>
+                    </div>
+                </div>
 
                 <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
                     <h3 style="margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
@@ -1205,6 +1232,128 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `,
+        coupons: `
+            <div class="page-header">
+                <h1 class="page-title">Cupons de Desconto</h1>
+                <button type="button" class="btn" id="couponsRefreshBtn"><i class="ph ph-arrows-clockwise"></i> Atualizar</button>
+            </div>
+            <div id="couponsKeyWarn" class="card" style="display:none; border:1px solid var(--danger); color:var(--danger); margin-bottom:1rem;">
+                Não foi possível carregar a chave interna. Abra <strong>Configurações</strong> neste painel e volte aqui.
+            </div>
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <h3 style="margin-bottom: 1rem;">
+                    <i class="ph ph-plus-circle" style="color: var(--primary); vertical-align: bottom;"></i>
+                    Novo Cupom
+                </h3>
+                <form id="couponForm" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.75rem; align-items:end;">
+                    <input type="hidden" id="couponEditId" value="">
+                    <div class="form-group" style="margin:0;">
+                        <label>Código</label>
+                        <input type="text" id="couponCode" class="form-control" placeholder="PROMO10" required>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label>Tipo</label>
+                        <select id="couponType" class="form-control">
+                            <option value="percent">Percentual</option>
+                            <option value="fixed">Valor fixo</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label>Valor</label>
+                        <input type="number" id="couponValue" class="form-control" step="0.01" min="0" placeholder="10" required>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label>Validade (opc.)</label>
+                        <input type="date" id="couponExpiry" class="form-control">
+                    </div>
+                    <div class="form-group" style="margin:0; display:flex; align-items:center; gap:0.5rem; padding-top: 1.5rem;">
+                        <input type="checkbox" id="couponActive" checked>
+                        <label for="couponActive" style="margin:0;">Ativo</label>
+                    </div>
+                    <div style="display:flex; gap:0.5rem;">
+                        <button type="submit" class="btn btn-primary" id="couponSaveBtn"><i class="ph ph-floppy-disk"></i> Salvar</button>
+                        <button type="button" class="btn btn-outline" id="couponCancelBtn" style="display:none;">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card">
+                <h3 style="margin-bottom: 1rem;">Cupons cadastrados</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Tipo</th>
+                                <th>Valor</th>
+                                <th>Validade</th>
+                                <th>Ativo</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="couponsTableBody">
+                            <tr><td colspan="6" style="text-align:center;">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `,
+        extras: `
+            <div class="page-header">
+                <h1 class="page-title">Serviços Extras</h1>
+                <button type="button" class="btn" id="extrasRefreshBtn"><i class="ph ph-arrows-clockwise"></i> Atualizar</button>
+            </div>
+            <div id="extrasKeyWarn" class="card" style="display:none; border:1px solid var(--danger); color:var(--danger); margin-bottom:1rem;">
+                Não foi possível carregar a chave interna. Abra <strong>Configurações</strong> neste painel e volte aqui.
+            </div>
+            <div class="card" style="margin-bottom: 1.5rem;">
+                <h3 style="margin-bottom: 1rem;">
+                    <i class="ph ph-plus-circle" style="color: var(--primary); vertical-align: bottom;"></i>
+                    Novo Serviço Extra
+                </h3>
+                <form id="extrasForm" style="display:grid; grid-template-columns: 2fr 1fr 3fr auto; gap: 0.75rem; align-items:end;">
+                    <input type="hidden" id="extraEditId" value="">
+                    <div class="form-group" style="margin:0;">
+                        <label>Nome</label>
+                        <input type="text" id="extraName" class="form-control" placeholder="Café da manhã" required>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label>Preço (R$)</label>
+                        <input type="number" id="extraPrice" class="form-control" step="0.01" min="0" required>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label>Descrição</label>
+                        <input type="text" id="extraDesc" class="form-control" placeholder="Opcional">
+                    </div>
+                    <div style="display:flex; gap:0.5rem;">
+                        <button type="submit" class="btn btn-primary" id="extraSaveBtn"><i class="ph ph-floppy-disk"></i> Salvar</button>
+                        <button type="button" class="btn btn-outline" id="extraCancelBtn" style="display:none;">Cancelar</button>
+                    </div>
+                </form>
+                <div style="margin-top:0.75rem; display:flex; gap:0.5rem; align-items:center;">
+                    <input type="checkbox" id="extraActive" checked>
+                    <label for="extraActive" style="margin:0;">Ativo para novas reservas</label>
+                </div>
+            </div>
+            <div class="card">
+                <h3 style="margin-bottom: 1rem;">Serviços cadastrados</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Preço</th>
+                                <th>Descrição</th>
+                                <th>Ativo</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="extrasTableBody">
+                            <tr><td colspan="5" style="text-align:center;">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `,
         users: `
             <div class="page-header">
                 <h1 class="page-title">Gestão de Usuários</h1>
@@ -1281,7 +1430,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
         } else if (isSecretaryRole(adminRole)) {
-            const restrictedViews = ['settings', 'customization', 'users', 'financeiro'];
+            const restrictedViews = ['settings', 'customization', 'users', 'financeiro', 'coupons', 'extras'];
             if (restrictedViews.includes(viewName)) {
                 document.getElementById('app').innerHTML = `<div class="card"><h2 style="color:var(--danger)">Acesso Negado</h2><p>Você não tem permissão para acessar esta página.</p></div>`;
                 return;
@@ -1312,6 +1461,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('saveLogoBtn').addEventListener('click', saveLogoSettings);
                 document.getElementById('saveSocialBtn').addEventListener('click', saveSocialSettings);
                 document.getElementById('saveIdentitySeoBtn').addEventListener('click', saveIdentitySeoSettings);
+                const saveRulesBtnEl = document.getElementById('saveRulesBtn');
+                if (saveRulesBtnEl) saveRulesBtnEl.addEventListener('click', saveRulesSettings);
+                const addPolicyBtnEl = document.getElementById('addPolicyBtn');
+                if (addPolicyBtnEl) addPolicyBtnEl.addEventListener('click', addEmptyPolicyRow);
+                const savePoliciesBtnEl = document.getElementById('savePoliciesBtn');
+                if (savePoliciesBtnEl) savePoliciesBtnEl.addEventListener('click', savePaymentPolicies);
             }
             if (viewName === 'customization') {
                 await loadAllSettings();
@@ -1327,9 +1482,289 @@ document.addEventListener('DOMContentLoaded', () => {
             if (viewName === 'financeiro') {
                 void initFinanceiroView();
             }
+            if (viewName === 'coupons') {
+                void initCouponsView();
+            }
+            if (viewName === 'extras') {
+                void initExtrasView();
+            }
         } else {
             appContainer.innerHTML = `<h2>View não encontrada</h2>`;
         }
+    }
+
+    /* =========================================
+       COUPONS (ABA DEDICADA)
+       ========================================= */
+    async function initCouponsView() {
+        const warn = document.getElementById('couponsKeyWarn');
+        const ok = await ensureInternalApiKey();
+        if (warn) warn.style.display = ok ? 'none' : 'block';
+        if (!ok) return;
+
+        const form = document.getElementById('couponForm');
+        const idEl = document.getElementById('couponEditId');
+        const codeEl = document.getElementById('couponCode');
+        const typeEl = document.getElementById('couponType');
+        const valueEl = document.getElementById('couponValue');
+        const expiryEl = document.getElementById('couponExpiry');
+        const activeEl = document.getElementById('couponActive');
+        const saveBtn = document.getElementById('couponSaveBtn');
+        const cancelBtn = document.getElementById('couponCancelBtn');
+        const refreshBtn = document.getElementById('couponsRefreshBtn');
+        const tbody = document.getElementById('couponsTableBody');
+
+        function resetForm() {
+            idEl.value = '';
+            codeEl.value = '';
+            typeEl.value = 'percent';
+            valueEl.value = '';
+            expiryEl.value = '';
+            activeEl.checked = true;
+            saveBtn.innerHTML = '<i class="ph ph-floppy-disk"></i> Salvar';
+            if (cancelBtn) cancelBtn.style.display = 'none';
+        }
+
+        async function loadCoupons() {
+            if (!tbody) return;
+            try {
+                const res = await fetch('../api/admin_coupons.php', { headers: { 'X-Internal-Key': internalApiKey } });
+                const rows = await res.json();
+                if (!Array.isArray(rows)) throw new Error('Resposta inválida');
+                if (rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#666;">Nenhum cupom cadastrado</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map((c) => `
+                    <tr>
+                        <td><strong>${String(c.code || '').replace(/</g, '&lt;')}</strong></td>
+                        <td>${c.type === 'fixed' ? 'Valor fixo (R$)' : 'Percentual (%)'}</td>
+                        <td>${c.type === 'fixed'
+                            ? 'R$ ' + Number(c.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+                            : Number(c.value).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' %'}</td>
+                        <td>${c.expiry_date ? String(c.expiry_date) : '—'}</td>
+                        <td><input type="checkbox" data-coupon-toggle="${c.id}" ${Number(c.active) ? 'checked' : ''}></td>
+                        <td>
+                            <button type="button" class="btn-icon" data-coupon-edit="${c.id}" title="Editar"><i class="ph ph-pencil-simple"></i></button>
+                            <button type="button" class="btn-icon" data-coupon-del="${c.id}" title="Excluir" style="color:var(--danger)"><i class="ph ph-trash"></i></button>
+                        </td>
+                    </tr>
+                `).join('');
+                tbody.querySelectorAll('[data-coupon-toggle]').forEach((cb) => {
+                    cb.addEventListener('change', async () => {
+                        const id = parseInt(cb.getAttribute('data-coupon-toggle'), 10);
+                        const target = rows.find((x) => Number(x.id) === id);
+                        if (!target) return;
+                        await fetch('../api/admin_coupons.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                            body: JSON.stringify({
+                                id,
+                                code: target.code,
+                                type: target.type,
+                                value: parseFloat(target.value),
+                                expiry_date: target.expiry_date || null,
+                                active: cb.checked ? 1 : 0
+                            })
+                        });
+                        await loadCoupons();
+                    });
+                });
+                tbody.querySelectorAll('[data-coupon-del]').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        const id = btn.getAttribute('data-coupon-del');
+                        if (!confirm('Excluir este cupom? Esta ação não pode ser desfeita.')) return;
+                        await fetch(`../api/admin_coupons.php?id=${id}`, { method: 'DELETE', headers: { 'X-Internal-Key': internalApiKey } });
+                        resetForm();
+                        await loadCoupons();
+                    });
+                });
+                tbody.querySelectorAll('[data-coupon-edit]').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        const id = parseInt(btn.getAttribute('data-coupon-edit'), 10);
+                        const target = rows.find((x) => Number(x.id) === id);
+                        if (!target) return;
+                        idEl.value = String(target.id);
+                        codeEl.value = target.code || '';
+                        typeEl.value = target.type || 'percent';
+                        valueEl.value = target.value;
+                        expiryEl.value = target.expiry_date ? String(target.expiry_date).slice(0, 10) : '';
+                        activeEl.checked = Number(target.active) === 1;
+                        saveBtn.innerHTML = '<i class="ph ph-check"></i> Atualizar';
+                        if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    });
+                });
+            } catch (e) {
+                console.error('Erro ao carregar cupons:', e);
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--danger);">Erro ao carregar cupons</td></tr>';
+            }
+        }
+
+        if (form) {
+            form.onsubmit = async (ev) => {
+                ev.preventDefault();
+                const code = codeEl.value.trim();
+                const type = typeEl.value;
+                const value = parseFloat(valueEl.value);
+                const expiry = expiryEl.value || null;
+                const active = activeEl.checked ? 1 : 0;
+                if (!code || !Number.isFinite(value) || value <= 0) {
+                    alert('Informe código e valor válidos.');
+                    return;
+                }
+                const payload = { code, type, value, expiry_date: expiry, active };
+                if (idEl.value) payload.id = parseInt(idEl.value, 10);
+                const res = await fetch('../api/admin_coupons.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    resetForm();
+                    await loadCoupons();
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.error || 'Erro ao salvar cupom');
+                }
+            };
+        }
+        if (cancelBtn) cancelBtn.onclick = () => resetForm();
+        if (refreshBtn) refreshBtn.onclick = () => loadCoupons();
+        await loadCoupons();
+    }
+
+    /* =========================================
+       SERVIÇOS EXTRAS (ABA DEDICADA)
+       ========================================= */
+    async function initExtrasView() {
+        const warn = document.getElementById('extrasKeyWarn');
+        const ok = await ensureInternalApiKey();
+        if (warn) warn.style.display = ok ? 'none' : 'block';
+        if (!ok) return;
+
+        const form = document.getElementById('extrasForm');
+        const idEl = document.getElementById('extraEditId');
+        const nameEl = document.getElementById('extraName');
+        const priceEl = document.getElementById('extraPrice');
+        const descEl = document.getElementById('extraDesc');
+        const activeEl = document.getElementById('extraActive');
+        const saveBtn = document.getElementById('extraSaveBtn');
+        const cancelBtn = document.getElementById('extraCancelBtn');
+        const refreshBtn = document.getElementById('extrasRefreshBtn');
+        const tbody = document.getElementById('extrasTableBody');
+
+        function resetForm() {
+            idEl.value = '';
+            nameEl.value = '';
+            priceEl.value = '';
+            descEl.value = '';
+            activeEl.checked = true;
+            saveBtn.innerHTML = '<i class="ph ph-floppy-disk"></i> Salvar';
+            if (cancelBtn) cancelBtn.style.display = 'none';
+        }
+
+        async function loadExtras() {
+            if (!tbody) return;
+            try {
+                const res = await fetch('../api/admin_extra_services.php', { headers: { 'X-Internal-Key': internalApiKey } });
+                const rows = await res.json();
+                if (!Array.isArray(rows)) throw new Error('Resposta inválida');
+                if (rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#666;">Nenhum serviço cadastrado</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map((x) => `
+                    <tr>
+                        <td><strong>${String(x.name || '').replace(/</g, '&lt;')}</strong></td>
+                        <td>R$ ${Number(x.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                        <td style="color:#555; font-size:0.9rem;">${String(x.description || '').replace(/</g, '&lt;') || '—'}</td>
+                        <td><input type="checkbox" data-extra-toggle="${x.id}" ${Number(x.active) ? 'checked' : ''}></td>
+                        <td>
+                            <button type="button" class="btn-icon" data-extra-edit="${x.id}" title="Editar"><i class="ph ph-pencil-simple"></i></button>
+                            <button type="button" class="btn-icon" data-extra-del="${x.id}" title="Excluir" style="color:var(--danger)"><i class="ph ph-trash"></i></button>
+                        </td>
+                    </tr>
+                `).join('');
+                tbody.querySelectorAll('[data-extra-toggle]').forEach((cb) => {
+                    cb.addEventListener('change', async () => {
+                        const id = parseInt(cb.getAttribute('data-extra-toggle'), 10);
+                        const target = rows.find((x) => Number(x.id) === id);
+                        if (!target) return;
+                        await fetch('../api/admin_extra_services.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                            body: JSON.stringify({
+                                id,
+                                name: target.name,
+                                price: parseFloat(target.price),
+                                description: target.description || '',
+                                active: cb.checked ? 1 : 0
+                            })
+                        });
+                        await loadExtras();
+                    });
+                });
+                tbody.querySelectorAll('[data-extra-del]').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        const id = btn.getAttribute('data-extra-del');
+                        if (!confirm('Excluir este serviço extra?')) return;
+                        await fetch(`../api/admin_extra_services.php?id=${id}`, { method: 'DELETE', headers: { 'X-Internal-Key': internalApiKey } });
+                        resetForm();
+                        await loadExtras();
+                    });
+                });
+                tbody.querySelectorAll('[data-extra-edit]').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        const id = parseInt(btn.getAttribute('data-extra-edit'), 10);
+                        const target = rows.find((x) => Number(x.id) === id);
+                        if (!target) return;
+                        idEl.value = String(target.id);
+                        nameEl.value = target.name || '';
+                        priceEl.value = target.price;
+                        descEl.value = target.description || '';
+                        activeEl.checked = Number(target.active) === 1;
+                        saveBtn.innerHTML = '<i class="ph ph-check"></i> Atualizar';
+                        if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    });
+                });
+            } catch (e) {
+                console.error('Erro ao carregar serviços extras:', e);
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--danger);">Erro ao carregar serviços</td></tr>';
+            }
+        }
+
+        if (form) {
+            form.onsubmit = async (ev) => {
+                ev.preventDefault();
+                const name = nameEl.value.trim();
+                const price = parseFloat(priceEl.value);
+                const description = descEl.value.trim();
+                const active = activeEl.checked ? 1 : 0;
+                if (!name || !Number.isFinite(price) || price < 0) {
+                    alert('Informe nome e preço válidos (preço >= 0).');
+                    return;
+                }
+                const payload = { name, price, description, active };
+                if (idEl.value) payload.id = parseInt(idEl.value, 10);
+                const res = await fetch('../api/admin_extra_services.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    resetForm();
+                    await loadExtras();
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.error || 'Erro ao salvar serviço');
+                }
+            };
+        }
+        if (cancelBtn) cancelBtn.onclick = () => resetForm();
+        if (refreshBtn) refreshBtn.onclick = () => loadExtras();
+        await loadExtras();
     }
 
     // Função Exposta para atualizar status da reserva via SELECT
@@ -1450,6 +1885,120 @@ document.addEventListener('DOMContentLoaded', () => {
 
         await saveSettingsToAPI(settings);
         alert('Access Token do MercadoPago salvo no Banco de Dados!');
+    }
+
+    function normalizeTimeHHMM(raw, fallback) {
+        const s = String(raw == null ? '' : raw).trim();
+        const m = s.match(/^(\d{1,2}):(\d{2})/);
+        if (!m) return fallback;
+        const h = Math.max(0, Math.min(23, parseInt(m[1], 10) || 0));
+        const mi = Math.max(0, Math.min(59, parseInt(m[2], 10) || 0));
+        return String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0');
+    }
+
+    async function saveRulesSettings() {
+        const checkinEl = document.getElementById('rulesCheckinTime');
+        const checkoutEl = document.getElementById('rulesCheckoutTime');
+        const checkin = normalizeTimeHHMM(checkinEl ? checkinEl.value : '', '14:00');
+        const checkout = normalizeTimeHHMM(checkoutEl ? checkoutEl.value : '', '12:00');
+        await saveSettingsToAPI({ checkin_time: checkin, checkout_time: checkout });
+        alert('Horários salvos com sucesso!');
+    }
+
+    function renderPaymentPoliciesEditor() {
+        const list = document.getElementById('paymentPoliciesList');
+        if (!list) return;
+        const policies = Array.isArray(paymentPolicies) && paymentPolicies.length > 0
+            ? paymentPolicies
+            : [
+                { code: 'half', label: 'Sinal de 50% para reserva', percent_now: 50 },
+                { code: 'full', label: 'Pagamento 100% Antecipado', percent_now: 100 }
+            ];
+        list.innerHTML = policies.map((p, idx) => `
+            <div class="policy-row" data-policy-idx="${idx}" style="display:grid; grid-template-columns: 140px 1fr 120px 40px; gap:0.5rem; align-items:end; background: var(--bg-light); padding: 0.75rem; border-radius: 8px;">
+                <div class="form-group" style="margin:0;">
+                    <label style="font-size:0.8rem;">Código</label>
+                    <input type="text" class="form-control policy-code" value="${String(p.code || '').replace(/"/g, '&quot;')}" placeholder="ex: half">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label style="font-size:0.8rem;">Rótulo exibido</label>
+                    <input type="text" class="form-control policy-label" value="${String(p.label || '').replace(/"/g, '&quot;')}" placeholder="Sinal de 30%">
+                </div>
+                <div class="form-group" style="margin:0;">
+                    <label style="font-size:0.8rem;">% no ato</label>
+                    <input type="number" min="1" max="100" step="1" class="form-control policy-percent" value="${Number(p.percent_now) || 0}">
+                </div>
+                <button type="button" class="btn-icon policy-remove" title="Remover" style="color:var(--danger); align-self:center;"><i class="ph ph-trash"></i></button>
+            </div>
+        `).join('');
+        list.querySelectorAll('.policy-remove').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const row = btn.closest('.policy-row');
+                if (row) row.remove();
+            });
+        });
+    }
+
+    function addEmptyPolicyRow() {
+        const list = document.getElementById('paymentPoliciesList');
+        if (!list) return;
+        const idx = list.querySelectorAll('.policy-row').length;
+        const row = document.createElement('div');
+        row.className = 'policy-row';
+        row.setAttribute('data-policy-idx', String(idx));
+        row.style.cssText = 'display:grid; grid-template-columns: 140px 1fr 120px 40px; gap:0.5rem; align-items:end; background: var(--bg-light); padding: 0.75rem; border-radius: 8px;';
+        row.innerHTML = `
+            <div class="form-group" style="margin:0;">
+                <label style="font-size:0.8rem;">Código</label>
+                <input type="text" class="form-control policy-code" placeholder="ex: deposit30">
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label style="font-size:0.8rem;">Rótulo exibido</label>
+                <input type="text" class="form-control policy-label" placeholder="Sinal de 30%">
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label style="font-size:0.8rem;">% no ato</label>
+                <input type="number" min="1" max="100" step="1" class="form-control policy-percent" value="30">
+            </div>
+            <button type="button" class="btn-icon policy-remove" title="Remover" style="color:var(--danger); align-self:center;"><i class="ph ph-trash"></i></button>
+        `;
+        row.querySelector('.policy-remove').addEventListener('click', () => row.remove());
+        list.appendChild(row);
+    }
+
+    function collectPaymentPoliciesFromUI() {
+        const rows = document.querySelectorAll('#paymentPoliciesList .policy-row');
+        const out = [];
+        const seen = new Set();
+        rows.forEach((row) => {
+            const code = (row.querySelector('.policy-code')?.value || '').trim().toLowerCase();
+            const label = (row.querySelector('.policy-label')?.value || '').trim();
+            const pctRaw = (row.querySelector('.policy-percent')?.value || '').trim();
+            const pct = Number(pctRaw);
+            if (!code || !label || !Number.isFinite(pct) || pct <= 0 || pct > 100) return;
+            if (seen.has(code)) return;
+            seen.add(code);
+            out.push({ code, label, percent_now: Math.round(pct) });
+        });
+        return out;
+    }
+
+    async function savePaymentPolicies() {
+        const policies = collectPaymentPoliciesFromUI();
+        if (policies.length === 0) {
+            alert('Defina pelo menos uma política de pagamento válida (código + rótulo + % entre 1 e 100).');
+            return;
+        }
+        const hasFull = policies.some((p) => p.percent_now >= 100);
+        if (!hasFull) {
+            if (!confirm('Nenhuma política cobra 100% no ato. Recomendamos manter uma opção integral. Deseja salvar mesmo assim?')) {
+                return;
+            }
+        }
+        await saveSettingsToAPI({ payment_policies: policies });
+        paymentPolicies = normalizePaymentPolicies(policies);
+        renderPaymentPoliciesEditor();
+        alert('Políticas de pagamento salvas com sucesso!');
     }
 
     function hexToRgb(hex) {
@@ -1640,6 +2189,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('socialFacebook').value = data.socialSettings.facebook || '';
                 document.getElementById('socialTripadvisor').value = data.socialSettings.tripadvisor || '';
             }
+            const rulesCheckin = document.getElementById('rulesCheckinTime');
+            const rulesCheckout = document.getElementById('rulesCheckoutTime');
+            if (rulesCheckin) rulesCheckin.value = normalizeTimeHHMM(data.checkin_time, '14:00');
+            if (rulesCheckout) rulesCheckout.value = normalizeTimeHHMM(data.checkout_time, '12:00');
+            if (Array.isArray(data.payment_policies)) {
+                paymentPolicies = normalizePaymentPolicies(data.payment_policies);
+            }
+            if (document.getElementById('paymentPoliciesList')) {
+                renderPaymentPoliciesEditor();
+            }
+
             const seoSiteTitle = document.getElementById('seoSiteTitle');
             if (seoSiteTitle) seoSiteTitle.value = data.site_title || 'Pousada Mirante do Sol';
             const seoMetaDescription = document.getElementById('seoMetaDescription');
@@ -2093,12 +2653,17 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                         <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.5rem;">
-                            <div class="form-group" style="flex:1; min-width:200px;">
+                            <div class="form-group" style="flex:1; min-width:180px;">
                                 <label>Hóspedes Inclusos (Base)</label>
                                 <input type="number" id="addBaseGuests" class="form-control" min="1" max="50" value="${chalet != null && chalet.base_guests != null ? chalet.base_guests : 2}">
                                 <small style="color:#666;">Incluídos no preço da diária; acima aplica-se a taxa extra por noite.</small>
                             </div>
-                            <div class="form-group" style="flex:1; min-width:200px;">
+                            <div class="form-group" style="flex:1; min-width:180px;">
+                                <label>Capacidade Máxima</label>
+                                <input type="number" id="addMaxGuests" class="form-control" min="1" max="50" value="${chalet != null && chalet.max_guests != null ? chalet.max_guests : 4}">
+                                <small style="color:#666;">Limite absoluto (site e backend bloqueiam reservas acima disto).</small>
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:180px;">
                                 <label>Taxa por Hóspede Extra (R$)</label>
                                 <input type="number" id="addExtraGuestFee" class="form-control" min="0" step="0.01" value="${chalet != null && chalet.extra_guest_fee != null ? chalet.extra_guest_fee : '0'}">
                             </div>
@@ -2479,8 +3044,18 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('badge', document.getElementById('addBadge').value);
         formData.append('price', document.getElementById('addPrice').value);
         const baseGuestsEl = document.getElementById('addBaseGuests');
+        const maxGuestsEl = document.getElementById('addMaxGuests');
         const extraFeeEl = document.getElementById('addExtraGuestFee');
+        const baseGuestsNum = parseInt(baseGuestsEl ? baseGuestsEl.value : '', 10);
+        const maxGuestsNum = parseInt(maxGuestsEl ? maxGuestsEl.value : '', 10);
+        if (Number.isFinite(baseGuestsNum) && Number.isFinite(maxGuestsNum) && maxGuestsNum < baseGuestsNum) {
+            alert('A capacidade máxima não pode ser menor que os hóspedes inclusos na base.');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Salvar Chalé';
+            return;
+        }
         if (baseGuestsEl) formData.append('base_guests', baseGuestsEl.value);
+        if (maxGuestsEl) formData.append('max_guests', maxGuestsEl.value);
         if (extraFeeEl) formData.append('extra_guest_fee', extraFeeEl.value);
         formData.append('description', document.getElementById('addDesc').value);
         formData.append('full_description', document.getElementById('addFullDesc').value);
@@ -2579,6 +3154,8 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'reservations', label: 'Reservas' },
         { id: 'chalets', label: 'Chalés' },
         { id: 'financeiro', label: 'Financeiro' },
+        { id: 'coupons', label: 'Cupons' },
+        { id: 'extras', label: 'Serviços Extras' },
         { id: 'settings', label: 'Configurações' },
         { id: 'customization', label: 'Personalização' },
         { id: 'users', label: 'Usuários' }
