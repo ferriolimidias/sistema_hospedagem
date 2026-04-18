@@ -355,8 +355,28 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 <div id="availabilityMessage" style="color: var(--danger); font-size: 0.9rem; margin-bottom: 1rem; display: none;"></div>
                 <div class="reservation-summary" style="margin-bottom: 1.5rem;">
                     <div class="summary-row"><span>Noites:</span><strong id="summaryNights">0</strong></div>
+                    <div class="summary-row"><span>Hospedagem (diárias):</span><strong id="summaryLodging">R$ 0,00</strong></div>
+                    <div class="summary-row" id="summaryExtraGuestsRow" style="display: none;"><span id="summaryExtraGuestsLabel">Hóspedes extra:</span><strong id="summaryExtraGuests">R$ 0,00</strong></div>
+                    <div class="summary-row" id="summaryExtrasRow" style="display: none;"><span>Serviços adicionais:</span><strong id="summaryExtras">R$ 0,00</strong></div>
+                    <div class="summary-row" id="summaryDiscountRow" style="display: none;"><span>Desconto (cupom):</span><strong id="summaryDiscount">- R$ 0,00</strong></div>
                     <hr style="margin: 0.5rem 0; border-color: rgba(255,255,255,0.1);">
                     <div class="summary-row total"><span>Total:</span><strong id="summaryTotal">R$ 0,00</strong></div>
+                </div>
+                <div id="bookingCouponBlock" class="form-group" style="display: none; margin-bottom: 1rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 500;">
+                        <input type="checkbox" id="hasCouponToggle"> Possui cupom?
+                    </label>
+                    <div id="bookingCouponFieldsWrap" style="display: none; margin-top: 0.5rem;">
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <input type="text" id="couponCodeInput" class="form-control" placeholder="Código do cupom" autocomplete="off" style="flex: 1; min-width: 140px;">
+                            <button type="button" class="btn btn-outline" id="applyCouponBtn">Aplicar</button>
+                        </div>
+                        <small id="couponFeedback" style="display: block; margin-top: 0.35rem; min-height: 1.2em;"></small>
+                    </div>
+                </div>
+                <div id="bookingExtrasBlock" class="form-group" style="display: none; margin-bottom: 1rem;">
+                    <label style="font-weight: 600;">Serviços adicionais</label>
+                    <div id="bookingExtrasList" style="margin-top: 0.5rem;"></div>
                 </div>
                 <form id="finalBookingForm">
                     <div class="form-group"><label>Nome Completo</label><input type="text" id="bookingName" placeholder="Seu nome" required></div>

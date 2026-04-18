@@ -142,6 +142,88 @@ try {
     // Coluna já existe.
 }
 
+try {
+    $pdo->exec("ALTER TABLE chalets ADD COLUMN base_guests INT NOT NULL DEFAULT 2 AFTER price_sun");
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
+    $pdo->exec("ALTER TABLE chalets ADD COLUMN extra_guest_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER base_guests");
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
+    $pdo->exec('ALTER TABLE reservations ADD COLUMN coupon_code VARCHAR(100) NULL AFTER balance_paid_at');
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
+    $pdo->exec('ALTER TABLE reservations ADD COLUMN discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER coupon_code');
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
+    $pdo->exec('ALTER TABLE reservations ADD COLUMN extras_json TEXT NULL AFTER discount_amount');
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
+    $pdo->exec('ALTER TABLE reservations ADD COLUMN extras_total DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER extras_json');
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
+    $pdo->exec('ALTER TABLE reservations ADD COLUMN fnrh_access_token VARCHAR(64) NULL AFTER extras_total');
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
+    $pdo->exec('CREATE UNIQUE INDEX uq_reservations_fnrh_token ON reservations (fnrh_access_token)');
+} catch (PDOException $e) {
+    // Índice já existe.
+}
+
+try {
+    $pdo->exec('ALTER TABLE reservations ADD COLUMN fnrh_data TEXT NULL AFTER fnrh_access_token');
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS coupons (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        code VARCHAR(64) NOT NULL,
+        type ENUM('fixed', 'percent') NOT NULL DEFAULT 'percent',
+        value DECIMAL(10,2) NOT NULL,
+        expiry_date DATE NULL,
+        active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_coupons_code (code)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (PDOException $e) {
+    // Tabela já existe ou erro de permissão.
+}
+
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS extra_services (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        description TEXT NULL,
+        active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (PDOException $e) {
+    // Tabela já existe ou erro de permissão.
+}
+
 function cleanupExpiredPendingReservations(PDO $pdo): void
 {
     $stmt = $pdo->prepare("

@@ -114,6 +114,19 @@ if ($reservationId > 0) {
             $downloadUrl = rtrim($base . $apiPath, '/') . '/download_contract.php?id=' . $reservationId . '&email=' . rawurlencode($guestEmail) . '&token=' . rawurlencode($token);
             $msgClient .= "\n\n📄 *Contrato em PDF:*\n{$downloadUrl}";
         }
+
+        $stmtFnrh = $pdo->prepare('SELECT fnrh_access_token FROM reservations WHERE id = ? LIMIT 1');
+        $stmtFnrh->execute([$reservationId]);
+        $fnrhTok = trim((string) ($stmtFnrh->fetchColumn() ?: ''));
+        if ($fnrhTok !== '') {
+            $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+            $scriptPath = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/api/send_webhook.php'));
+            $apiDir = dirname($scriptPath);
+            $siteRoot = dirname($apiDir);
+            $siteRoot = $siteRoot === '/' || $siteRoot === '\\' ? '' : $siteRoot;
+            $checkinUrl = rtrim($base . $siteRoot, '/') . '/checkin.php?id=' . rawurlencode($fnrhTok);
+            $msgClient .= "\n\n📋 *Check-in online (FNRH):*\n{$checkinUrl}";
+        }
     } catch (Throwable $e) {
         // Não interrompe envio da mensagem por falha de link do contrato.
     }

@@ -1,4 +1,8 @@
 <?php
+/**
+ * Disponibilidade por calendário (sem simulação de preço).
+ * O valor da estadia é calculado em api/pricing.php + api/reservations.php (POST).
+ */
 require_once __DIR__ . '/db.php';
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {

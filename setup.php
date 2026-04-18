@@ -105,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $adminEmail,
                 password_hash($adminPass, PASSWORD_DEFAULT),
                 'admin',
-                json_encode(['dashboard', 'reservas', 'chales', 'usuarios', 'configuracoes']),
+                json_encode(['dashboard', 'reservas', 'chales', 'usuarios', 'configuracoes', 'financeiro']),
             ]);
 
             // Bloqueia reutilização direta do instalador após sucesso.

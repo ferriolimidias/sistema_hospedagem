@@ -66,9 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const settingsNav = document.querySelector('.nav-item[data-view="settings"]');
         const customizationNav = document.querySelector('.nav-item[data-view="customization"]');
         const usersNav = document.querySelector('.nav-item[data-view="users"]');
+        const financeiroNav = document.querySelector('.nav-item[data-view="financeiro"]');
         if (settingsNav) settingsNav.style.display = 'none';
         if (customizationNav) customizationNav.style.display = 'none';
         if (usersNav) usersNav.style.display = 'none';
+        if (financeiroNav) financeiroNav.style.display = 'none';
     }
 
     /* =========================================
@@ -119,6 +121,203 @@ document.addEventListener('DOMContentLoaded', () => {
             window.reservationsDataGlobal = reservationsData; // Expose to global
         } catch (e) {
             console.error("Erro ao buscar dados da API:", e);
+        }
+    }
+
+    async function ensureInternalApiKey() {
+        if (internalApiKey) return true;
+        try {
+            const res = await fetch('../api/settings.php');
+            const data = await res.json();
+            if (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '') {
+                internalApiKey = data.internalApiKey.trim();
+                return true;
+            }
+        } catch (e) { /* ignore */ }
+        return false;
+    }
+
+    async function initFinanceiroView() {
+        const warn = document.getElementById('financeiroKeyWarn');
+        const ok = await ensureInternalApiKey();
+        if (warn) warn.style.display = ok ? 'none' : 'block';
+        if (!ok) return;
+
+        async function loadStats() {
+            try {
+                const r = await fetch('../api/finance_stats.php', { headers: { 'X-Internal-Key': internalApiKey } });
+                const s = await r.json();
+                const rev = document.getElementById('finRevenue');
+                const bal = document.getElementById('finBalance');
+                const occ = document.getElementById('finOcc');
+                const note = document.getElementById('finOccNote');
+                if (r.ok) {
+                    if (rev) rev.textContent = 'R$ ' + Number(s.revenue_confirmed || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                    if (bal) bal.textContent = 'R$ ' + Number(s.balance_half_pending || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                    if (occ) occ.textContent = Number(s.occupancy_pct || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1 }) + ' %';
+                    if (note) note.textContent = (s.occupied_room_nights != null && s.capacity_room_nights != null)
+                        ? `${s.occupied_room_nights} / ${s.capacity_room_nights} UH·noites (${s.month || ''})`
+                        : '';
+                }
+            } catch (e) {
+                console.warn(e);
+            }
+        }
+
+        async function loadCoupons() {
+            const r = await fetch('../api/admin_coupons.php', { headers: { 'X-Internal-Key': internalApiKey } });
+            const rows = await r.json();
+            const tb = document.getElementById('finCouponsBody');
+            if (!tb || !Array.isArray(rows)) return;
+            tb.innerHTML = rows.map((c) => `
+                <tr>
+                    <td>${String(c.code || '').replace(/</g, '&lt;')}</td>
+                    <td>${String(c.type || '')}</td>
+                    <td>${Number(c.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                    <td>${c.expiry_date ? String(c.expiry_date) : '—'}</td>
+                    <td><input type="checkbox" data-coupon-id="${c.id}" class="fin-coupon-active" ${Number(c.active) ? 'checked' : ''}></td>
+                    <td><button type="button" class="btn-icon fin-coupon-del" data-id="${c.id}" style="color:var(--danger)"><i class="ph ph-trash"></i></button></td>
+                </tr>
+            `).join('');
+            tb.querySelectorAll('.fin-coupon-del').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.getAttribute('data-id');
+                    if (!confirm('Excluir este cupom?')) return;
+                    await fetch(`../api/admin_coupons.php?id=${id}`, { method: 'DELETE', headers: { 'X-Internal-Key': internalApiKey } });
+                    await loadCoupons();
+                });
+            });
+            tb.querySelectorAll('.fin-coupon-active').forEach((cb) => {
+                cb.addEventListener('change', async () => {
+                    const id = parseInt(cb.getAttribute('data-coupon-id'), 10);
+                    const active = cb.checked ? 1 : 0;
+                    const list = await fetch('../api/admin_coupons.php', { headers: { 'X-Internal-Key': internalApiKey } }).then((x) => x.json());
+                    const c = Array.isArray(list) ? list.find((x) => x.id == id) : null;
+                    if (!c) return;
+                    await fetch('../api/admin_coupons.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                        body: JSON.stringify({
+                            id,
+                            code: c.code,
+                            type: c.type,
+                            value: parseFloat(c.value),
+                            expiry_date: c.expiry_date || null,
+                            active
+                        })
+                    });
+                });
+            });
+        }
+
+        async function loadExtras() {
+            const r = await fetch('../api/admin_extra_services.php', { headers: { 'X-Internal-Key': internalApiKey } });
+            const rows = await r.json();
+            const tb = document.getElementById('finExtrasBody');
+            if (!tb || !Array.isArray(rows)) return;
+            tb.innerHTML = rows.map((x) => `
+                <tr>
+                    <td>${String(x.name || '').replace(/</g, '&lt;')}</td>
+                    <td>R$ ${Number(x.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                    <td><input type="checkbox" data-extra-id="${x.id}" class="fin-extra-active" ${Number(x.active) ? 'checked' : ''}></td>
+                    <td><button type="button" class="btn-icon fin-extra-del" data-id="${x.id}" style="color:var(--danger)"><i class="ph ph-trash"></i></button></td>
+                </tr>
+            `).join('');
+            tb.querySelectorAll('.fin-extra-del').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.getAttribute('data-id');
+                    if (!confirm('Excluir este serviço?')) return;
+                    await fetch(`../api/admin_extra_services.php?id=${id}`, { method: 'DELETE', headers: { 'X-Internal-Key': internalApiKey } });
+                    await loadExtras();
+                });
+            });
+            tb.querySelectorAll('.fin-extra-active').forEach((cb) => {
+                cb.addEventListener('change', async () => {
+                    const id = parseInt(cb.getAttribute('data-extra-id'), 10);
+                    const active = cb.checked ? 1 : 0;
+                    const list = await fetch('../api/admin_extra_services.php', { headers: { 'X-Internal-Key': internalApiKey } }).then((x) => x.json());
+                    const x = Array.isArray(list) ? list.find((z) => z.id == id) : null;
+                    if (!x) return;
+                    await fetch('../api/admin_extra_services.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                        body: JSON.stringify({
+                            id,
+                            name: x.name,
+                            price: parseFloat(x.price),
+                            description: x.description || '',
+                            active
+                        })
+                    });
+                });
+            });
+        }
+
+        await loadStats();
+        await loadCoupons();
+        await loadExtras();
+
+        const refresh = document.getElementById('finRefreshBtn');
+        if (refresh) {
+            refresh.onclick = async () => {
+                await loadStats();
+                await loadCoupons();
+                await loadExtras();
+            };
+        }
+
+        const addC = document.getElementById('finCouponAdd');
+        if (addC) {
+            addC.onclick = async () => {
+                const code = document.getElementById('finCouponCode').value.trim();
+                const type = document.getElementById('finCouponType').value;
+                const value = parseFloat(document.getElementById('finCouponVal').value);
+                const expiry = document.getElementById('finCouponExpiry').value;
+                if (!code || !(value > 0)) {
+                    alert('Informe código e valor válidos.');
+                    return;
+                }
+                const res = await fetch('../api/admin_coupons.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                    body: JSON.stringify({ code, type, value, expiry_date: expiry || null, active: 1 })
+                });
+                if (res.ok) {
+                    document.getElementById('finCouponCode').value = '';
+                    document.getElementById('finCouponVal').value = '';
+                    await loadCoupons();
+                } else {
+                    const e = await res.json().catch(() => ({}));
+                    alert(e.error || 'Erro ao salvar cupom');
+                }
+            };
+        }
+
+        const addE = document.getElementById('finExAdd');
+        if (addE) {
+            addE.onclick = async () => {
+                const name = document.getElementById('finExName').value.trim();
+                const price = parseFloat(document.getElementById('finExPrice').value);
+                const description = document.getElementById('finExDesc').value.trim();
+                if (!name || !(price >= 0) || Number.isNaN(price)) {
+                    alert('Informe nome e preço válidos.');
+                    return;
+                }
+                const res = await fetch('../api/admin_extra_services.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                    body: JSON.stringify({ name, price, description, active: 1 })
+                });
+                if (res.ok) {
+                    document.getElementById('finExName').value = '';
+                    document.getElementById('finExPrice').value = '';
+                    document.getElementById('finExDesc').value = '';
+                    await loadExtras();
+                } else {
+                    const e = await res.json().catch(() => ({}));
+                    alert(e.error || 'Erro ao salvar serviço');
+                }
+            };
         }
     }
 
@@ -307,6 +506,62 @@ document.addEventListener('DOMContentLoaded', () => {
                         </tbody>
                     </table>
                 </div>
+            </div>
+        `,
+        financeiro: `
+            <div class="page-header">
+                <h1 class="page-title">Financeiro</h1>
+                <button type="button" class="btn" id="finRefreshBtn"><i class="ph ph-arrows-clockwise"></i> Atualizar</button>
+            </div>
+            <div id="financeiroKeyWarn" class="card" style="display:none;border:1px solid var(--danger);color:var(--danger);margin-bottom:1rem;">
+                Não foi possível carregar a chave interna. Abra <strong>Configurações</strong> neste painel e aguarde o carregamento, depois volte aqui.
+            </div>
+            <div class="grid-cards">
+                <div class="card stat-card">
+                    <div class="stat-icon success"><i class="ph ph-coins"></i></div>
+                    <div class="stat-info">
+                        <h3>Receita confirmada</h3>
+                        <p id="finRevenue">R$ —</p>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-icon warning"><i class="ph ph-hourglass"></i></div>
+                    <div class="stat-info">
+                        <h3>Saldo a receber (50%)</h3>
+                        <p id="finBalance">R$ —</p>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-icon primary"><i class="ph ph-chart-line-up"></i></div>
+                    <div class="stat-info">
+                        <h3>Taxa de ocupação (mês)</h3>
+                        <p id="finOcc">— %</p>
+                        <small id="finOccNote" style="color:var(--text-muted);display:block;margin-top:0.35rem;"></small>
+                    </div>
+                </div>
+            </div>
+            <div class="card" style="margin-bottom:1.5rem;">
+                <h3 style="margin-bottom:1rem;">Cupons de desconto</h3>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:0.75rem;align-items:end;margin-bottom:1rem;">
+                    <div class="form-group" style="margin:0;"><label>Código</label><input type="text" id="finCouponCode" class="form-control" placeholder="PROMO10"></div>
+                    <div class="form-group" style="margin:0;"><label>Tipo</label>
+                        <select id="finCouponType" class="form-control"><option value="percent">Percentual</option><option value="fixed">Valor fixo</option></select>
+                    </div>
+                    <div class="form-group" style="margin:0;"><label>Valor</label><input type="number" id="finCouponVal" class="form-control" step="0.01" min="0" placeholder="10"></div>
+                    <div class="form-group" style="margin:0;"><label>Validade (opc.)</label><input type="date" id="finCouponExpiry" class="form-control"></div>
+                    <button type="button" class="btn btn-primary" id="finCouponAdd">Adicionar</button>
+                </div>
+                <div class="table-container"><table class="data-table"><thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Validade</th><th>Ativo</th><th></th></tr></thead><tbody id="finCouponsBody"></tbody></table></div>
+            </div>
+            <div class="card">
+                <h3 style="margin-bottom:1rem;">Serviços extras</h3>
+                <div style="display:grid;grid-template-columns:2fr 1fr 2fr auto;gap:0.75rem;align-items:end;margin-bottom:1rem;">
+                    <div class="form-group" style="margin:0;"><label>Nome</label><input type="text" id="finExName" class="form-control" placeholder="Ex.: Café da manhã"></div>
+                    <div class="form-group" style="margin:0;"><label>Preço</label><input type="number" id="finExPrice" class="form-control" step="0.01" min="0"></div>
+                    <div class="form-group" style="margin:0;"><label>Descrição</label><input type="text" id="finExDesc" class="form-control" placeholder="Opcional"></div>
+                    <button type="button" class="btn btn-primary" id="finExAdd">Adicionar</button>
+                </div>
+                <div class="table-container"><table class="data-table"><thead><tr><th>Nome</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody id="finExtrasBody"></tbody></table></div>
             </div>
         `,
         settings: `
@@ -968,7 +1223,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
         } else if (isSecretaryRole(adminRole)) {
-            const restrictedViews = ['settings', 'customization', 'users'];
+            const restrictedViews = ['settings', 'customization', 'users', 'financeiro'];
             if (restrictedViews.includes(viewName)) {
                 document.getElementById('app').innerHTML = `<div class="card"><h2 style="color:var(--danger)">Acesso Negado</h2><p>Você não tem permissão para acessar esta página.</p></div>`;
                 return;
@@ -1009,6 +1264,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (viewName === 'reservations') {
                 bindReservationButtons();
+            }
+            if (viewName === 'financeiro') {
+                void initFinanceiroView();
             }
         } else {
             appContainer.innerHTML = `<h2>View não encontrada</h2>`;
@@ -1724,6 +1982,17 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <input type="number" id="addPrice" class="form-control" required min="10" value="${chalet ? chalet.price : ''}">
                             </div>
                         </div>
+                        <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.5rem;">
+                            <div class="form-group" style="flex:1; min-width:200px;">
+                                <label>Hóspedes Inclusos (Base)</label>
+                                <input type="number" id="addBaseGuests" class="form-control" min="1" max="50" value="${chalet != null && chalet.base_guests != null ? chalet.base_guests : 2}">
+                                <small style="color:#666;">Incluídos no preço da diária; acima aplica-se a taxa extra por noite.</small>
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:200px;">
+                                <label>Taxa por Hóspede Extra (R$)</label>
+                                <input type="number" id="addExtraGuestFee" class="form-control" min="0" step="0.01" value="${chalet != null && chalet.extra_guest_fee != null ? chalet.extra_guest_fee : '0'}">
+                            </div>
+                        </div>
 
                         <div class="form-group" style="background: var(--bg-light); padding: 1rem; border-radius: 8px;">
                             <h4 style="margin-bottom:0.5rem; font-size:0.95rem; color:var(--text-dark);">Fotos do Chalé</h4>
@@ -2099,6 +2368,10 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('type', document.getElementById('addType').value);
         formData.append('badge', document.getElementById('addBadge').value);
         formData.append('price', document.getElementById('addPrice').value);
+        const baseGuestsEl = document.getElementById('addBaseGuests');
+        const extraFeeEl = document.getElementById('addExtraGuestFee');
+        if (baseGuestsEl) formData.append('base_guests', baseGuestsEl.value);
+        if (extraFeeEl) formData.append('extra_guest_fee', extraFeeEl.value);
         formData.append('description', document.getElementById('addDesc').value);
         formData.append('full_description', document.getElementById('addFullDesc').value);
         formData.append('status', document.getElementById('addStatus').value);
@@ -2195,6 +2468,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'reservations', label: 'Reservas' },
         { id: 'chalets', label: 'Chalés' },
+        { id: 'financeiro', label: 'Financeiro' },
         { id: 'settings', label: 'Configurações' },
         { id: 'customization', label: 'Personalização' },
         { id: 'users', label: 'Usuários' }

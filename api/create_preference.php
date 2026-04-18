@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/pricing.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     jsonResponse(['error' => 'Método não permitido'], 405);
@@ -60,9 +61,34 @@ try {
         jsonResponse(['error' => 'Mercado Pago não está configurado'], 400);
     }
 
-    $totalAmount = isset($reservation['total_amount']) ? (float)$reservation['total_amount'] : 0.0;
+    $totalAmount = isset($reservation['total_amount']) ? (float) $reservation['total_amount'] : 0.0;
     if ($totalAmount <= 0) {
         jsonResponse(['error' => 'Valor da reserva inválido'], 400);
+    }
+
+    // Coerência com tarifário atual (registo em log; reservas novas já vêm com total calculado em reservations.php)
+    $stmtCh = $pdo->prepare('SELECT * FROM chalets WHERE id = ? LIMIT 1');
+    $stmtCh->execute([(int) ($reservation['chalet_id'] ?? 0)]);
+    $chaletForPricing = $stmtCh->fetch(PDO::FETCH_ASSOC);
+    if ($chaletForPricing) {
+        $stmtH = $pdo->prepare('SELECT custom_date AS date, price FROM chalet_custom_prices WHERE chalet_id = ?');
+        $stmtH->execute([(int) $chaletForPricing['id']]);
+        $chaletForPricing['holidays'] = $stmtH->fetchAll(PDO::FETCH_ASSOC);
+        $expectedTotal = pricing_reservation_total(
+            $chaletForPricing,
+            (string) ($reservation['checkin_date'] ?? ''),
+            (string) ($reservation['checkout_date'] ?? ''),
+            (int) ($reservation['guests_adults'] ?? 2),
+            (int) ($reservation['guests_children'] ?? 0)
+        );
+        if (abs($expectedTotal - $totalAmount) > 0.05) {
+            error_log(sprintf(
+                'create_preference: total_amount (%.2f) difere do recalculado (%.2f) reserva_id=%s',
+                $totalAmount,
+                $expectedTotal,
+                (string) $reservationId
+            ));
+        }
     }
 
     $paymentRule = strtolower((string)($reservation['payment_rule'] ?? 'full'));
@@ -91,6 +117,12 @@ try {
         (string)($reservation['checkin_date'] ?? ''),
         (string)($reservation['checkout_date'] ?? '')
     );
+    if (!empty($reservation['coupon_code'])) {
+        $description .= ' | Cupom: ' . (string) $reservation['coupon_code'];
+    }
+    if (!empty($reservation['extras_total']) && (float) $reservation['extras_total'] > 0) {
+        $description .= ' | Serviços extras: R$ ' . number_format((float) $reservation['extras_total'], 2, ',', '.');
+    }
 
     $preferenceData = [
         'items' => [

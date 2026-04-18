@@ -1,5 +1,7 @@
 <?php
 require_once 'db.php';
+require_once __DIR__ . '/pricing.php';
+require_once __DIR__ . '/booking_extras.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -39,7 +41,7 @@ switch ($method) {
         $data = json_decode(file_get_contents("php://input"), true);
 
         // Validação básica
-        $required_fields = ['guest_name', 'checkin_date', 'checkout_date', 'total_amount'];
+        $required_fields = ['guest_name', 'checkin_date', 'checkout_date'];
         $missing = [];
         foreach ($required_fields as $field) {
             if (!isset($data[$field])) {
@@ -103,22 +105,51 @@ switch ($method) {
             jsonResponse(['error' => 'Período indisponível para este chalé (reserva já confirmada ou em hold).'], 409);
         }
 
-        // Tratamento do valor (pode vir "R$ 800,00" ou 800.00 numérico)
-        if (is_numeric($data['total_amount'])) {
-            $total = floatval($data['total_amount']);
+        $stmtChalet = $pdo->prepare('SELECT * FROM chalets WHERE id = ? LIMIT 1');
+        $stmtChalet->execute([$chalet_id]);
+        $chaletRow = $stmtChalet->fetch(PDO::FETCH_ASSOC);
+        if (!$chaletRow) {
+            jsonResponse(['error' => 'Chalé não encontrado'], 400);
         }
-        else {
-            $totalText = str_replace(['R$', ' ', '.'], '', $data['total_amount']);
-            $totalText = str_replace(',', '.', $totalText);
-            $total = floatval($totalText);
+        $stmtHol = $pdo->prepare('SELECT custom_date AS date, price, description AS descr FROM chalet_custom_prices WHERE chalet_id = ?');
+        $stmtHol->execute([$chalet_id]);
+        $chaletRow['holidays'] = $stmtHol->fetchAll(PDO::FETCH_ASSOC);
+
+        $guestsAdults = isset($data['guests_adults']) ? (int) $data['guests_adults'] : 2;
+        $guestsChildren = isset($data['guests_children']) ? (int) $data['guests_children'] : 0;
+        if ($guestsAdults < 0) {
+            $guestsAdults = 0;
+        }
+        if ($guestsChildren < 0) {
+            $guestsChildren = 0;
         }
 
-        $stmt = $pdo->prepare("INSERT INTO reservations (guest_name, guest_email, guest_phone, guests_adults, guests_children, chalet_id, checkin_date, checkout_date, total_amount, payment_rule, status, balance_paid, balance_paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $lodgingTotal = pricing_reservation_total($chaletRow, $checkin, $checkout, $guestsAdults, $guestsChildren);
+        $extraIds = be_parse_extra_service_ids_from_payload($data);
+        $extraPack = be_extra_services_from_ids($pdo, $extraIds);
+        $extrasTotal = $extraPack['total'];
+        $extrasJson = json_encode($extraPack['lines'], JSON_UNESCAPED_UNICODE);
+
+        $preCoupon = round($lodgingTotal + $extrasTotal, 2);
+        $couponInput = trim((string) ($data['coupon_code'] ?? ''));
+        $couponRow = $couponInput !== '' ? be_find_active_coupon($pdo, $couponInput) : null;
+        if ($couponInput !== '' && !$couponRow) {
+            jsonResponse(['error' => 'Cupom inválido ou expirado.'], 400);
+        }
+        $discountAmount = $couponRow ? be_compute_discount($preCoupon, $couponRow) : 0.0;
+        $couponStored = $couponRow ? be_normalize_coupon_code($couponInput) : null;
+        $total = max(0.0, round($preCoupon - $discountAmount, 2));
+
+        $fnrhToken = bin2hex(random_bytes(16));
+
+        $stmt = $pdo->prepare('INSERT INTO reservations (
+            guest_name, guest_email, guest_phone, guests_adults, guests_children, chalet_id, checkin_date, checkout_date,
+            total_amount, payment_rule, status, balance_paid, balance_paid_at,
+            coupon_code, discount_amount, extras_json, extras_total, fnrh_access_token, fnrh_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)');
 
         $email = $data['guest_email'] ?? null;
         $phone = $data['guest_phone'] ?? null;
-        $guestsAdults = isset($data['guests_adults']) ? (int)$data['guests_adults'] : 2;
-        $guestsChildren = isset($data['guests_children']) ? (int)$data['guests_children'] : 0;
         $status = $data['status'] ?? 'Confirmada';
         $payment_rule = $data['payment_rule'] ?? 'full';
         $balancePaid = isset($data['balance_paid'])
@@ -129,7 +160,26 @@ switch ($method) {
             $balancePaidAt = date('Y-m-d H:i:s');
         }
 
-        if ($stmt->execute([$data['guest_name'], $email, $phone, $guestsAdults, $guestsChildren, $chalet_id, $checkin, $checkout, $total, $payment_rule, $status, $balancePaid, $balancePaidAt])) {
+        if ($stmt->execute([
+            $data['guest_name'],
+            $email,
+            $phone,
+            $guestsAdults,
+            $guestsChildren,
+            $chalet_id,
+            $checkin,
+            $checkout,
+            $total,
+            $payment_rule,
+            $status,
+            $balancePaid,
+            $balancePaidAt,
+            $couponStored,
+            $discountAmount,
+            $extrasJson,
+            $extrasTotal,
+            $fnrhToken,
+        ])) {
             jsonResponse([
                 'status' => 'success',
                 'message' => 'Reserva criada com sucesso',

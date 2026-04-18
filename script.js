@@ -5,6 +5,58 @@ document.addEventListener('DOMContentLoaded', () => {
     let latestAvailabilityRequest = 0;
     let currentChalet = 'Chalé Alpino';
 
+    function countNightsBetween(checkinStr, checkoutStr) {
+        const partsIn = checkinStr.split('-');
+        const partsOut = checkoutStr.split('-');
+        const cin = new Date(partsIn[0], partsIn[1] - 1, partsIn[2]);
+        const cout = new Date(partsOut[0], partsOut[1] - 1, partsOut[2]);
+        const diffDays = Math.ceil((cout - cin) / (1000 * 60 * 60 * 24));
+        return diffDays > 0 ? diffDays : 1;
+    }
+
+    /** Soma das diárias (feriados + preço por dia da semana), alinhado com api/pricing.php */
+    function computeLodgingSubtotal(chalet, checkinStr, checkoutStr) {
+        if (!chalet || !checkinStr || !checkoutStr) return 0;
+        const nights = countNightsBetween(checkinStr, checkoutStr);
+        const partsIn = checkinStr.split('-');
+        const cin = new Date(partsIn[0], partsIn[1] - 1, partsIn[2]);
+        const basePrice = chalet.price != null ? parseFloat(chalet.price) : 0;
+        let lodging = 0;
+        for (let i = 0; i < nights; i++) {
+            const currentDate = new Date(cin);
+            currentDate.setDate(currentDate.getDate() + i);
+            const year = currentDate.getFullYear();
+            const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+            const day = String(currentDate.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            const dayOfWeek = currentDate.getDay();
+            let nightPrice = basePrice;
+            const hol = chalet.holidays?.find((h) => h.date === dateStr);
+            if (hol && hol.price) {
+                nightPrice = parseFloat(hol.price);
+            } else {
+                const weekProps = ['price_sun', 'price_mon', 'price_tue', 'price_wed', 'price_thu', 'price_fri', 'price_sat'];
+                const prop = weekProps[dayOfWeek];
+                if (chalet[prop] && parseFloat(chalet[prop]) > 0) {
+                    nightPrice = parseFloat(chalet[prop]);
+                }
+            }
+            lodging += nightPrice;
+        }
+        return Math.round(lodging * 100) / 100;
+    }
+
+    /** (total_hóspedes - base_guests) * extra_guest_fee * noites */
+    function computeExtraGuestSubtotal(chalet, guestsAdults, guestsChildren, nights) {
+        if (!chalet || nights < 1) return 0;
+        const base = Math.max(1, parseInt(String(chalet.base_guests ?? 2), 10) || 2);
+        const fee = parseFloat(String(chalet.extra_guest_fee ?? 0)) || 0;
+        if (fee <= 0) return 0;
+        const totalG = Math.max(0, parseInt(String(guestsAdults), 10) || 0) + Math.max(0, parseInt(String(guestsChildren), 10) || 0);
+        const extra = Math.max(0, totalG - base);
+        return Math.round(extra * fee * nights * 100) / 100;
+    }
+
     /* =========================================
        NAVBAR SCROLL EFFECT
        ========================================= */
@@ -131,6 +183,74 @@ document.addEventListener('DOMContentLoaded', () => {
     const finalBookingForm = document.getElementById('finalBookingForm');
     const toast = document.getElementById('successToast');
 
+    let bookingOptions = { show_coupon_field: false, show_extras_section: false, extra_services: [] };
+    window.__couponPreview = null;
+    window.__lastModalSubtotalPreCoupon = 0;
+
+    function getSelectedExtrasTotal() {
+        const list = document.getElementById('bookingExtrasList');
+        if (!list) return 0;
+        let s = 0;
+        list.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
+            s += parseFloat(cb.getAttribute('data-price') || '0') || 0;
+        });
+        return Math.round(s * 100) / 100;
+    }
+
+    function hideOptionalSummaryRows() {
+        const ex = document.getElementById('summaryExtrasRow');
+        const di = document.getElementById('summaryDiscountRow');
+        if (ex) ex.style.display = 'none';
+        if (di) di.style.display = 'none';
+        window.__lastModalSubtotalPreCoupon = 0;
+    }
+
+    function renderBookingOptionsUI() {
+        const couponBlock = document.getElementById('bookingCouponBlock');
+        const extrasBlock = document.getElementById('bookingExtrasBlock');
+        const extrasList = document.getElementById('bookingExtrasList');
+        if (couponBlock) {
+            couponBlock.style.display = bookingOptions.show_coupon_field ? 'block' : 'none';
+        }
+        if (!bookingOptions.show_coupon_field) {
+            const t = document.getElementById('hasCouponToggle');
+            if (t) t.checked = false;
+            const w = document.getElementById('bookingCouponFieldsWrap');
+            if (w) w.style.display = 'none';
+        }
+        if (extrasBlock && extrasList) {
+            if (bookingOptions.show_extras_section && bookingOptions.extra_services.length > 0) {
+                extrasBlock.style.display = 'block';
+                extrasList.innerHTML = bookingOptions.extra_services.map((ex) => {
+                    const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                    return `
+                    <label style="display:flex;align-items:flex-start;gap:0.5rem;margin-bottom:0.5rem;cursor:pointer;font-weight:400;">
+                        <input type="checkbox" name="extra_service" value="${ex.id}" data-price="${ex.price}">
+                        <span><strong>${esc(ex.name)}</strong> — R$ ${Number(ex.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        ${ex.description ? `<br><small style="opacity:0.85;">${esc(ex.description)}</small>` : ''}</span>
+                    </label>`;
+                }).join('');
+            } else {
+                extrasBlock.style.display = 'none';
+                extrasList.innerHTML = '';
+            }
+        }
+    }
+
+    async function loadBookingOptions() {
+        try {
+            const res = await fetch('api/booking_options.php');
+            const data = await res.json();
+            bookingOptions = {
+                show_coupon_field: !!data.show_coupon_field,
+                show_extras_section: !!data.show_extras_section,
+                extra_services: Array.isArray(data.extra_services) ? data.extra_services : []
+            };
+        } catch {
+            bookingOptions = { show_coupon_field: false, show_extras_section: false, extra_services: [] };
+        }
+        renderBookingOptionsUI();
+    }
 
     // Set minimum dates to today
     const today = new Date().toISOString().split('T')[0];
@@ -169,6 +289,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const guestsOptionEl = document.getElementById('guestsOption');
         const modalGuestsEl = document.getElementById('modalGuestsOption');
         if (guestsOptionEl && modalGuestsEl) modalGuestsEl.value = guestsOptionEl.value;
+
+        document.querySelectorAll('#bookingExtrasList input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
+        const hct = document.getElementById('hasCouponToggle');
+        if (hct) hct.checked = false;
+        const wrap = document.getElementById('bookingCouponFieldsWrap');
+        if (wrap) wrap.style.display = 'none';
+        const ci = document.getElementById('couponCodeInput');
+        if (ci) ci.value = '';
+        const fb = document.getElementById('couponFeedback');
+        if (fb) { fb.textContent = ''; fb.style.color = ''; }
+        window.__couponPreview = null;
 
         updateModalSummary();
 
@@ -228,6 +359,76 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('modalCheckin').addEventListener('change', scheduleUpdateModalSummary);
     document.getElementById('modalCheckout').addEventListener('change', scheduleUpdateModalSummary);
+    const modalGuestsOptionEl = document.getElementById('modalGuestsOption');
+    if (modalGuestsOptionEl) {
+        modalGuestsOptionEl.addEventListener('change', scheduleUpdateModalSummary);
+    }
+
+    if (modal) {
+        modal.addEventListener('change', (e) => {
+            if (e.target && e.target.id === 'hasCouponToggle') {
+                const wrap = document.getElementById('bookingCouponFieldsWrap');
+                if (wrap) wrap.style.display = e.target.checked ? 'block' : 'none';
+                window.__couponPreview = null;
+                const cfb = document.getElementById('couponFeedback');
+                if (cfb) cfb.textContent = '';
+                scheduleUpdateModalSummary();
+            }
+            if (e.target && e.target.matches && e.target.matches('#bookingExtrasList input[type="checkbox"]')) {
+                window.__couponPreview = null;
+                const cfb = document.getElementById('couponFeedback');
+                if (cfb) cfb.textContent = '';
+                scheduleUpdateModalSummary();
+            }
+        });
+        modal.addEventListener('click', async (e) => {
+            if (!e.target || e.target.id !== 'applyCouponBtn') return;
+            const cfb = document.getElementById('couponFeedback');
+            const codeInput = document.getElementById('couponCodeInput');
+            const toggle = document.getElementById('hasCouponToggle');
+            if (!toggle || !toggle.checked) {
+                if (cfb) { cfb.textContent = 'Marque "Possui cupom?" e informe o código.'; cfb.style.color = 'var(--danger)'; }
+                return;
+            }
+            const code = codeInput && codeInput.value.trim();
+            if (!code) {
+                if (cfb) { cfb.textContent = 'Informe o código do cupom.'; cfb.style.color = 'var(--danger)'; }
+                return;
+            }
+            const pre = window.__lastModalSubtotalPreCoupon || 0;
+            if (pre <= 0) {
+                if (cfb) { cfb.textContent = 'Aguarde o cálculo do valor da estadia.'; cfb.style.color = 'var(--danger)'; }
+                return;
+            }
+            try {
+                const res = await fetch('api/validate_coupon.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, subtotal: pre })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Erro');
+                if (data.valid) {
+                    window.__couponPreview = { discount: data.discount, preSubtotal: pre, code };
+                    if (cfb) {
+                        cfb.textContent = `Desconto aplicado: R$ ${Number(data.discount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+                        cfb.style.color = '#2e7d32';
+                    }
+                } else {
+                    window.__couponPreview = null;
+                    if (cfb) {
+                        cfb.textContent = data.message || 'Cupom inválido ou expirado.';
+                        cfb.style.color = 'var(--danger)';
+                    }
+                }
+                updateModalSummary();
+            } catch {
+                window.__couponPreview = null;
+                if (cfb) { cfb.textContent = 'Não foi possível validar o cupom.'; cfb.style.color = 'var(--danger)'; }
+                updateModalSummary();
+            }
+        });
+    }
 
     async function checkAvailability(chaletId, checkinStr, checkoutStr) {
         if (!chaletId || !checkinStr || !checkoutStr) return false;
@@ -262,18 +463,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const checkoutStr = document.getElementById('modalCheckout').value;
 
         const nightsEl = document.getElementById('summaryNights');
+        const lodgingEl = document.getElementById('summaryLodging');
+        const extraRow = document.getElementById('summaryExtraGuestsRow');
+        const extraLabelEl = document.getElementById('summaryExtraGuestsLabel');
+        const extraEl = document.getElementById('summaryExtraGuests');
         const totalEl = document.getElementById('summaryTotal');
         const confirmBtn = document.getElementById('confirmBookingBtn');
         const availMsg = document.getElementById('availabilityMessage');
+        const summaryExtrasRow = document.getElementById('summaryExtrasRow');
+        const summaryExtrasEl = document.getElementById('summaryExtras');
+        const summaryDiscountRow = document.getElementById('summaryDiscountRow');
+        const summaryDiscountEl = document.getElementById('summaryDiscount');
 
         // Reset
         confirmBtn.disabled = true;
         availMsg.style.display = 'none';
         availMsg.className = '';
         availMsg.textContent = '';
+        if (extraRow) extraRow.style.display = 'none';
+        hideOptionalSummaryRows();
 
         if (!checkinStr || !checkoutStr) {
             nightsEl.textContent = '0';
+            if (lodgingEl) lodgingEl.textContent = 'R$ 0,00';
+            if (extraEl) extraEl.textContent = 'R$ 0,00';
             totalEl.textContent = 'R$ 0,00';
             return;
         }
@@ -283,16 +496,16 @@ document.addEventListener('DOMContentLoaded', () => {
             availMsg.textContent = "Data de Check-out deve ser após o Check-in.";
             availMsg.style.display = 'block';
             nightsEl.textContent = '0';
+            if (lodgingEl) lodgingEl.textContent = 'R$ 0,00';
+            if (extraEl) extraEl.textContent = 'R$ 0,00';
             totalEl.textContent = 'R$ 0,00';
             return;
         }
 
         const chalet = allChalets[currentChalet];
         const chaletId = chalet && chalet.id ? chalet.id : null;
-        const basePrice = chalet && chalet.price != null ? parseFloat(chalet.price) : 0;
 
-        let nights = 1;
-        let total = 0;
+        let nights = countNightsBetween(checkinStr, checkoutStr);
 
         // Verify availability against backend (Confirmada + hold ativo)
         if (!chaletId) {
@@ -300,6 +513,8 @@ document.addEventListener('DOMContentLoaded', () => {
             availMsg.innerHTML = '<i class="ph ph-warning"></i> Não foi possível validar a disponibilidade deste chalé.';
             availMsg.style.display = 'flex';
             nightsEl.textContent = '0';
+            if (lodgingEl) lodgingEl.textContent = 'R$ 0,00';
+            if (extraEl) extraEl.textContent = 'R$ 0,00';
             totalEl.textContent = 'R$ 0,00';
             return;
         }
@@ -315,48 +530,75 @@ document.addEventListener('DOMContentLoaded', () => {
             availMsg.innerHTML = '<i class="ph ph-bell"></i> Infelizmente estas datas acabaram de ser reservadas ou estão em processo de pagamento.';
             availMsg.style.display = 'flex';
             nightsEl.textContent = '0';
+            if (lodgingEl) lodgingEl.textContent = 'R$ 0,00';
+            if (extraEl) extraEl.textContent = 'R$ 0,00';
             totalEl.textContent = 'R$ 0,00';
             return;
         }
 
-        // Calculate nights and price
-        const partsIn = checkinStr.split('-');
-        const partsOut = checkoutStr.split('-');
-        const cin = new Date(partsIn[0], partsIn[1] - 1, partsIn[2]);
-        const cout = new Date(partsOut[0], partsOut[1] - 1, partsOut[2]);
+        const guestsOptEl = document.getElementById('modalGuestsOption');
+        const guestsVal = guestsOptEl ? guestsOptEl.value : '2_0';
+        const [ad, ch] = (guestsVal || '2_0').split('_').map(Number);
+        const guestsAdults = ad || 2;
+        const guestsChildren = ch || 0;
 
-        const diffTime = cout - cin;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        nights = diffDays > 0 ? diffDays : 1;
+        const lodging = computeLodgingSubtotal(chalet, checkinStr, checkoutStr);
+        const extraGuest = computeExtraGuestSubtotal(chalet, guestsAdults, guestsChildren, nights);
+        const extrasTotal = getSelectedExtrasTotal();
+        const baseTotal = Math.round((lodging + extraGuest + extrasTotal) * 100) / 100;
+        window.__lastModalSubtotalPreCoupon = baseTotal;
 
-        for (let i = 0; i < nights; i++) {
-            let currentDate = new Date(cin);
-            currentDate.setDate(currentDate.getDate() + i);
-
-            let year = currentDate.getFullYear();
-            let month = String(currentDate.getMonth() + 1).padStart(2, '0');
-            let day = String(currentDate.getDate()).padStart(2, '0');
-            let dateStr = `${year}-${month}-${day}`;
-            let dayOfWeek = currentDate.getDay();
-            let nightPrice = basePrice;
-
-            if (chalet) {
-                let hol = chalet.holidays?.find(h => h.date === dateStr);
-                if (hol && hol.price) {
-                    nightPrice = parseFloat(hol.price);
-                } else {
-                    const weekProps = ['price_sun', 'price_mon', 'price_tue', 'price_wed', 'price_thu', 'price_fri', 'price_sat'];
-                    const prop = weekProps[dayOfWeek];
-                    if (chalet[prop] && parseFloat(chalet[prop]) > 0) {
-                        nightPrice = parseFloat(chalet[prop]);
-                    }
+        let discount = 0;
+        const pv = window.__couponPreview;
+        const couponToggleEl = document.getElementById('hasCouponToggle');
+        const useCoupon = bookingOptions.show_coupon_field && couponToggleEl && couponToggleEl.checked;
+        if (useCoupon && pv) {
+            if (Math.abs(pv.preSubtotal - baseTotal) < 0.02) {
+                discount = Math.min(baseTotal, Math.max(0, parseFloat(pv.discount) || 0));
+            } else {
+                window.__couponPreview = null;
+                const cfb = document.getElementById('couponFeedback');
+                if (cfb) {
+                    cfb.textContent = 'Clique em Aplicar para atualizar o cupom.';
+                    cfb.style.color = 'var(--danger)';
                 }
             }
-            total += nightPrice;
         }
 
+        const grand = Math.max(0, Math.round((baseTotal - discount) * 100) / 100);
+
         nightsEl.textContent = nights;
-        totalEl.textContent = `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        if (lodgingEl) lodgingEl.textContent = `R$ ${lodging.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        if (extraGuest > 0 && extraRow && extraEl && extraLabelEl) {
+            const baseG = Math.max(1, parseInt(String(chalet.base_guests ?? 2), 10) || 2);
+            const fee = parseFloat(String(chalet.extra_guest_fee ?? 0)) || 0;
+            const totalG = guestsAdults + guestsChildren;
+            const extraCount = Math.max(0, totalG - baseG);
+            extraLabelEl.textContent = `Hóspedes extra (${extraCount} × R$ ${fee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} × ${nights} noites):`;
+            extraEl.textContent = `R$ ${extraGuest.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            extraRow.style.display = '';
+        } else if (extraRow) {
+            extraRow.style.display = 'none';
+        }
+
+        if (summaryExtrasRow && summaryExtrasEl) {
+            if (extrasTotal > 0) {
+                summaryExtrasRow.style.display = '';
+                summaryExtrasEl.textContent = `R$ ${extrasTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            } else {
+                summaryExtrasRow.style.display = 'none';
+            }
+        }
+        if (summaryDiscountRow && summaryDiscountEl) {
+            if (discount > 0) {
+                summaryDiscountRow.style.display = '';
+                summaryDiscountEl.textContent = `- R$ ${discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            } else {
+                summaryDiscountRow.style.display = 'none';
+            }
+        }
+
+        totalEl.textContent = `R$ ${grand.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
         confirmBtn.disabled = false;
 
         // Atualiza as opções de pagamento (100% ou 50%) baseadas neste total
@@ -468,39 +710,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         badgeHtml = `<div class="badge">${chalet.badge}</div>`;
                     }
 
-                    // Aqui calculamos o valor exato no periodo procurado ao inves do "A partir de"
-                    const diffTime = new Date(filterCheckout) - new Date(filterCheckin);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    let nights = diffDays > 0 ? diffDays : 1;
-
-                    let totalPrice = 0;
-                    const partsIn = filterCheckin.split('-');
-                    const cin = new Date(partsIn[0], partsIn[1] - 1, partsIn[2]);
-                    const basePrice = chalet.price != null ? parseFloat(chalet.price) : 0;
-
-                    for (let i = 0; i < nights; i++) {
-                        let currentDate = new Date(cin);
-                        currentDate.setDate(currentDate.getDate() + i);
-
-                        let year = currentDate.getFullYear();
-                        let month = String(currentDate.getMonth() + 1).padStart(2, '0');
-                        let day = String(currentDate.getDate()).padStart(2, '0');
-                        let dateStr = `${year}-${month}-${day}`;
-                        let dayOfWeek = currentDate.getDay();
-                        let nightPrice = basePrice;
-
-                        let hol = chalet.holidays?.find(h => h.date === dateStr);
-                        if (hol && hol.price) {
-                            nightPrice = parseFloat(hol.price);
-                        } else {
-                            const weekProps = ['price_sun', 'price_mon', 'price_tue', 'price_wed', 'price_thu', 'price_fri', 'price_sat'];
-                            const prop = weekProps[dayOfWeek];
-                            if (chalet[prop] && parseFloat(chalet[prop]) > 0) {
-                                nightPrice = parseFloat(chalet[prop]);
-                            }
-                        }
-                        totalPrice += nightPrice;
-                    }
+                    const nights = countNightsBetween(filterCheckin, filterCheckout);
+                    const guestsOptTop = document.getElementById('guestsOption');
+                    const gv = guestsOptTop && guestsOptTop.value ? guestsOptTop.value : '2_0';
+                    const [ga, gc] = gv.split('_').map(Number);
+                    const gAdults = ga || 2;
+                    const gChildren = gc || 0;
+                    const lodgingPart = computeLodgingSubtotal(chalet, filterCheckin, filterCheckout);
+                    const extraPart = computeExtraGuestSubtotal(chalet, gAdults, gChildren, nights);
+                    const totalPrice = Math.round((lodgingPart + extraPart) * 100) / 100;
 
                     const displayPrice = totalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 0 });
 
@@ -608,11 +826,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 chalet_name: reserva.chaletName,
                 checkin_date: reserva.checkin,
                 checkout_date: reserva.checkout,
-                total_amount: reserva.total,
                 payment_rule: paymentRule,
                 status: 'Aguardando Pagamento' // Novo status inicial
             };
             if (chaletForReserva && chaletForReserva.id) formDados.chalet_id = chaletForReserva.id;
+
+            const hasCouponEl = document.getElementById('hasCouponToggle');
+            if (hasCouponEl && hasCouponEl.checked) {
+                const cc = document.getElementById('couponCodeInput') && document.getElementById('couponCodeInput').value.trim();
+                if (cc) formDados.coupon_code = cc;
+            }
+            const extraIds = [];
+            document.querySelectorAll('#bookingExtrasList input[type="checkbox"]:checked').forEach((cb) => {
+                const id = parseInt(cb.value, 10);
+                if (id > 0) extraIds.push(id);
+            });
+            if (extraIds.length) formDados.extra_service_ids = extraIds;
 
             // 1. Salvar Intenção de Reserva no Banco via PHP API (Aguardando Pagamento)
             let reservationId = null;
@@ -622,10 +851,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(formDados)
                 });
+                const dbData = await resDb.json().catch(() => ({}));
                 if (!resDb.ok) {
-                    throw new Error("Erro ao salvar intenção de reserva no banco");
+                    alert(dbData.error || 'Não foi possível registrar a reserva. Verifique os dados e tente novamente.');
+                    submitBtn.textContent = 'Confirmar Reserva e Pagar';
+                    submitBtn.disabled = false;
+                    return;
                 }
-                const dbData = await resDb.json();
                 reservationId = dbData.id;
             } catch (e) {
                 console.error(e);
@@ -1012,6 +1244,7 @@ document.addEventListener('DOMContentLoaded', () => {
             initHeroSlideshow(initial.heroImages);
         }
         await loadSettings();
+        loadBookingOptions();
         loadChalets();
     })();
 

@@ -64,6 +64,15 @@ switch ($method) {
         $p_sat = !empty($_POST['price_sat']) ? floatval(str_replace(',', '.', $_POST['price_sat'])) : null;
         $p_sun = !empty($_POST['price_sun']) ? floatval(str_replace(',', '.', $_POST['price_sun'])) : null;
 
+        $base_guests = isset($_POST['base_guests']) ? (int) $_POST['base_guests'] : 2;
+        if ($base_guests < 1) {
+            $base_guests = 1;
+        }
+        $extra_guest_fee = isset($_POST['extra_guest_fee']) ? floatval(str_replace(',', '.', (string) $_POST['extra_guest_fee'])) : 0.0;
+        if ($extra_guest_fee < 0) {
+            $extra_guest_fee = 0.0;
+        }
+
         $imagePath = null;
         $uploadDir = __DIR__ . '/../images/uploads/';
         if (isset($_FILES['main_image']) && $_FILES['main_image']['error'] === UPLOAD_ERR_OK) {
@@ -104,8 +113,9 @@ switch ($method) {
             if ($id) {
                 // Edição de Chalé Existente
                 $sql = "UPDATE chalets SET name=?, `type`=?, badge=?, price=?, description=?, full_description=?, status=?, 
-                        price_mon=?, price_tue=?, price_wed=?, price_thu=?, price_fri=?, price_sat=?, price_sun=?";
-                $params = [$name, $type, $badge ?: null, $price, $description ?: null, $full_description ?: null, $status, $p_mon, $p_tue, $p_wed, $p_thu, $p_fri, $p_sat, $p_sun];
+                        price_mon=?, price_tue=?, price_wed=?, price_thu=?, price_fri=?, price_sat=?, price_sun=?,
+                        base_guests=?, extra_guest_fee=?";
+                $params = [$name, $type, $badge ?: null, $price, $description ?: null, $full_description ?: null, $status, $p_mon, $p_tue, $p_wed, $p_thu, $p_fri, $p_sat, $p_sun, $base_guests, $extra_guest_fee];
 
                 if ($imagePath) {
                     $sql .= ", main_image=?";
@@ -144,12 +154,12 @@ switch ($method) {
 
                 // Criação de Novo Chalé
                 $sql = "INSERT INTO chalets (name, type, badge, price, description, full_description, status, main_image, images,
-                        price_mon, price_tue, price_wed, price_thu, price_fri, price_sat, price_sun) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                        price_mon, price_tue, price_wed, price_thu, price_fri, price_sat, price_sun, base_guests, extra_guest_fee) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute([
                     $name, $type, $badge, $price, $description, $full_description, $status, $imagePath, (count($uploadedImages) > 0 ? json_encode($uploadedImages) : null),
-                    $p_mon, $p_tue, $p_wed, $p_thu, $p_fri, $p_sat, $p_sun
+                    $p_mon, $p_tue, $p_wed, $p_thu, $p_fri, $p_sat, $p_sun, $base_guests, $extra_guest_fee
                 ]);
                 $chalet_id = $pdo->lastInsertId();
             }
