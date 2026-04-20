@@ -2880,8 +2880,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div style="display:flex; gap:1rem;">
                             <div class="form-group" style="flex:1;">
-                                <label>Valor Total (R$)</label>
-                                <input type="number" step="0.01" id="editResTotal" class="form-control" required value="${res.total_amount}">
+                                <label>Valor Adicional / Ajuste (R$)</label>
+                                <input type="number" step="0.01" id="editResAdditionalValue" class="form-control" value="${res.additional_value != null ? res.additional_value : '0'}">
+                                <small style="color:#666;">Use para somar extras ou aplicar descontos (valor negativo).</small>
                             </div>
                             <div class="form-group" style="flex:1;">
                                 <label>Status</label>
@@ -2891,6 +2892,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <option value="Cancelada" ${res.status === 'Cancelada' ? 'selected' : ''}>Cancelada</option>
                                 </select>
                             </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Valor Total (R$)</label>
+                            <input type="number" step="0.01" id="editResTotal" class="form-control" required value="${res.total_amount}">
+                            <small id="editResTotalBreakdown" style="color:#666; display:block; margin-top:0.25rem;">Preenchido automaticamente. Edite para sobrescrever.</small>
                         </div>
                         
                         <button type="submit" class="btn" style="width:100%; justify-content:center; margin-top: 1rem;">${isEditing ? 'Atualizar Reserva' : 'Criar Reserva'}</button>
@@ -2904,6 +2911,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // hospedagem selecionada e reage à troca de hospedagem.
         const chaletSelect = document.getElementById('editResChaletId');
         const guestsSelect = document.getElementById('editResGuestsOption');
+        const checkinInput = document.getElementById('editResCheckin');
+        const checkoutInput = document.getElementById('editResCheckout');
+        const totalInput = document.getElementById('editResTotal');
+        const additionalInput = document.getElementById('editResAdditionalValue');
+        const breakdownEl = document.getElementById('editResTotalBreakdown');
         const currentGuestsVal = res ? `${res.guests_adults || 2}_${res.guests_children || 0}` : '2_0';
 
         function updateGuestsDropdown() {
@@ -2914,15 +2926,96 @@ document.addEventListener('DOMContentLoaded', () => {
             renderGuestOptionsAdmin(guestsSelect, maxGuests, valToSet);
         }
 
+        function diffNightsAdmin(checkinStr, checkoutStr) {
+            if (!checkinStr || !checkoutStr) return 0;
+            const ci = new Date(checkinStr + 'T00:00:00');
+            const co = new Date(checkoutStr + 'T00:00:00');
+            if (isNaN(ci.getTime()) || isNaN(co.getTime())) return 0;
+            const diffMs = co.getTime() - ci.getTime();
+            if (diffMs <= 0) return 0;
+            return Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+        }
+
+        function recalculateTotalAdmin() {
+            if (!totalInput) return;
+
+            const chaletObj = (typeof chaletsData !== 'undefined')
+                ? (chaletsData.find(c => String(c.id) === String(chaletSelect ? chaletSelect.value : '')) || null)
+                : null;
+            const price = chaletObj ? (parseFloat(chaletObj.price) || 0) : 0;
+            const baseGuests = chaletObj && chaletObj.base_guests != null ? parseInt(chaletObj.base_guests, 10) || 0 : 0;
+            const extraFee = chaletObj && chaletObj.extra_guest_fee != null ? parseFloat(chaletObj.extra_guest_fee) || 0 : 0;
+
+            const ciStr = checkinInput ? checkinInput.value : '';
+            const coStr = checkoutInput ? checkoutInput.value : '';
+            const nights = diffNightsAdmin(ciStr, coStr);
+
+            if (ciStr && coStr && nights === 0) {
+                totalInput.value = '0.00';
+                if (breakdownEl) {
+                    breakdownEl.textContent = 'Atenção: check-out deve ser posterior ao check-in.';
+                    breakdownEl.style.color = 'var(--danger)';
+                }
+                return;
+            }
+
+            const totalGuests = guestsSelect ? (parseGuestsOptionAdmin(guestsSelect.value).adults + parseGuestsOptionAdmin(guestsSelect.value).children) : 0;
+            const extraGuests = Math.max(0, totalGuests - baseGuests);
+
+            const lodging = Math.round(price * nights * 100) / 100;
+            const extra = Math.round(extraGuests * extraFee * nights * 100) / 100;
+            const adjustment = additionalInput ? (parseFloat(additionalInput.value) || 0) : 0;
+            const total = Math.round((lodging + extra + adjustment) * 100) / 100;
+
+            totalInput.value = total.toFixed(2);
+            if (breakdownEl) {
+                breakdownEl.style.color = '#666';
+                const fmt = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                const parts = [
+                    `${nights} noite(s) × ${fmt(price)} = ${fmt(lodging)}`
+                ];
+                if (extraGuests > 0) {
+                    parts.push(`${extraGuests} hóspede(s) extra × ${fmt(extraFee)} × ${nights} = ${fmt(extra)}`);
+                }
+                if (adjustment !== 0) {
+                    parts.push(`Ajuste: ${fmt(adjustment)}`);
+                }
+                parts.push(`Total: ${fmt(total)}`);
+                breakdownEl.textContent = parts.join(' · ');
+            }
+        }
+
         if (chaletSelect) {
-            chaletSelect.addEventListener('change', updateGuestsDropdown);
+            chaletSelect.addEventListener('change', () => { updateGuestsDropdown(); recalculateTotalAdmin(); });
             updateGuestsDropdown();
+        }
+        if (guestsSelect) {
+            guestsSelect.addEventListener('change', recalculateTotalAdmin);
+        }
+        if (checkinInput) checkinInput.addEventListener('change', recalculateTotalAdmin);
+        if (checkoutInput) checkoutInput.addEventListener('change', recalculateTotalAdmin);
+        if (additionalInput) additionalInput.addEventListener('input', recalculateTotalAdmin);
+        if (totalInput) {
+            totalInput.addEventListener('input', () => {
+                if (breakdownEl) {
+                    breakdownEl.textContent = 'Valor total sobrescrito manualmente. Será recalculado se datas, hospedagem, hóspedes ou ajuste mudarem.';
+                    breakdownEl.style.color = 'var(--warning, #b45309)';
+                }
+            });
+        }
+
+        // Em edição, não sobrescrevemos imediatamente um total já existente — só
+        // quando o admin alterar algum dos inputs que participam do cálculo.
+        if (!isEditing || !res.total_amount) {
+            recalculateTotalAdmin();
         }
     }
 
     window.handleEditReservation = async function (e, id) {
         e.preventDefault();
 
+        const additionalEl = document.getElementById('editResAdditionalValue');
+        const additionalValue = additionalEl ? (parseFloat(additionalEl.value) || 0) : 0;
         const payload = {
             guest_name: document.getElementById('editResName').value,
             guest_email: document.getElementById('editResEmail').value,
@@ -2933,6 +3026,7 @@ document.addEventListener('DOMContentLoaded', () => {
             checkin_date: document.getElementById('editResCheckin').value,
             checkout_date: document.getElementById('editResCheckout').value,
             total_amount: document.getElementById('editResTotal').value,
+            additional_value: additionalValue,
             status: document.getElementById('editResStatus').value
         };
 
