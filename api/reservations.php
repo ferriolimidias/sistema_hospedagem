@@ -156,14 +156,15 @@ switch ($method) {
 
         $stmt = $pdo->prepare('INSERT INTO reservations (
             guest_name, guest_email, guest_phone, guests_adults, guests_children, chalet_id, checkin_date, checkout_date,
-            total_amount, payment_rule, status, balance_paid, balance_paid_at,
+            total_amount, additional_value, payment_rule, status, balance_paid, balance_paid_at,
             coupon_code, discount_amount, extras_json, extras_total, fnrh_access_token, fnrh_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)');
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)');
 
         $email = $data['guest_email'] ?? null;
         $phone = $data['guest_phone'] ?? null;
         $status = $data['status'] ?? 'Confirmada';
         $payment_rule = $data['payment_rule'] ?? 'full';
+        $additional_value = isset($data['additional_value']) ? (float) $data['additional_value'] : 0;
         $balancePaid = isset($data['balance_paid'])
             ? (int)((bool)$data['balance_paid'])
             : (($payment_rule === 'full' && $status === 'Confirmada') ? 1 : 0);
@@ -182,6 +183,7 @@ switch ($method) {
             $checkin,
             $checkout,
             $total,
+            $additional_value,
             $payment_rule,
             $status,
             $balancePaid,
@@ -228,12 +230,13 @@ switch ($method) {
                     'requested_guests' => $totalGuests
                 ], 400);
             }
-            $stmt = $pdo->prepare("UPDATE reservations SET guest_name = ?, guest_email = ?, guest_phone = ?, guests_adults = ?, guests_children = ?, chalet_id = ?, checkin_date = ?, checkout_date = ?, total_amount = ?, payment_rule = ?, status = ?, balance_paid = ?, balance_paid_at = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE reservations SET guest_name = ?, guest_email = ?, guest_phone = ?, guests_adults = ?, guests_children = ?, chalet_id = ?, checkin_date = ?, checkout_date = ?, total_amount = ?, additional_value = ?, payment_rule = ?, status = ?, balance_paid = ?, balance_paid_at = ? WHERE id = ?");
             $balancePaid = isset($data['balance_paid'])
                 ? (int)((bool)$data['balance_paid'])
                 : ((($data['payment_rule'] ?? 'full') === 'full' && ($data['status'] ?? 'Confirmada') === 'Confirmada') ? 1 : 0);
             $pr = $data['payment_rule'] ?? 'full';
             $st = $data['status'] ?? 'Confirmada';
+            $additional_value = isset($data['additional_value']) ? (float) $data['additional_value'] : 0;
             $stmtPrev = $pdo->prepare("SELECT balance_paid_at FROM reservations WHERE id = ? LIMIT 1");
             $stmtPrev->execute([$_GET['id']]);
             $prevRow = $stmtPrev->fetch();
@@ -254,6 +257,7 @@ switch ($method) {
             $data['checkin_date'],
             $data['checkout_date'],
             $data['total_amount'],
+            $additional_value,
             $pr,
             $st,
             $balancePaid,

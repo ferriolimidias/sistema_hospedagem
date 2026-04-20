@@ -258,6 +258,7 @@ function runInitialSchema(PDO $pdo): void
             checkin_date DATE NOT NULL,
             checkout_date DATE NOT NULL,
             total_amount DECIMAL(10,2) NOT NULL,
+            additional_value DECIMAL(10,2) NOT NULL DEFAULT 0,
             payment_rule VARCHAR(20) NOT NULL DEFAULT 'full',
             status VARCHAR(50) NOT NULL DEFAULT 'Confirmada',
             expires_at DATETIME NULL,
@@ -447,6 +448,12 @@ function runInitialSchema(PDO $pdo): void
 
     try {
         $pdo->exec('ALTER TABLE reservations ADD COLUMN fnrh_data TEXT NULL AFTER fnrh_access_token');
+    } catch (PDOException $e) {
+        // Coluna já existe.
+    }
+
+    try {
+        $pdo->exec('ALTER TABLE reservations ADD COLUMN additional_value DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER total_amount');
     } catch (PDOException $e) {
         // Coluna já existe.
     }
