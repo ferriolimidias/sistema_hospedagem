@@ -651,3 +651,177 @@ body.role-secretaria .page-header .btn[onclick*="openChaletModal"] {
         display: none;
     }
 }
+
+/* =========================================
+   GALLERY MANAGER (Thumbnails + Remove)
+   ========================================= */
+.gallery-manager {
+    margin-top: 0.75rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.75rem;
+}
+
+.gallery-thumb {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f1f3f5;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    border: 2px solid transparent;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.gallery-thumb:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+}
+
+.gallery-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.gallery-thumb .thumb-remove {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(220, 53, 69, 0.92);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0;
+    transform: scale(0.85);
+    transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s ease;
+    z-index: 2;
+    padding: 0;
+}
+
+.gallery-thumb:hover .thumb-remove,
+.gallery-thumb:focus-within .thumb-remove {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.gallery-thumb .thumb-remove:hover {
+    background: #dc3545;
+}
+
+.gallery-thumb .thumb-badge {
+    position: absolute;
+    bottom: 6px;
+    left: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+    z-index: 2;
+}
+
+.gallery-thumb.thumb-new {
+    border-color: rgba(16, 185, 129, 0.6);
+}
+
+.gallery-thumb.thumb-new .thumb-badge {
+    background: rgba(16, 185, 129, 0.92);
+}
+
+.gallery-thumb.thumb-pending-delete {
+    border-color: #dc3545;
+}
+
+.gallery-thumb.thumb-pending-delete img {
+    opacity: 0.3;
+    filter: grayscale(70%);
+}
+
+.gallery-thumb.thumb-pending-delete .thumb-badge {
+    background: #dc3545;
+}
+
+.gallery-thumb.thumb-pending-delete .thumb-remove {
+    background: rgba(16, 185, 129, 0.92);
+    opacity: 1;
+    transform: scale(1);
+}
+
+.gallery-thumb.thumb-pending-delete .thumb-remove:hover {
+    background: #10b981;
+}
+
+.gallery-manager-empty {
+    padding: 0.75rem;
+    color: #888;
+    font-size: 0.85rem;
+    font-style: italic;
+    text-align: center;
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.02);
+}
+
+/* Drag & drop (reorder) — apenas para thumbs já guardadas */
+.gallery-thumb[draggable="true"] {
+    cursor: grab;
+}
+
+.gallery-thumb[draggable="true"]:active,
+.gallery-thumb.dragging {
+    cursor: grabbing;
+}
+
+.gallery-thumb.dragging {
+    opacity: 0.45;
+    transform: scale(0.98);
+}
+
+.gallery-thumb.drop-before {
+    box-shadow: -4px 0 0 0 var(--primary-color, #ea580c), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.gallery-thumb.drop-after {
+    box-shadow: 4px 0 0 0 var(--primary-color, #ea580c), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.gallery-thumb .thumb-order {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 11px;
+    background: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(3px);
+    z-index: 2;
+    pointer-events: none;
+}
+
+.gallery-thumb.thumb-pending-delete .thumb-order {
+    background: #dc3545;
+}
+
+.gallery-manager.reordering .gallery-thumb:not(.dragging) {
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}

@@ -75,9 +75,9 @@ switch ($method) {
         $uploadDir = __DIR__ . '/../images/uploads/';
         if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
 
-        $heroImgs = null;
+        // Uploads de novas imagens do hero.
+        $newHeroPaths = [];
         if (!empty($_FILES['hero_images']['name'][0])) {
-            $heroPaths = [];
             $names = $_FILES['hero_images']['name'];
             $tmpNames = $_FILES['hero_images']['tmp_name'];
             $errors = $_FILES['hero_images']['error'];
@@ -88,9 +88,76 @@ switch ($method) {
                 $f = ['name' => $name, 'tmp_name' => $tmpNames[$i], 'error' => $errors[$i], 'size' => $sizes[$i] ?? 0];
                 $r = validateAndSaveImageUpload($f, 'hero' . $i, $uploadDir);
                 if ($r['error']) jsonResponse(['error' => $r['error']], 400);
-                if ($r['path']) $heroPaths[] = $r['path'];
+                if ($r['path']) $newHeroPaths[] = $r['path'];
             }
-            if (!empty($heroPaths)) $heroImgs = json_encode($heroPaths);
+        }
+
+        // Lê imagens atuais para aplicar deletions e merge.
+        $stmtHero = $pdo->query("SELECT hero_imagens FROM personalizacao ORDER BY id DESC LIMIT 1");
+        $heroRow = $stmtHero ? $stmtHero->fetch() : null;
+        $currentHeroList = [];
+        if ($heroRow && !empty($heroRow['hero_imagens'])) {
+            $decoded = json_decode($heroRow['hero_imagens'], true);
+            if (is_array($decoded)) $currentHeroList = $decoded;
+        }
+
+        // Processa pedidos de remoção vindos do frontend.
+        $heroToDelete = [];
+        if (isset($_POST['hero_images_to_delete'])) {
+            $raw = $_POST['hero_images_to_delete'];
+            if (is_string($raw)) {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) $heroToDelete = $decoded;
+                elseif (trim($raw) !== '') $heroToDelete = [$raw];
+            } elseif (is_array($raw)) {
+                $heroToDelete = $raw;
+            }
+        }
+        $heroToDelete = array_values(array_filter(array_map(static fn($v) => trim((string)$v), $heroToDelete), static fn($v) => $v !== ''));
+
+        $remainingHero = $currentHeroList;
+        if (!empty($heroToDelete)) {
+            $remainingHero = array_values(array_filter($currentHeroList, static fn($p) => !in_array($p, $heroToDelete, true)));
+            foreach ($heroToDelete as $delPath) {
+                safeDeleteUploadedImage($delPath);
+            }
+        }
+
+        // Aplica a ordem enviada pelo drag-and-drop (somente para as imagens já guardadas).
+        $orderedHero = $remainingHero;
+        $heroOrderChanged = false;
+        if (isset($_POST['hero_images_order'])) {
+            $rawOrder = $_POST['hero_images_order'];
+            $requestedOrder = null;
+            if (is_string($rawOrder)) {
+                $decodedOrder = json_decode($rawOrder, true);
+                if (is_array($decodedOrder)) $requestedOrder = $decodedOrder;
+            } elseif (is_array($rawOrder)) {
+                $requestedOrder = $rawOrder;
+            }
+            if (is_array($requestedOrder)) {
+                $requestedOrder = array_values(array_filter(array_map(static fn($v) => trim((string)$v), $requestedOrder), static fn($v) => $v !== ''));
+                $seen = [];
+                $ordered = [];
+                foreach ($requestedOrder as $p) {
+                    if (in_array($p, $remainingHero, true) && !in_array($p, $seen, true)) {
+                        $ordered[] = $p;
+                        $seen[] = $p;
+                    }
+                }
+                foreach ($remainingHero as $p) {
+                    if (!in_array($p, $seen, true)) $ordered[] = $p;
+                }
+                $orderedHero = $ordered;
+                $heroOrderChanged = $orderedHero !== $currentHeroList;
+            }
+        }
+
+        $heroImgs = null;
+        $heroChanged = !empty($newHeroPaths) || !empty($heroToDelete) || $heroOrderChanged;
+        if ($heroChanged) {
+            $mergedHero = array_values(array_unique(array_merge($orderedHero, $newHeroPaths)));
+            $heroImgs = !empty($mergedHero) ? json_encode($mergedHero) : json_encode([]);
         }
 
         $imageMap = ['about_image' => 'about_imagem', 'favicon_image' => 'favicon', 'testi1_image' => 'testi1_imagem', 'testi2_image' => 'testi2_imagem', 'testi3_image' => 'testi3_imagem'];

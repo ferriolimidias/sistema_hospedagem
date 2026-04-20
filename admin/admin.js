@@ -159,6 +159,181 @@ document.addEventListener('DOMContentLoaded', () => {
         { code: 'full', label: 'Pagamento 100% Antecipado', percent_now: 100 }
     ];
 
+    // Gallery Manager state (thumbnails + pending deletes).
+    // Para Hero (personalização) o estado vive enquanto a página está aberta.
+    // Para Chalé, reiniciamos ao abrir/fechar cada modal.
+    const galleryState = {
+        hero: { current: [], toDelete: [] },
+        chalet: { current: [], toDelete: [] }
+    };
+
+    function toAssetUrl(src) {
+        const v = String(src || '').trim();
+        if (v === '') return '';
+        if (/^(https?:)?\/\//i.test(v) || v.startsWith('data:') || v.startsWith('blob:')) return v;
+        return '../' + v.replace(/^\/+/, '');
+    }
+
+    function escapeAttr(v) {
+        return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function renderGalleryManager(scope, containerEl, opts) {
+        if (!containerEl) return;
+        const state = galleryState[scope];
+        if (!state) return;
+        const current = Array.isArray(state.current) ? state.current : [];
+        const toDelete = Array.isArray(state.toDelete) ? state.toDelete : [];
+        const previews = Array.isArray(opts && opts.previewFiles) ? opts.previewFiles : [];
+
+        if (current.length === 0 && previews.length === 0) {
+            containerEl.innerHTML = `<div class="gallery-manager-empty">Nenhuma imagem guardada. Use o campo acima para adicionar.</div>`;
+            return;
+        }
+
+        const existingHtml = current.map((src, idx) => {
+            const pending = toDelete.includes(src);
+            const classes = ['gallery-thumb', 'thumb-saved'];
+            if (pending) classes.push('thumb-pending-delete');
+            const safeSrc = escapeAttr(toAssetUrl(src));
+            const pathAttr = escapeAttr(src);
+            const badge = pending ? 'Marcada p/ remover' : (idx === 0 ? 'Capa' : 'Guardada');
+            const btn = pending
+                ? `<button type="button" class="thumb-remove" title="Cancelar remoção" data-gallery-restore="${pathAttr}" data-gallery-scope="${scope}"><i class="ph ph-arrow-counter-clockwise"></i></button>`
+                : `<button type="button" class="thumb-remove" title="Remover imagem" data-gallery-delete="${pathAttr}" data-gallery-scope="${scope}"><i class="ph ph-trash"></i></button>`;
+            return `
+                <div class="${classes.join(' ')}" draggable="true" data-gallery-path="${pathAttr}" data-gallery-scope="${scope}" title="Arraste para reordenar">
+                    <img src="${safeSrc}" alt="Imagem da galeria" loading="lazy" draggable="false">
+                    <span class="thumb-order">${idx + 1}</span>
+                    <span class="thumb-badge">${badge}</span>
+                    ${btn}
+                </div>
+            `;
+        }).join('');
+
+        const previewHtml = previews.map((file, idx) => {
+            let url = '';
+            try { url = URL.createObjectURL(file); } catch (_) { url = ''; }
+            const safeSrc = escapeAttr(url);
+            return `
+                <div class="gallery-thumb thumb-new">
+                    <img src="${safeSrc}" alt="Nova imagem #${idx + 1}" loading="lazy">
+                    <span class="thumb-badge">Nova</span>
+                </div>
+            `;
+        }).join('');
+
+        containerEl.innerHTML = existingHtml + previewHtml;
+
+        containerEl.querySelectorAll('[data-gallery-delete]').forEach((btn) => {
+            btn.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                const path = btn.getAttribute('data-gallery-delete');
+                const scp = btn.getAttribute('data-gallery-scope');
+                if (!path || !scp || !galleryState[scp]) return;
+                if (!galleryState[scp].toDelete.includes(path)) galleryState[scp].toDelete.push(path);
+                renderGalleryManager(scp, containerEl, opts);
+            });
+        });
+        containerEl.querySelectorAll('[data-gallery-restore]').forEach((btn) => {
+            btn.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                const path = btn.getAttribute('data-gallery-restore');
+                const scp = btn.getAttribute('data-gallery-scope');
+                if (!path || !scp || !galleryState[scp]) return;
+                galleryState[scp].toDelete = galleryState[scp].toDelete.filter((p) => p !== path);
+                renderGalleryManager(scp, containerEl, opts);
+            });
+        });
+
+        attachDragAndDrop(scope, containerEl, opts);
+    }
+
+    function clearDropIndicators(containerEl) {
+        containerEl.querySelectorAll('.gallery-thumb.drop-before, .gallery-thumb.drop-after')
+            .forEach((el) => el.classList.remove('drop-before', 'drop-after'));
+    }
+
+    function attachDragAndDrop(scope, containerEl, opts) {
+        const state = galleryState[scope];
+        if (!state) return;
+        const thumbs = containerEl.querySelectorAll('.gallery-thumb.thumb-saved[draggable="true"]');
+        if (thumbs.length < 2) return;
+        containerEl.classList.add('reordering');
+
+        let draggedPath = null;
+
+        thumbs.forEach((thumb) => {
+            thumb.addEventListener('dragstart', (ev) => {
+                draggedPath = thumb.getAttribute('data-gallery-path');
+                thumb.classList.add('dragging');
+                if (ev.dataTransfer) {
+                    ev.dataTransfer.effectAllowed = 'move';
+                    try { ev.dataTransfer.setData('text/plain', draggedPath || ''); } catch (_) { /* noop */ }
+                }
+            });
+
+            thumb.addEventListener('dragend', () => {
+                thumb.classList.remove('dragging');
+                clearDropIndicators(containerEl);
+                draggedPath = null;
+            });
+
+            thumb.addEventListener('dragover', (ev) => {
+                if (!draggedPath) return;
+                const targetPath = thumb.getAttribute('data-gallery-path');
+                if (!targetPath || targetPath === draggedPath) return;
+                ev.preventDefault();
+                if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+                const rect = thumb.getBoundingClientRect();
+                const isBefore = (ev.clientX - rect.left) < (rect.width / 2);
+                clearDropIndicators(containerEl);
+                thumb.classList.add(isBefore ? 'drop-before' : 'drop-after');
+            });
+
+            thumb.addEventListener('dragleave', () => {
+                thumb.classList.remove('drop-before', 'drop-after');
+            });
+
+            thumb.addEventListener('drop', (ev) => {
+                if (!draggedPath) return;
+                const targetPath = thumb.getAttribute('data-gallery-path');
+                if (!targetPath || targetPath === draggedPath) return;
+                ev.preventDefault();
+
+                const rect = thumb.getBoundingClientRect();
+                const dropBefore = (ev.clientX - rect.left) < (rect.width / 2);
+
+                const list = galleryState[scope].current.slice();
+                const fromIdx = list.indexOf(draggedPath);
+                if (fromIdx === -1) return;
+                list.splice(fromIdx, 1);
+                let toIdx = list.indexOf(targetPath);
+                if (toIdx === -1) toIdx = list.length;
+                if (!dropBefore) toIdx += 1;
+                list.splice(toIdx, 0, draggedPath);
+                galleryState[scope].current = list;
+
+                clearDropIndicators(containerEl);
+                draggedPath = null;
+                renderGalleryManager(scope, containerEl, opts);
+            });
+        });
+    }
+
+    function wireGalleryFileInput(scope, inputEl, containerEl, nameEl) {
+        if (!inputEl || !containerEl) return;
+        inputEl.addEventListener('change', () => {
+            const files = Array.from(inputEl.files || []);
+            if (nameEl) {
+                nameEl.textContent = files.length
+                    ? (files.length === 1 ? files[0].name : files.length + ' foto(s) selecionada(s)')
+                    : 'Nenhum arquivo selecionado';
+            }
+            renderGalleryManager(scope, containerEl, { previewFiles: files });
+        });
+    }
+
     function normalizePaymentPolicies(rawPolicies) {
         if (!Array.isArray(rawPolicies) || rawPolicies.length === 0) return paymentPolicies;
         const clean = rawPolicies
@@ -967,10 +1142,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="form-group" style="text-align: center; border: 2px dashed var(--border-color); padding: 1.5rem; border-radius: 8px; background: var(--bg-light);">
                             <h4 style="margin-bottom: 1rem; color: var(--text-dark);">Imagens de Fundo (Hero) - Slideshow</h4>
                             <p style="font-size: 0.85rem; color: #666; margin-bottom: 1rem;">Selecione várias imagens para o slideshow. As imagens passam automaticamente na página inicial.</p>
-                            <input type="file" id="customHeroImages" accept="image/*" multiple style="display:none;" onchange="const n = this.files.length; document.getElementById('heroImgName').textContent = n ? n + ' imagem(ns) selecionada(s)' : 'Nenhum arquivo selecionado';">
+                            <input type="file" id="customHeroImages" accept="image/*" multiple style="display:none;">
                             <label for="customHeroImages" class="btn btn-outline" style="cursor: pointer; margin-bottom: 1rem;"><i class="ph ph-upload"></i> Escolher Imagens</label>
                             <div id="heroImgName" style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">Nenhum arquivo selecionado</div>
-                            <div id="currentHeroPreview" style="margin-top: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center;"></div>
+                            <div id="currentHeroPreview" class="gallery-manager" style="margin-top: 1rem;"></div>
+                            <small style="display:block; margin-top:0.5rem; color:#666;">Passe o rato sobre uma miniatura e use o ícone para remover. As remoções só são aplicadas ao clicar em "Salvar Alterações".</small>
                         </div>
                     </form>
                         </div>
@@ -2184,7 +2360,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const imgSrc = (src) => (src && !src.startsWith('http')) ? `../${src}` : (src || '');
             const heroImgs = custom.heroImages || (custom.heroImage ? [custom.heroImage] : []);
             const heroPreview = document.getElementById('currentHeroPreview');
-            if (heroPreview) heroPreview.innerHTML = heroImgs.length ? heroImgs.map(src => `<img src="${imgSrc(src)}" alt="Hero" style="max-height: 80px; max-width: 120px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`).join('') : '';
+            galleryState.hero.current = Array.isArray(heroImgs) ? heroImgs.filter(Boolean) : [];
+            galleryState.hero.toDelete = [];
+            if (heroPreview) {
+                renderGalleryManager('hero', heroPreview, { previewFiles: [] });
+                const heroInput = document.getElementById('customHeroImages');
+                const heroNameEl = document.getElementById('heroImgName');
+                if (heroInput && !heroInput.dataset.galleryBound) {
+                    wireGalleryFileInput('hero', heroInput, heroPreview, heroNameEl);
+                    heroInput.dataset.galleryBound = '1';
+                }
+            }
 
             const aboutPreview = document.getElementById('currentAboutPreview');
             if (aboutPreview && custom.aboutImage) aboutPreview.innerHTML = `<img src="${imgSrc(custom.aboutImage)}" alt="About" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
@@ -2282,12 +2468,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('customAboutText').value = custom.aboutText || '';
 
                 const heroImgs = custom.heroImages || (custom.heroImage ? [custom.heroImage] : []);
-                if (heroImgs.length > 0) {
-                    document.getElementById('currentHeroPreview').innerHTML = heroImgs.map(src => 
-                        `<img src="../${src}" alt="Hero" style="max-height: 80px; max-width: 120px; object-fit: cover; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`
-                    ).join('');
-                } else {
-                    document.getElementById('currentHeroPreview').innerHTML = '';
+                const heroPreviewEl = document.getElementById('currentHeroPreview');
+                galleryState.hero.current = Array.isArray(heroImgs) ? heroImgs.filter(Boolean) : [];
+                galleryState.hero.toDelete = [];
+                if (heroPreviewEl) {
+                    renderGalleryManager('hero', heroPreviewEl, { previewFiles: [] });
+                    const heroInputEl = document.getElementById('customHeroImages');
+                    const heroNameEl = document.getElementById('heroImgName');
+                    if (heroInputEl && !heroInputEl.dataset.galleryBound) {
+                        wireGalleryFileInput('hero', heroInputEl, heroPreviewEl, heroNameEl);
+                        heroInputEl.dataset.galleryBound = '1';
+                    }
                 }
                 if (custom.aboutImage) {
                     document.getElementById('currentAboutPreview').innerHTML = `<img src="../${custom.aboutImage}" alt="About Image" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
@@ -2429,6 +2620,12 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let i = 0; i < fileHeroInput.files.length; i++) {
                 formData.append('hero_images[]', fileHeroInput.files[i]);
             }
+        }
+        const heroToDelete = Array.isArray(galleryState.hero.toDelete) ? galleryState.hero.toDelete : [];
+        heroToDelete.forEach((p) => formData.append('hero_images_to_delete[]', p));
+        const heroCurrent = Array.isArray(galleryState.hero.current) ? galleryState.hero.current : [];
+        if (heroCurrent.length > 0) {
+            formData.append('hero_images_order', JSON.stringify(heroCurrent));
         }
         if (fileAboutInput.files[0]) formData.append('about_image', fileAboutInput.files[0]);
         const fileFaviconInput = document.getElementById('customFaviconImage');
@@ -2737,11 +2934,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div>
                                 <label style="display:block; margin-bottom: 0.25rem;">Galeria de Fotos (Múltiplas)</label>
                                 <div style="position: relative; border: 2px dashed var(--border-color); padding: 1rem; text-align: center; border-radius: 4px; background: #fff;">
-                                    <input type="file" id="addGalleryImages" class="form-control" accept="image/*" multiple style="opacity: 0; position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer;" onchange="document.getElementById('galleryImgNames').textContent = this.files.length ? this.files.length + ' foto(s) selecionada(s)' : 'Nenhuma foto selecionada'">
+                                    <input type="file" id="addGalleryImages" class="form-control" accept="image/*" multiple style="opacity: 0; position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer;">
                                     <i class="ph ph-images" style="font-size: 2rem; color: #ccc;"></i>
                                     <div id="galleryImgNames" style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">Clique para selecionar várias fotos</div>
                                 </div>
-                                ${chalet && chalet.images && chalet.images.length > 0 ? `<small style="display:block;margin-top:0.5rem;">${chalet.images.length} foto(s) na galeria atual.</small>` : ''}
+                                <div id="chaletGalleryManager" class="gallery-manager"></div>
+                                <small style="display:block; margin-top:0.5rem; color:#666;">Passe o rato sobre uma miniatura e use o ícone para remover. As remoções só são aplicadas ao clicar em "Salvar".</small>
                             </div>
                         </div>
 
@@ -2795,6 +2993,17 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         document.getElementById('modalContainer').innerHTML = modalHtml;
+
+        // Inicializa o gestor de galeria para este chalé (thumbnails + remoção + preview).
+        const galleryContainer = document.getElementById('chaletGalleryManager');
+        const galleryInput = document.getElementById('addGalleryImages');
+        const galleryNameEl = document.getElementById('galleryImgNames');
+        galleryState.chalet.current = (chalet && Array.isArray(chalet.images)) ? chalet.images.filter(Boolean) : [];
+        galleryState.chalet.toDelete = [];
+        if (galleryContainer) renderGalleryManager('chalet', galleryContainer, { previewFiles: [] });
+        if (galleryInput && galleryContainer) {
+            wireGalleryFileInput('chalet', galleryInput, galleryContainer, galleryNameEl);
+        }
     }
 
     window.addHolidayRow = function () {
@@ -3262,6 +3471,13 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let i = 0; i < galleryFiles.length; i++) {
                 formData.append('images[]', galleryFiles[i]);
             }
+        }
+        // Imagens da galeria marcadas para remoção pelo gestor visual.
+        const chaletToDelete = Array.isArray(galleryState.chalet.toDelete) ? galleryState.chalet.toDelete : [];
+        chaletToDelete.forEach((p) => formData.append('images_to_delete[]', p));
+        const chaletCurrent = Array.isArray(galleryState.chalet.current) ? galleryState.chalet.current : [];
+        if (chaletCurrent.length > 0) {
+            formData.append('images_order', JSON.stringify(chaletCurrent));
         }
 
         try {

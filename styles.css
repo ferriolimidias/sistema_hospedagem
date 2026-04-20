@@ -1267,7 +1267,8 @@ hr {
     border-radius: 12px 12px 0 0;
 }
 
-.chalet-slider img {
+.chalet-slider img,
+.chalet-slider .slide {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -1276,8 +1277,14 @@ hr {
     transition: opacity 0.3s ease;
 }
 
-.chalet-slider img.active {
+.chalet-slider img.active,
+.chalet-slider .slide.active {
     display: block;
+}
+
+.chalet-slider .slide.image-fallback {
+    background: var(--secondary-color, #1e293b);
+    cursor: default;
 }
 
 .slider-btn {

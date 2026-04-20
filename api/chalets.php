@@ -144,6 +144,72 @@ switch ($method) {
 
             if ($id) {
                 // Edição de Chalé Existente
+                // Processa pedidos de remoção de imagens já guardadas na galeria.
+                $imagesToDelete = [];
+                if (isset($_POST['images_to_delete'])) {
+                    $raw = $_POST['images_to_delete'];
+                    if (is_string($raw)) {
+                        $decoded = json_decode($raw, true);
+                        if (is_array($decoded)) $imagesToDelete = $decoded;
+                        elseif (trim($raw) !== '') $imagesToDelete = [$raw];
+                    } elseif (is_array($raw)) {
+                        $imagesToDelete = $raw;
+                    }
+                }
+                $imagesToDelete = array_values(array_filter(array_map(static fn($v) => trim((string)$v), $imagesToDelete), static fn($v) => $v !== ''));
+
+                $stmtImg = $pdo->prepare("SELECT images, main_image FROM chalets WHERE id = ?");
+                $stmtImg->execute([$id]);
+                $curr = $stmtImg->fetch();
+                $currentImages = [];
+                if ($curr && !empty($curr['images'])) {
+                    $decoded = json_decode($curr['images'], true);
+                    if (is_array($decoded)) $currentImages = $decoded;
+                }
+                $currentMainImage = $curr['main_image'] ?? '';
+
+                $remainingImages = $currentImages;
+                if (!empty($imagesToDelete)) {
+                    $remainingImages = array_values(array_filter($currentImages, static fn($p) => !in_array($p, $imagesToDelete, true)));
+                    foreach ($imagesToDelete as $delPath) {
+                        if ($delPath === $currentMainImage) continue; // nunca apaga a capa usada
+                        if (in_array($delPath, $remainingImages, true)) continue;
+                        safeDeleteUploadedImage($delPath);
+                    }
+                }
+
+                // Aplica a ordem enviada pelo drag-and-drop (somente para as imagens já guardadas).
+                $orderedExisting = $remainingImages;
+                if (isset($_POST['images_order'])) {
+                    $rawOrder = $_POST['images_order'];
+                    $requestedOrder = null;
+                    if (is_string($rawOrder)) {
+                        $decodedOrder = json_decode($rawOrder, true);
+                        if (is_array($decodedOrder)) $requestedOrder = $decodedOrder;
+                    } elseif (is_array($rawOrder)) {
+                        $requestedOrder = $rawOrder;
+                    }
+                    if (is_array($requestedOrder)) {
+                        $requestedOrder = array_values(array_filter(array_map(static fn($v) => trim((string)$v), $requestedOrder), static fn($v) => $v !== ''));
+                        $seen = [];
+                        $ordered = [];
+                        foreach ($requestedOrder as $p) {
+                            if (in_array($p, $remainingImages, true) && !in_array($p, $seen, true)) {
+                                $ordered[] = $p;
+                                $seen[] = $p;
+                            }
+                        }
+                        foreach ($remainingImages as $p) {
+                            if (!in_array($p, $seen, true)) $ordered[] = $p;
+                        }
+                        $orderedExisting = $ordered;
+                    }
+                }
+
+                $orderChanged = $orderedExisting !== $currentImages;
+                $galleryChanged = !empty($imagesToDelete) || count($uploadedImages) > 0 || $orderChanged;
+                $mergedImages = array_values(array_unique(array_merge($orderedExisting, $uploadedImages)));
+
                 $sql = "UPDATE chalets SET name=?, `type`=?, badge=?, price=?, description=?, full_description=?, status=?, 
                         price_mon=?, price_tue=?, price_wed=?, price_thu=?, price_fri=?, price_sat=?, price_sun=?,
                         base_guests=?, max_guests=?, extra_guest_fee=?";
@@ -154,21 +220,9 @@ switch ($method) {
                     $params[] = $imagePath;
                 }
 
-                if (count($uploadedImages) > 0) {
-                    // Vamos tentar recuperar as imagens existentes para não sobrescrever caso seja apenas um append?
-                    // Para simplificar: se mandar novas imagens, elas vão juntar com as antigas (opcional) ou substituir.
-                    // O jeito mais robusto é pegar as atuais e fazer merge.
-                    $stmtImg = $pdo->prepare("SELECT images FROM chalets WHERE id = ?");
-                    $stmtImg->execute([$id]);
-                    $curr = $stmtImg->fetch();
-                    $currentImages = [];
-                    if ($curr && !empty($curr['images'])) {
-                        $currentImages = json_decode($curr['images'], true) ?: [];
-                    }
-                    $allImages = array_merge($currentImages, $uploadedImages);
-
+                if ($galleryChanged) {
                     $sql .= ", images=?";
-                    $params[] = json_encode($allImages);
+                    $params[] = !empty($mergedImages) ? json_encode($mergedImages) : null;
                 }
 
                 $sql .= " WHERE id=?";

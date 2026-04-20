@@ -69,6 +69,45 @@ function validateAndSaveImageUpload(array $file, string $prefix, string $uploadD
     return ['path' => null, 'error' => 'Falha ao salvar arquivo'];
 }
 
+/**
+ * Remove com segurança um ficheiro da pasta de uploads.
+ * Aceita apenas caminhos relativos dentro de images/uploads/ e ignora URLs externas,
+ * caminhos suspeitos (../, ..\), data URIs e ficheiros fora da raiz do projeto.
+ *
+ * @param string|null $path caminho relativo guardado no banco (ex: images/uploads/xpto.jpg)
+ * @return bool true se removeu ou se já não existia dentro da pasta permitida
+ */
+function safeDeleteUploadedImage(?string $path): bool
+{
+    $rel = trim((string)$path);
+    if ($rel === '') return false;
+    if (preg_match('/^https?:\/\//i', $rel) === 1) return false;
+    if (stripos($rel, 'data:') === 0) return false;
+
+    $rel = str_replace('\\', '/', $rel);
+    $rel = ltrim($rel, '/');
+    if (strpos($rel, '..') !== false) return false;
+
+    $allowedPrefix = 'images/uploads/';
+    if (strpos($rel, $allowedPrefix) !== 0) return false;
+
+    $projectRoot = realpath(__DIR__ . '/..');
+    $uploadsRoot = realpath(__DIR__ . '/../images/uploads');
+    if ($projectRoot === false || $uploadsRoot === false) return false;
+
+    $abs = $projectRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $rel);
+    $absReal = realpath($abs);
+    if ($absReal === false) {
+        return false;
+    }
+    if (strpos($absReal, $uploadsRoot . DIRECTORY_SEPARATOR) !== 0) {
+        return false;
+    }
+    if (!is_file($absReal)) return false;
+
+    return @unlink($absReal);
+}
+
 function jsonResponse($data, int $statusCode = 200): void
 {
     http_response_code($statusCode);
