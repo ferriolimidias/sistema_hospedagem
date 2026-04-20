@@ -30,6 +30,44 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /* =========================================
+       HÓSPEDES — utilidades espelhadas do site público
+       ========================================= */
+    function parseGuestsOptionAdmin(guestsVal, fallbackAdults = 1) {
+        const raw = String(guestsVal || '').trim();
+        if (raw === '') return { adults: fallbackAdults, children: 0 };
+        if (raw.indexOf('_') === -1) {
+            const n = parseInt(raw, 10);
+            return n > 0 ? { adults: n, children: 0 } : { adults: fallbackAdults, children: 0 };
+        }
+        const [ad, ch] = raw.split('_').map(Number);
+        return {
+            adults: ad > 0 ? ad : fallbackAdults,
+            children: Number.isFinite(ch) && ch >= 0 ? ch : 0
+        };
+    }
+
+    function renderGuestOptionsAdmin(selectEl, maxGuests, preferredValue) {
+        if (!selectEl) return;
+        const cap = Math.max(1, parseInt(String(maxGuests || 4), 10) || 4);
+        selectEl.innerHTML = '';
+        const frag = document.createDocumentFragment();
+        for (let i = 1; i <= cap; i++) {
+            const opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = i === 1 ? '1 Hóspede' : `${i} Hóspedes`;
+            frag.appendChild(opt);
+        }
+        selectEl.appendChild(frag);
+
+        const p = parseGuestsOptionAdmin(preferredValue, 1);
+        let prefNum = p.adults + p.children;
+        if (!(prefNum >= 1 && prefNum <= cap)) {
+            prefNum = Math.min(2, cap);
+        }
+        selectEl.value = String(prefNum);
+    }
+
+    /* =========================================
        AUTHENTICATION GUARD
        ========================================= */
     const adminToken = localStorage.getItem('adminToken');
@@ -478,7 +516,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         <button type="button" class="btn-icon" title="Excluir" data-action="delete-reservation" data-id="${r.id}" style="color: var(--danger)"><i class="ph ph-trash"></i></button>
                                     </td>
                                     <td><strong>#RES-${String(r.id).padStart(3, '0')}</strong></td>
-                                    <td>${r.guest_name}<br><small style="color:#666">${r.guest_email || ''}</small><br><small style="color:#888">${(r.guests_adults || 2) === 1 && !(r.guests_children || 0) ? '1 adulto' : (r.guests_adults || 2) === 2 && (r.guests_children || 0) === 1 ? '2 ad. + 1 cr.' : (r.guests_adults || 2) + ' adultos'}</small></td>
+                                    <td>${r.guest_name}<br><small style="color:#666">${r.guest_email || ''}</small><br><small style="color:#888">${(r.guests_adults || 0) + (r.guests_children || 0)} hóspede(s)</small></td>
                                     <td>${r.chalet_name}</td>
                                     <td>${formatDateBR(r.checkin_date)} até ${formatDateBR(r.checkout_date)}</td>
                                     <td>
@@ -2821,9 +2859,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="form-group">
                             <label>Hóspedes</label>
                             <select id="editResGuestsOption" class="form-control">
-                                <option value="1_0" ${(res.guests_adults || 2) === 1 && !(res.guests_children || 0) ? 'selected' : ''}>1 adulto</option>
-                                <option value="2_0" ${(res.guests_adults || 2) === 2 && !(res.guests_children || 0) ? 'selected' : ''}>2 adultos</option>
-                                <option value="2_1" ${(res.guests_adults || 2) === 2 && (res.guests_children || 0) === 1 ? 'selected' : ''}>2 adultos + 1 criança (até 8 anos)</option>
+                                <option value="">Carregando...</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -2863,6 +2899,25 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         document.getElementById('modalContainer').innerHTML = modalHtml;
+
+        // Popula o dropdown de hóspedes dinamicamente com base no max_guests da
+        // hospedagem selecionada e reage à troca de hospedagem.
+        const chaletSelect = document.getElementById('editResChaletId');
+        const guestsSelect = document.getElementById('editResGuestsOption');
+        const currentGuestsVal = res ? `${res.guests_adults || 2}_${res.guests_children || 0}` : '2_0';
+
+        function updateGuestsDropdown() {
+            if (!chaletSelect || !guestsSelect || typeof chaletsData === 'undefined') return;
+            const selectedChalet = chaletsData.find(c => String(c.id) === String(chaletSelect.value)) || {};
+            const maxGuests = selectedChalet.max_guests || 4;
+            const valToSet = guestsSelect.value && guestsSelect.value !== '' ? guestsSelect.value : currentGuestsVal;
+            renderGuestOptionsAdmin(guestsSelect, maxGuests, valToSet);
+        }
+
+        if (chaletSelect) {
+            chaletSelect.addEventListener('change', updateGuestsDropdown);
+            updateGuestsDropdown();
+        }
     }
 
     window.handleEditReservation = async function (e, id) {
@@ -2872,8 +2927,8 @@ document.addEventListener('DOMContentLoaded', () => {
             guest_name: document.getElementById('editResName').value,
             guest_email: document.getElementById('editResEmail').value,
             guest_phone: document.getElementById('editResPhone').value,
-            guests_adults: (() => { const v = (document.getElementById('editResGuestsOption')?.value || '2_0').split('_'); return parseInt(v[0]) || 2; })(),
-            guests_children: (() => { const v = (document.getElementById('editResGuestsOption')?.value || '2_0').split('_'); return parseInt(v[1]) || 0; })(),
+            guests_adults: parseGuestsOptionAdmin(document.getElementById('editResGuestsOption').value).adults,
+            guests_children: parseGuestsOptionAdmin(document.getElementById('editResGuestsOption').value).children,
             chalet_id: document.getElementById('editResChaletId').value,
             checkin_date: document.getElementById('editResCheckin').value,
             checkout_date: document.getElementById('editResCheckout').value,
