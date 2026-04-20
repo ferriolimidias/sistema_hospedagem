@@ -203,6 +203,12 @@ try {
 }
 
 try {
+    $pdo->exec('ALTER TABLE reservations ADD COLUMN additional_value DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER total_amount');
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
     $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('checkin_time', '14:00') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
 } catch (PDOException $e) {
     // Chave já existe ou tabela sem constraint única.
