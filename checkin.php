@@ -87,13 +87,26 @@ $guest = (string) ($row['guest_name'] ?? '');
 $cin = (string) ($row['checkin_date'] ?? '');
 $cout = (string) ($row['checkout_date'] ?? '');
 $done = is_array($existing) && !empty($existing['submitted_at']);
+
+// Nome da marca: lê dinamicamente de settings.site_title (fallback seguro se falhar).
+$brandName = 'Pousada';
+try {
+    $stBrand = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'site_title' LIMIT 1");
+    $stBrand->execute();
+    $bv = $stBrand->fetchColumn();
+    if (is_string($bv) && $bv !== '') {
+        $decoded = json_decode($bv, true);
+        $final = (json_last_error() === JSON_ERROR_NONE && is_string($decoded)) ? $decoded : $bv;
+        if (trim($final) !== '') $brandName = trim($final);
+    }
+} catch (Exception $e) { /* usa fallback */ }
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Check-in online | Recantos da Serra</title>
+    <title>Check-in online | <?= h($brandName) ?></title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">

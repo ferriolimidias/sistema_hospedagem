@@ -99,7 +99,7 @@ function runInitialDataSeed(PDO $pdo): void
     $stmt = $pdo->query('SELECT COUNT(*) FROM personalizacao');
     $pc = $stmt ? (int) $stmt->fetchColumn() : 0;
     if ($pc === 0) {
-        $aboutText = "Nascido do desejo de integrar conforto absoluto à natureza intocada, o Recantos da Serra oferece uma hospedagem ímpar. Nossos chalés foram projetados para se fundirem com a paisagem, garantindo privacidade, luxo e uma vista de tirar o fôlego.\n\nAcorde com o canto dos pássaros, desfrute de um café da manhã artesanal e relaxe em uma banheira de hidromassagem com vista para o vale.";
+        $aboutText = "Nascido do desejo de integrar conforto absoluto à natureza intocada, a Pousada Mirante do Sol oferece uma hospedagem ímpar. Nossas acomodações foram projetadas para se fundirem com a paisagem, garantindo privacidade, luxo e uma vista de tirar o fôlego.\n\nAcorde com o canto dos pássaros, desfrute de um café da manhã artesanal e relaxe com vista para o vale.";
         $ins = $pdo->prepare(
             'INSERT INTO personalizacao (
                 hero_titulo, hero_subtitulo, hero_imagens, about_titulo, about_texto, about_imagem,
@@ -153,16 +153,16 @@ function runInitialDataSeed(PDO $pdo): void
             'Campinas, SP',
             'Muito bom poder viajar com nossa cachorrinha e ser tão bem recebidos. A estrutura A-Frame é linda e tudo estava extremamente limpo e organizado. Nota 10!',
             $testi3,
-            'Recanto da Serra Eco Park - Serra da Mantiqueira, MG',
+            'Endereço completo da pousada',
             'Apenas 2h30 da capital. Estrada 100% asfaltada até a entrada.',
-            'https://www.google.com/maps/search/?api=1&query=Recanto+da+Serra+Eco+Park',
-            '5535999999999',
-            'Olá, gostaria de mais informações sobre os chalés!',
+            'https://www.google.com/maps/search/?api=1&query=Pousada+Mirante+do+Sol',
+            '5500000000000',
+            'Olá, gostaria de mais informações sobre as acomodações!',
             'Luxo, conforto e natureza em perfeita harmonia.',
-            'Serra da Mantiqueira, MG',
-            'contato@recantosdaserra.com',
-            '(35) 99999-9999',
-            '© ' . date('Y') . ' Recantos da Serra. Todos os direitos reservados.',
+            'Governador Celso Ramos, SC',
+            'contato@pousadamirantedosol.com',
+            '(00) 00000-0000',
+            '© ' . date('Y') . ' Pousada Mirante do Sol. Todos os direitos reservados.',
             $favicon,
         ]);
     }
@@ -503,6 +503,20 @@ function runInitialSchema(PDO $pdo): void
     } catch (PDOException $e) {
         // Chave já existe.
     }
+
+    // Métodos de pagamento híbridos (MP automático / PIX manual via WhatsApp).
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('payment_mercadopago_active', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) { /* existe */ }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('payment_manual_pix_active', '0') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) { /* existe */ }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_key', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) { /* existe */ }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_instructions', 'Olá! Acabei de pré-reservar pelo site. Segue o comprovante do PIX para confirmação.') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) { /* existe */ }
 
     runInitialDataSeed($pdo);
 }

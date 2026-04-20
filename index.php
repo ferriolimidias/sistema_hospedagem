@@ -143,9 +143,9 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     <header class="navbar" id="navbar">
         <div class="container nav-container">
             <?php if ($companyLogo): ?>
-            <a href="#" class="logo"><img src="<?= $h($companyLogoLight ?: $companyLogo) ?>" alt="Recantos da Serra" style="height: 40px;" data-light="<?= $h($companyLogoLight ?: $companyLogo) ?>" data-dark="<?= $h($companyLogo) ?>"></a>
+            <a href="#" class="logo"><img src="<?= $h($companyLogoLight ?: $companyLogo) ?>" alt="<?= $h($siteTitle) ?>" style="height: 40px;" data-light="<?= $h($companyLogoLight ?: $companyLogo) ?>" data-dark="<?= $h($companyLogo) ?>"></a>
             <?php else: ?>
-            <a href="#" class="logo"><i class="ph ph-mountains"></i><span>Recantos da Serra</span></a>
+            <a href="#" class="logo"><i class="ph ph-mountains"></i><span><?= $h($siteTitle) ?></span></a>
             <?php endif; ?>
 
             <nav class="nav-links">
@@ -187,9 +187,9 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 <div id="clientAboutText"><?= $aboutHtml ?></div>
                 <div class="about-logo" id="aboutSectionLogo">
                     <?php if ($companyLogo): ?>
-                    <a href="#"><img src="<?= $h($companyLogo) ?>" alt="Recanto da Serra" style="max-height: 80px; width: auto;"></a>
+                    <a href="#"><img src="<?= $h($companyLogo) ?>" alt="<?= $h($siteTitle) ?>" style="max-height: 80px; width: auto;"></a>
                     <?php else: ?>
-                    <a href="#" class="logo"><i class="ph ph-mountains"></i><span>Recanto da Serra</span></a>
+                    <a href="#" class="logo"><i class="ph ph-mountains"></i><span><?= $h($siteTitle) ?></span></a>
                     <?php endif; ?>
                 </div>
             </div>
@@ -339,9 +339,9 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
         <div class="container footer-grid">
             <div class="footer-brand">
                 <?php if ($companyLogoLight ?: $companyLogo): ?>
-                <a href="#" class="logo"><img src="<?= $h($companyLogoLight ?: $companyLogo) ?>" alt="Recantos da Serra" style="height: 50px;"></a>
+                <a href="#" class="logo"><img src="<?= $h($companyLogoLight ?: $companyLogo) ?>" alt="<?= $h($siteTitle) ?>" style="height: 50px;"></a>
                 <?php else: ?>
-                <a href="#" class="logo"><i class="ph ph-mountains"></i><span>Recantos da Serra</span></a>
+                <a href="#" class="logo"><i class="ph ph-mountains"></i><span><?= $h($siteTitle) ?></span></a>
                 <?php endif; ?>
                 <p id="footerDesc"><?= $h($c['footerDesc']) ?></p>
                 <div class="social-links">
@@ -431,12 +431,16 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                     <div class="form-group"><label>Nome Completo</label><input type="text" id="bookingName" placeholder="Seu nome" required></div>
                     <div class="form-group"><label>E-mail</label><input type="email" id="bookingEmail" placeholder="seu@email.com" required></div>
                     <div class="form-group"><label>WhatsApp</label><input type="tel" id="bookingPhone" placeholder="11999999999" required></div>
+                    <div class="form-group payment-methods" id="paymentMethodsGroup" style="display:none;">
+                        <label>Forma de Pagamento</label>
+                        <div class="payment-methods-list" id="paymentMethodsList"></div>
+                    </div>
                     <div class="form-group payment-options">
                         <label>Condição de Pagamento</label>
                         <div class="payment-options-list" id="paymentOptionsList"></div>
                     </div>
                     <button type="submit" class="btn btn-primary btn-block" id="confirmBookingBtn" disabled>Confirmar Reserva e Pagar</button>
-                    <small style="display:block; text-align:center; margin-top:0.5rem; color:#888;">*A reserva só será confirmada após o pagamento.</small>
+                    <small id="confirmBookingHint" style="display:block; text-align:center; margin-top:0.5rem; color:#888;">*A reserva só será confirmada após o pagamento.</small>
                 </form>
             </div>
         </div>
@@ -492,7 +496,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
         'favicon' => $c['favicon']
     ]) ?>;
     </script>
-    <script src="script.js"></script>
+    <script src="script.js?v=3"></script>
 </body>
 
 </html>

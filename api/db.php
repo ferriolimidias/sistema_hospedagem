@@ -293,6 +293,32 @@ try {
     // Chave já existe.
 }
 
+// --- Métodos de pagamento (híbrido: Mercado Pago automático + PIX manual via WhatsApp) ---
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('payment_mercadopago_active', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) { /* chave já existe */ }
+
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('payment_manual_pix_active', '0') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) { /* chave já existe */ }
+
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_key', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) { /* chave já existe */ }
+
+try {
+    $defaultInstructions = 'Olá! Acabei de pré-reservar pelo site. Segue o comprovante do PIX para confirmação.';
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_instructions', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute([$defaultInstructions]);
+} catch (PDOException $e) { /* chave já existe */ }
+
+// Coluna payment_method identifica se a reserva veio do MP (automática) ou manual (PIX/WhatsApp).
+try {
+    $pdo->exec("ALTER TABLE reservations ADD COLUMN IF NOT EXISTS payment_method VARCHAR(32) NOT NULL DEFAULT 'mercadopago'");
+} catch (PDOException $e) { /* MySQL < 8 pode não suportar IF NOT EXISTS */ }
+try {
+    $pdo->exec("ALTER TABLE reservations ADD COLUMN payment_method VARCHAR(32) NOT NULL DEFAULT 'mercadopago'");
+} catch (PDOException $e) { /* coluna já existe */ }
+
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS coupons (
         id INT AUTO_INCREMENT PRIMARY KEY,

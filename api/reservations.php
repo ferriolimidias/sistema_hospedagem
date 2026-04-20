@@ -156,15 +156,29 @@ switch ($method) {
 
         $stmt = $pdo->prepare('INSERT INTO reservations (
             guest_name, guest_email, guest_phone, guests_adults, guests_children, chalet_id, checkin_date, checkout_date,
-            total_amount, additional_value, payment_rule, status, balance_paid, balance_paid_at,
+            total_amount, additional_value, payment_rule, payment_method, status, balance_paid, balance_paid_at,
             coupon_code, discount_amount, extras_json, extras_total, fnrh_access_token, fnrh_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)');
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)');
 
         $email = $data['guest_email'] ?? null;
         $phone = $data['guest_phone'] ?? null;
-        $status = $data['status'] ?? 'Confirmada';
         $payment_rule = $data['payment_rule'] ?? 'full';
         $additional_value = isset($data['additional_value']) ? (float) $data['additional_value'] : 0;
+
+        // Método de pagamento: apenas dois valores válidos. Padrão 'mercadopago' para retro-compatibilidade.
+        $paymentMethodRaw = strtolower(trim((string)($data['payment_method'] ?? 'mercadopago')));
+        $paymentMethod = $paymentMethodRaw === 'manual' ? 'manual' : 'mercadopago';
+
+        // Status inicial depende do método:
+        // - MP: 'Aguardando Pagamento' (entra hold com expires_at quando create_preference gera link)
+        // - Manual: 'Pendente' (admin valida o comprovante manualmente)
+        // Admin pode sempre sobrescrever passando 'status' no payload.
+        if (isset($data['status']) && trim((string)$data['status']) !== '') {
+            $status = (string)$data['status'];
+        } else {
+            $status = $paymentMethod === 'manual' ? 'Pendente' : 'Aguardando Pagamento';
+        }
+
         $balancePaid = isset($data['balance_paid'])
             ? (int)((bool)$data['balance_paid'])
             : (($payment_rule === 'full' && $status === 'Confirmada') ? 1 : 0);
@@ -185,6 +199,7 @@ switch ($method) {
             $total,
             $additional_value,
             $payment_rule,
+            $paymentMethod,
             $status,
             $balancePaid,
             $balancePaidAt,
@@ -231,20 +246,30 @@ switch ($method) {
                 ], 400);
             }
             $stmt = $pdo->prepare("UPDATE reservations SET guest_name = ?, guest_email = ?, guest_phone = ?, guests_adults = ?, guests_children = ?, chalet_id = ?, checkin_date = ?, checkout_date = ?, total_amount = ?, additional_value = ?, payment_rule = ?, status = ?, balance_paid = ?, balance_paid_at = ? WHERE id = ?");
-            $balancePaid = isset($data['balance_paid'])
-                ? (int)((bool)$data['balance_paid'])
-                : ((($data['payment_rule'] ?? 'full') === 'full' && ($data['status'] ?? 'Confirmada') === 'Confirmada') ? 1 : 0);
             $pr = $data['payment_rule'] ?? 'full';
             $st = $data['status'] ?? 'Confirmada';
             $additional_value = isset($data['additional_value']) ? (float) $data['additional_value'] : 0;
-            $stmtPrev = $pdo->prepare("SELECT balance_paid_at FROM reservations WHERE id = ? LIMIT 1");
+
+            // Lê estado anterior para decidir transição do saldo.
+            $stmtPrev = $pdo->prepare("SELECT balance_paid, balance_paid_at FROM reservations WHERE id = ? LIMIT 1");
             $stmtPrev->execute([$_GET['id']]);
             $prevRow = $stmtPrev->fetch();
+            $prevBalancePaid = (int)($prevRow['balance_paid'] ?? 0);
             $prevAt = $prevRow['balance_paid_at'] ?? null;
-            $balancePaidAt = $prevAt;
-            if ($balancePaid && $pr === 'full' && $st === 'Confirmada') {
-                $balancePaidAt = $prevAt ?: date('Y-m-d H:i:s');
-            } elseif (!$balancePaid) {
+
+            // Se o frontend enviou balance_paid explicitamente, respeita-o.
+            // Caso contrário, mantém o estado anterior (evita zerar por omissão).
+            if (array_key_exists('balance_paid', $data)) {
+                $balancePaid = (int)((bool)$data['balance_paid']);
+            } else {
+                $balancePaid = $prevBalancePaid;
+            }
+
+            // Regra independente da política: qualquer transição 0→1 grava NOW.
+            // Permanência em 1 preserva o timestamp original. 1→0 limpa.
+            if ($balancePaid === 1) {
+                $balancePaidAt = $prevBalancePaid === 0 ? date('Y-m-d H:i:s') : ($prevAt ?: date('Y-m-d H:i:s'));
+            } else {
                 $balancePaidAt = null;
             }
             if ($stmt->execute([

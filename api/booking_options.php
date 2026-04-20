@@ -52,11 +52,67 @@ try {
             'description' => (string) ($r['description'] ?? ''),
         ];
     }
+
+    // Leitura de configurações híbridas de pagamento.
+    $readSetting = static function (PDO $pdo, string $key, string $default = ''): string {
+        try {
+            $st = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
+            $st->execute([$key]);
+            $val = $st->fetchColumn();
+            if (!is_string($val) || $val === '') return $default;
+            $decoded = json_decode($val, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_string($decoded)) return $decoded;
+            return $val;
+        } catch (Throwable $e) {
+            return $default;
+        }
+    };
+    $asBool = static fn($v) => in_array(trim((string)$v), ['1', 'true', 'on', 'yes'], true);
+
+    $mpActiveRaw = $readSetting($pdo, 'payment_mercadopago_active', '1');
+    $manualActiveRaw = $readSetting($pdo, 'payment_manual_pix_active', '0');
+
+    // Valida se Mercado Pago tem Access Token configurado — se o admin marcou "ativo"
+    // mas o token não foi gravado, desliga silenciosamente para não quebrar o checkout.
+    $mpConfigured = false;
+    try {
+        $st = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'mercadoPagoSettings' LIMIT 1");
+        $st->execute();
+        $raw = $st->fetchColumn();
+        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+        $mpConfigured = is_array($decoded) && !empty($decoded['accessToken']);
+    } catch (Throwable $e) { /* noop */ }
+
+    $mpActive = $asBool($mpActiveRaw) && $mpConfigured;
+    $manualActive = $asBool($manualActiveRaw);
+
+    // Dados para o fluxo manual. Número do WhatsApp vem de personalizacao.wa_numero (única fonte).
+    $manualPixKey = $readSetting($pdo, 'manual_pix_key', '');
+    $manualInstructions = $readSetting($pdo, 'manual_pix_instructions', '');
+    $waNumber = '';
+    try {
+        $st = $pdo->query("SELECT wa_numero FROM personalizacao ORDER BY id DESC LIMIT 1");
+        $waNumber = (string)($st->fetchColumn() ?: '');
+    } catch (Throwable $e) { /* tabela pode não existir */ }
+
+    // Fallback defensivo: se nenhum dos dois for válido, liga MP (evita UI sem opções).
+    if (!$mpActive && !$manualActive) {
+        $mpActive = $mpConfigured;
+    }
+
     jsonResponse([
         'show_coupon_field' => $nCoupons > 0,
         'show_extras_section' => count($services) > 0,
         'extra_services' => $services,
         'payment_policies' => $paymentPolicies,
+        'payment_methods' => [
+            'mercadopago_active' => $mpActive,
+            'manual_pix_active' => $manualActive,
+            'mp_configured' => $mpConfigured,
+            'manual_pix_key' => $manualPixKey,
+            'manual_instructions' => $manualInstructions,
+            'wa_number' => $waNumber,
+        ],
     ]);
 } catch (Throwable $e) {
     jsonResponse([
@@ -66,6 +122,14 @@ try {
         'payment_policies' => [
             ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50],
             ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100],
+        ],
+        'payment_methods' => [
+            'mercadopago_active' => true,
+            'manual_pix_active' => false,
+            'mp_configured' => false,
+            'manual_pix_key' => '',
+            'manual_instructions' => '',
+            'wa_number' => '',
         ],
     ]);
 }

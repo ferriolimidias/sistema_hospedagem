@@ -127,12 +127,16 @@ $percentNow = (float)($policy['percent_now'] ?? 100);
 $markAsPaid = $percentNow >= 100 ? 1 : 0;
 
 // Atualizar reserva para Confirmada e marcar saldo quitado quando for pagamento integral.
+// Importante: só aplica a reservas cujo payment_method é 'mercadopago' (ou vazio, para compatibilidade histórica).
+// Reservas manuais (PIX via WhatsApp) nunca são tocadas pelo webhook MP.
 $stmt = $pdo->prepare("
     UPDATE reservations
     SET status = 'Confirmada',
         balance_paid = CASE WHEN ? = 1 THEN 1 ELSE balance_paid END,
         balance_paid_at = CASE WHEN ? = 1 THEN NOW() ELSE balance_paid_at END
-    WHERE id = ? AND status = 'Aguardando Pagamento'
+    WHERE id = ?
+      AND status = 'Aguardando Pagamento'
+      AND (payment_method IS NULL OR payment_method = '' OR payment_method = 'mercadopago')
 ");
 $stmt->execute([$markAsPaid, $markAsPaid, $reservationId]);
 if ($stmt->rowCount() > 0) {

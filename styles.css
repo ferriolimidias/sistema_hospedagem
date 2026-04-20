@@ -893,6 +893,61 @@ img {
     display: block;
 }
 
+/* Forma de Pagamento (método: MP x PIX manual) */
+.payment-methods .payment-methods-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+@media (min-width: 560px) {
+    .payment-methods .payment-methods-list.has-two {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+.payment-method-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border: 1.5px solid rgba(0, 0, 0, 0.12);
+    border-radius: 0.6rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+    background: rgba(255, 255, 255, 0.04);
+}
+.payment-method-card:hover {
+    border-color: var(--primary-color, #ea580c);
+}
+.payment-method-card input[type="radio"] {
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+    width: 1.05rem;
+    height: 1.05rem;
+    accent-color: var(--primary-color, #ea580c);
+}
+.payment-method-card.selected {
+    border-color: var(--primary-color, #ea580c);
+    background: rgba(234, 88, 12, 0.08);
+}
+.payment-method-card .pm-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+.payment-method-card .pm-title {
+    font-weight: 600;
+    color: var(--clr-text);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.payment-method-card .pm-subtitle {
+    font-size: 0.8rem;
+    color: var(--clr-text-light);
+}
+
 .booking-form .btn {
     grid-column: span 2;
     margin-top: 1rem;

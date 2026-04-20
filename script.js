@@ -307,6 +307,94 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function renderPaymentMethodsUI() {
+        const group = document.getElementById('paymentMethodsGroup');
+        const list = document.getElementById('paymentMethodsList');
+        const confirmBtn = document.getElementById('confirmBookingBtn');
+        const hint = document.getElementById('confirmBookingHint');
+        if (!group || !list) return;
+
+        const pm = bookingOptions.payment_methods || { mercadopago_active: true, manual_pix_active: false };
+        const mpOn = !!pm.mercadopago_active;
+        const manualOn = !!pm.manual_pix_active;
+        const methods = [];
+        if (mpOn) {
+            methods.push({
+                code: 'mercadopago',
+                icon: 'ph-credit-card',
+                color: '#009EE3',
+                title: 'Pagamento Instantâneo',
+                subtitle: 'Cartão, PIX ou boleto via Mercado Pago'
+            });
+        }
+        if (manualOn) {
+            methods.push({
+                code: 'manual',
+                icon: 'ph-whatsapp-logo',
+                color: '#25D366',
+                title: 'Combinar via WhatsApp',
+                subtitle: 'PIX manual — enviamos a chave e validamos o comprovante'
+            });
+        }
+
+        // Só mostra o seletor quando houver ambos. Um único método mantém o rádio oculto mas com value fixo.
+        if (methods.length === 0) {
+            group.style.display = 'none';
+            list.innerHTML = '';
+            if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Checkout indisponível'; }
+            if (hint) { hint.textContent = 'Nenhum método de pagamento está configurado. Fale com o anfitrião.'; hint.style.color = 'var(--danger)'; }
+            return;
+        }
+
+        if (methods.length === 1) {
+            group.style.display = 'none';
+            list.innerHTML = `<input type="hidden" name="paymentMethod" value="${methods[0].code}">`;
+        } else {
+            group.style.display = 'block';
+            list.classList.toggle('has-two', methods.length === 2);
+            list.innerHTML = methods.map((m, i) => `
+                <label class="payment-method-card${i === 0 ? ' selected' : ''}" data-method-code="${m.code}">
+                    <input type="radio" name="paymentMethod" value="${m.code}" ${i === 0 ? 'checked' : ''}>
+                    <span class="pm-content">
+                        <span class="pm-title"><i class="ph ${m.icon}" style="color:${m.color};"></i> ${m.title}</span>
+                        <span class="pm-subtitle">${m.subtitle}</span>
+                    </span>
+                </label>
+            `).join('');
+            list.querySelectorAll('input[name="paymentMethod"]').forEach((input) => {
+                input.addEventListener('change', () => {
+                    list.querySelectorAll('.payment-method-card').forEach((el) => el.classList.remove('selected'));
+                    const card = input.closest('.payment-method-card');
+                    if (card) card.classList.add('selected');
+                    updateConfirmButtonForMethod();
+                });
+            });
+        }
+
+        updateConfirmButtonForMethod();
+    }
+
+    function getSelectedPaymentMethod() {
+        const el = document.querySelector('input[name="paymentMethod"]:checked')
+            || document.querySelector('input[name="paymentMethod"]');
+        return el ? (el.value || 'mercadopago') : 'mercadopago';
+    }
+
+    function updateConfirmButtonForMethod() {
+        const btn = document.getElementById('confirmBookingBtn');
+        const hint = document.getElementById('confirmBookingHint');
+        if (!btn) return;
+        const method = getSelectedPaymentMethod();
+        if (method === 'manual') {
+            btn.innerHTML = '<i class="ph ph-whatsapp-logo"></i> Continuar no WhatsApp';
+            if (hint) { hint.textContent = '*Você será redirecionado ao WhatsApp com a chave PIX. A reserva fica pendente até confirmarmos o pagamento.'; hint.style.color = ''; }
+        } else {
+            btn.textContent = 'Confirmar Reserva e Pagar';
+            if (hint) { hint.textContent = '*A reserva só será confirmada após o pagamento.'; hint.style.color = ''; }
+        }
+    }
+    window.getSelectedPaymentMethod = getSelectedPaymentMethod;
+
     function getPaymentPolicyByCode(code) {
         const policies = normalizePaymentPolicies(bookingOptions.payment_policies);
         const k = String(code || '').toLowerCase();
@@ -364,9 +452,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         renderPaymentOptionsUI();
+        renderPaymentMethodsUI();
     }
 
     async function loadBookingOptions() {
+        const defaultMethods = { mercadopago_active: true, manual_pix_active: false, mp_configured: false, manual_pix_key: '', manual_instructions: '', wa_number: '' };
         try {
             const res = await fetch('api/booking_options.php');
             const data = await res.json();
@@ -374,14 +464,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 show_coupon_field: !!data.show_coupon_field,
                 show_extras_section: !!data.show_extras_section,
                 extra_services: Array.isArray(data.extra_services) ? data.extra_services : [],
-                payment_policies: normalizePaymentPolicies(data.payment_policies)
+                payment_policies: normalizePaymentPolicies(data.payment_policies),
+                payment_methods: Object.assign({}, defaultMethods, data.payment_methods || {})
             };
         } catch {
             bookingOptions = {
                 show_coupon_field: false,
                 show_extras_section: false,
                 extra_services: [],
-                payment_policies: normalizePaymentPolicies([])
+                payment_policies: normalizePaymentPolicies([]),
+                payment_methods: defaultMethods
             };
         }
         renderBookingOptionsUI();
@@ -766,6 +858,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         totalEl.textContent = `R$ ${grand.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
         confirmBtn.disabled = false;
+        // Sincroniza texto/hint do botão com o método de pagamento atualmente selecionado.
+        if (typeof updateConfirmButtonForMethod === 'function') updateConfirmButtonForMethod();
 
         // Atualiza as opções de pagamento baseadas nas políticas dinâmicas
         if (typeof window.updatePaymentPreview === 'function') {
@@ -961,6 +1055,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const paymentRuleInput = document.querySelector('input[name="paymentRule"]:checked');
             const paymentRule = paymentRuleInput ? paymentRuleInput.value : 'full';
+            const paymentMethod = (typeof getSelectedPaymentMethod === 'function') ? getSelectedPaymentMethod() : 'mercadopago';
 
             const reserva = {
                 clientName: name,
@@ -990,7 +1085,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 checkin_date: reserva.checkin,
                 checkout_date: reserva.checkout,
                 payment_rule: paymentRule,
-                status: 'Aguardando Pagamento' // Novo status inicial
+                payment_method: paymentMethod
+                // status será definido pelo backend conforme o payment_method
             };
             if (chaletForReserva && chaletForReserva.id) formDados.chalet_id = chaletForReserva.id;
 
@@ -1030,7 +1126,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 2. Integração MercadoPago (gera preferência no backend e redireciona)
+            // 2. Ramificação por método de pagamento
+            if (paymentMethod === 'manual') {
+                const waUrl = buildManualPaymentWhatsAppLink(reservationId, {
+                    ...reserva,
+                    guestsAdults,
+                    guestsChildren,
+                    paymentRule
+                });
+                if (!waUrl) {
+                    alert('Pré-reserva criada, mas o número de WhatsApp do estabelecimento não está configurado. Entre em contato pelos canais disponíveis.');
+                    submitBtn.textContent = 'Confirmar Reserva e Pagar';
+                    submitBtn.disabled = false;
+                    return;
+                }
+                submitBtn.textContent = 'Abrindo WhatsApp...';
+                // Abre numa nova aba para preservar a página atual com o feedback.
+                window.open(waUrl, '_blank');
+                // Também redireciona na mesma aba para página de sucesso informativa (usa mesmo param do MP pending).
+                window.location.href = `index.php?payment_pending=true&reservation_id=${reservationId}&manual=1`;
+                return;
+            }
+
+            // Mercado Pago (fluxo atual): gera preferência e redireciona.
             const mpSuccess = await createMercadoPagoPreference(reservationId);
 
             if (!mpSuccess) {
@@ -1043,6 +1161,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 submitBtn.textContent = 'Redirecionando...';
             }
         });
+    }
+
+    /* =========================================
+       FLUXO MANUAL (PIX via WhatsApp)
+       ========================================= */
+    function buildManualPaymentWhatsAppLink(reservationId, reserva) {
+        const pm = (bookingOptions && bookingOptions.payment_methods) || {};
+        const rawNumber = String(pm.wa_number || '').replace(/[^\d]/g, '');
+        if (!rawNumber) return '';
+
+        const policy = getPaymentPolicyByCode(reserva.paymentRule || 'full');
+        const totalStr = (reserva.total || '').trim() || 'R$ 0,00';
+        const totalNumMatch = totalStr.replace(/\./g, '').replace(',', '.').match(/[\d.]+/);
+        const totalNum = totalNumMatch ? parseFloat(totalNumMatch[0]) : 0;
+        const agoraNum = Math.round((totalNum * Number(policy.percent_now || 100) / 100) * 100) / 100;
+        const fmt = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+
+        const pixKey = String(pm.manual_pix_key || '').trim();
+        const customIntro = String(pm.manual_instructions || '').trim();
+
+        const lines = [];
+        if (customIntro) lines.push(customIntro, '');
+        lines.push(
+            `Reserva #${reservationId}`,
+            `Hóspede: ${reserva.clientName}`,
+            `Hospedagem: ${reserva.chaletName}`,
+            `Check-in: ${reserva.checkin}  |  Check-out: ${reserva.checkout}`,
+            `Total da reserva: ${fmt(totalNum)}`,
+            `${policy.label} — valor agora: ${fmt(agoraNum)}`,
+            ''
+        );
+        if (pixKey) {
+            lines.push('Chave PIX para o sinal:', pixKey, '');
+        }
+        lines.push('Após transferir, envie o comprovante por aqui para confirmarmos. Obrigado!');
+
+        const text = encodeURIComponent(lines.join('\n'));
+        return `https://wa.me/${rawNumber}?text=${text}`;
     }
 
     /* =========================================
@@ -1256,23 +1412,32 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Company Logo
+            const brandName = (data.site_title && String(data.site_title).trim())
+                || (data.company_name && String(data.company_name).trim())
+                || (document.title && document.title.trim())
+                || 'Logo';
+            const brandAlt = brandName.replace(/"/g, '&quot;');
             if (data.company_logo) {
                 const headerLogo = document.querySelector('.navbar .logo');
                 if (headerLogo) {
-                    headerLogo.innerHTML = `<img src="${data.company_logo_light || data.company_logo}" alt="Recantos da Serra Logo" style="height: 40px;" data-light="${data.company_logo_light || data.company_logo}" data-dark="${data.company_logo}">`;
+                    headerLogo.innerHTML = `<img src="${data.company_logo_light || data.company_logo}" alt="${brandAlt}" style="height: 40px;" data-light="${data.company_logo_light || data.company_logo}" data-dark="${data.company_logo}">`;
                     window.dispatchEvent(new Event('scroll'));
                 }
                 const footerLogo = document.querySelector('.footer-brand .logo');
                 if (footerLogo) {
                     // Footer usually has a dark background, so prefer the light logo if available
                     const logoSrc = data.company_logo_light ? data.company_logo_light : data.company_logo;
-                    footerLogo.innerHTML = `<img src="${logoSrc}" alt="Recantos da Serra Logo" style="height: 50px;">`;
+                    footerLogo.innerHTML = `<img src="${logoSrc}" alt="${brandAlt}" style="height: 50px;">`;
                 }
                 const aboutLogo = document.getElementById('aboutSectionLogo');
                 if (aboutLogo) {
                     // About section has light background, use standard logo
-                    aboutLogo.innerHTML = `<img src="${data.company_logo}" alt="Recantos da Serra Logo" style="max-height: 80px; width: auto;">`;
+                    aboutLogo.innerHTML = `<img src="${data.company_logo}" alt="${brandAlt}" style="max-height: 80px; width: auto;">`;
                 }
+            } else {
+                // Sem logo configurado: atualiza o texto do fallback (<span>) para refletir o nome dinâmico.
+                document.querySelectorAll('.navbar .logo span, .footer-brand .logo span, #aboutSectionLogo .logo span')
+                    .forEach((el) => { el.textContent = brandName; });
             }
 
             // Customization (Hero, About, Amenities)

@@ -12,7 +12,7 @@ $defaultCustomization = [
     'heroSubtitle' => 'Desconecte-se da rotina e viva momentos inesquecíveis em nossos chalés exclusivos na serra.',
     'heroImages' => ['images/hero.png'],
     'aboutTitle' => 'Uma experiência imersiva',
-    'aboutText' => "Nascido do desejo de integrar conforto absoluto à natureza intocada, o Recantos da Serra oferece uma hospedagem ímpar. Nossos chalés foram projetados para se fundirem com a paisagem, garantindo privacidade, luxo e uma vista de tirar o fôlego.\n\nAcorde com o canto dos pássaros, desfrute de um café da manhã artesanal e relaxe em uma banheira de hidromassagem com vista para o vale.",
+    'aboutText' => "Nascido do desejo de integrar conforto absoluto à natureza intocada, a Pousada Mirante do Sol oferece uma hospedagem ímpar. Nossas acomodações foram projetadas para se fundirem com a paisagem, garantindo privacidade, luxo e uma vista de tirar o fôlego.\n\nAcorde com o canto dos pássaros, desfrute de um café da manhã artesanal e relaxe com vista para o vale.",
     'aboutImage' => 'images/chalet3.png',
     'chaletsSubtitle' => 'Nossas Acomodações',
     'chaletsTitle' => 'Escolha seu Refúgio',
@@ -39,16 +39,16 @@ $defaultCustomization = [
     'testi3Location' => 'Campinas, SP',
     'testi3Text' => 'Muito bom poder viajar com nossa cachorrinha e ser tão bem recebidos. A estrutura A-Frame é linda e tudo estava extremamente limpo e organizado. Nota 10!',
     'testi3Image' => 'https://ui-avatars.com/api/?name=Juliana+Alves&background=C89B5F&color=fff',
-    'locAddress' => 'Recanto da Serra Eco Park - Serra da Mantiqueira, MG',
+    'locAddress' => 'Endereço completo da pousada',
     'locCar' => 'Apenas 2h30 da capital. Estrada 100% asfaltada até a entrada.',
-    'locMapLink' => 'https://www.google.com/maps/search/?api=1&query=Recanto+da+Serra+Eco+Park',
+    'locMapLink' => 'https://www.google.com/maps/search/?api=1&query=Pousada+Mirante+do+Sol',
     'waNumber' => '5535999999999',
     'waMessage' => 'Olá, gostaria de mais informações sobre os chalés!',
     'footerDesc' => 'Luxo, conforto e natureza em perfeita harmonia.',
     'footerAddress' => 'Serra da Mantiqueira, MG',
-    'footerEmail' => 'contato@recantosdaserra.com',
-    'footerPhone' => '(35) 99999-9999',
-    'footerCopyright' => '© 2026 Recantos da Serra. Todos os direitos reservados.'
+    'footerEmail' => 'contato@pousadamirantedosol.com',
+    'footerPhone' => '(00) 00000-0000',
+    'footerCopyright' => '© ' . date('Y') . ' Pousada Mirante do Sol. Todos os direitos reservados.'
 ];
 
 $jsonValue = json_encode($defaultCustomization, JSON_UNESCAPED_UNICODE);

@@ -675,15 +675,26 @@ document.addEventListener('DOMContentLoaded', () => {
                             </tr>
                         </thead>
                         <tbody>
-                            ${reservationsData.map((r, index) => `
-                                <tr>
+                            ${reservationsData.map((r, index) => {
+                                const __policy = getPaymentPolicy(r.payment_rule || 'full');
+                                const __totalNum = parseFloat(r.total_amount) || 0;
+                                const __isPartial = __policy.percent_now < 100;
+                                const __balancePending = __isPartial && Number(r.balance_paid || 0) === 0;
+                                const __pendingAmount = __balancePending ? (__totalNum * (100 - __policy.percent_now)) / 100 : 0;
+                                const __today = new Date(); __today.setHours(0, 0, 0, 0);
+                                const __ci = r.checkin_date ? new Date(r.checkin_date + 'T00:00:00') : null;
+                                const __isCheckinDue = __balancePending && __ci && !isNaN(__ci.getTime()) && __today.getTime() >= __ci.getTime();
+                                const __rowStyle = __isCheckinDue ? ' style="background:rgba(255, 235, 130, 0.45);"' : '';
+                                const __fmtBR = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+                                return `
+                                <tr${__rowStyle}>
                                     <td>
                                         <button type="button" class="btn-icon" title="Editar" data-action="edit-reservation" data-index="${index}"><i class="ph ph-pencil-simple"></i></button>
                                         ${r.contract_filename
                                             ? `<button type="button" class="btn-icon" title="Ver Contrato PDF" data-action="pdf-reservation" data-index="${index}"><i class="ph ph-file-pdf"></i></button>`
                                             : `<button type="button" class="btn-icon" title="Gerar Contrato Manualmente" data-action="generate-contract" data-index="${index}" style="color:#c96621"><i class="ph ph-file-plus"></i></button>`
                                         }
-                                        ${getPaymentPolicy(r.payment_rule || 'full').percent_now < 100 && Number(r.balance_paid || 0) === 0
+                                        ${__balancePending
                                             ? `<button type="button" class="btn-icon" title="Receber Saldo" data-action="pay-balance" data-index="${index}" style="color:#198754"><i class="ph ph-currency-circle-dollar"></i></button>`
                                             : ''
                                         }
@@ -695,8 +706,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <td>${r.chalet_name}</td>
                                     <td>${formatDateBR(r.checkin_date)} até ${formatDateBR(r.checkout_date)}</td>
                                     <td>
-                                        R$ ${parseFloat(r.total_amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                        ${getPaymentPolicy(r.payment_rule || 'full').percent_now < 100 ? `<br><span class="badge warning" style="font-size:0.7rem; padding:0.15rem 0.3rem; margin-top:0.25rem; display:inline-block">${getPaymentPolicy(r.payment_rule || 'full').label}</span>` : ''}
+                                        ${__fmtBR(__totalNum)}
+                                        ${__isPartial ? `<br><span class="badge warning" style="font-size:0.7rem; padding:0.15rem 0.3rem; margin-top:0.25rem; display:inline-block">${__policy.label}</span>` : ''}
+                                        ${__balancePending
+                                            ? `<br><span class="badge danger" style="font-size:0.72rem; padding:0.2rem 0.45rem; margin-top:0.3rem; display:inline-block; background:#dc3545; color:#fff; border-radius:0.25rem; font-weight:600;">Falta Pagar: ${__fmtBR(__pendingAmount)}</span>${__isCheckinDue ? `<br><span style="display:inline-block; margin-top:0.3rem; padding:0.2rem 0.45rem; background:#f59e0b; color:#fff; border-radius:0.25rem; font-size:0.7rem; font-weight:700; letter-spacing:0.02em;"><i class="ph ph-warning-circle"></i> Cobrar Saldo!</span>` : ''}`
+                                            : ''}
                                         ${Number(r.balance_paid || 0) === 1
                                             ? `<br><span class="badge success" style="font-size:0.7rem; padding:0.15rem 0.3rem; margin-top:0.25rem; display:inline-block">Total Pago</span>${r.balance_paid_at ? `<br><small style="color:#198754; font-size:0.68rem; display:block; margin-top:0.2rem;">${formatBalancePaidAtDisplay(r.balance_paid_at)}</small>` : ''}`
                                             : ''}
@@ -709,7 +723,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         </select>
                                     </td>
                                 </tr>
-                            `).join('')}
+                            `;
+                            }).join('')}
                             ${reservationsData.length === 0 ? '<tr><td colspan="7" style="text-align:center;">Nenhuma reserva encontrada</td></tr>' : ''}
                         </tbody>
                     </table>
@@ -822,15 +837,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     <form>
                         <div class="form-group">
                             <label>Nome do Estabelecimento</label>
-                            <input type="text" class="form-control" value="Recantos da Serra">
+                            <input type="text" class="form-control" placeholder="Nome do estabelecimento">
                         </div>
                         <div class="form-group">
                             <label>E-mail de Contato</label>
-                            <input type="email" class="form-control" value="contato@recantosdaserra.com">
+                            <input type="email" class="form-control" placeholder="contato@suapousada.com">
                         </div>
                         <div class="form-group">
                             <label>Telefone Principal</label>
-                            <input type="text" class="form-control" value="(35) 99999-9999">
+                            <input type="text" class="form-control" placeholder="(00) 00000-0000">
                         </div>
                     </form>
                 </div>
@@ -1024,46 +1039,63 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
-                    <h3 style="margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
-                        <i class="ph ph-credit-card" style="color: #009EE3; margin-right: 0.5rem; vertical-align: bottom;"></i>
-                        Integração MercadoPago (Checkout Pro)
+                    <h3 style="margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                        <i class="ph ph-wallet" style="color: var(--primary-color, #ea580c); margin-right: 0.5rem; vertical-align: bottom;"></i>
+                        Métodos de Pagamento
                     </h3>
-                    <div style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #d9eefb; background: #f4fbff; border-radius: 8px;">
-                        <p style="margin: 0 0 0.75rem 0; color: #0f4c6d; font-size: 0.9rem; font-weight: 600;">Como criar sua credencial no Mercado Pago</p>
-                        <ol style="margin: 0; padding-left: 1.2rem; color: #23536b; font-size: 0.88rem; line-height: 1.6;">
-                            <li>Acesse o painel de desenvolvedores: <a href="https://www.mercadopago.com.br/developers/panel/app" target="_blank" style="color:#007bb5;">mercadopago.com.br/developers/panel/app</a></li>
-                            <li>Selecione sua aplicação e abra <strong>Credenciais</strong>.</li>
-                            <li>Copie o <strong>Access Token de Produção</strong> (prefixo <code>APP_USR-</code>) e cole abaixo.</li>
-                            <li>Em <strong>Webhooks</strong>, cadastre o evento <strong>Pagamentos</strong> usando a URL informada abaixo.</li>
-                        </ol>
-                    </div>
-                    <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">Configure seu Access Token de Produção do Mercado Pago para gerar links de pagamento diretamente no modal de reservas.</p>
-                    <form id="mpForm">
+                    <p style="margin: 0 0 1.25rem 0; color: #666; font-size: 0.9rem;">Ative um ou ambos os métodos. Quando os dois estiverem ativos, o hóspede escolhe no modal de reserva.</p>
+
+                    <!-- Toggle: Mercado Pago -->
+                    <div class="payment-method-card" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem;">
+                        <label style="display:flex; align-items:center; gap:0.75rem; cursor:pointer; font-weight:600; margin-bottom:0.75rem;">
+                            <input type="checkbox" id="paymentMpActive" style="width:18px; height:18px; accent-color: var(--primary-color, #ea580c);">
+                            <i class="ph ph-credit-card" style="color: #009EE3; font-size:1.25rem;"></i>
+                            <span>Mercado Pago <small style="color:#666; font-weight:400;">— checkout automático (cartão, PIX, boleto)</small></span>
+                        </label>
+                        <div style="margin-bottom: 0.75rem; padding: 0.75rem 1rem; border: 1px solid #d9eefb; background: #f4fbff; border-radius: 6px; font-size:0.85rem; color:#23536b;">
+                            <strong>Como configurar:</strong> acesse <a href="https://www.mercadopago.com.br/developers/panel/app" target="_blank" style="color:#007bb5;">mercadopago.com.br/developers/panel/app</a>, copie o <strong>Access Token de Produção</strong> (<code>APP_USR-...</code>) e em <strong>Webhooks</strong> cadastre o evento <strong>Pagamentos</strong> usando a URL abaixo.
+                        </div>
                         <div class="form-group">
                             <label>URL do Webhook (copie e cole no painel do Mercado Pago)</label>
                             <div style="display:flex; gap:0.5rem;">
                                 <input type="text" class="form-control" id="mpWebhookUrl" value="${window.location.origin}/api/mp_webhook.php" readonly>
-                                <button
-                                    type="button"
-                                    class="btn"
-                                    style="white-space:nowrap; background-color:#0b7bb5;"
-                                    onclick="navigator.clipboard.writeText(document.getElementById('mpWebhookUrl').value).then(() => alert('URL do webhook copiada!'))"
-                                >
+                                <button type="button" class="btn" style="white-space:nowrap; background-color:#0b7bb5;" onclick="navigator.clipboard.writeText(document.getElementById('mpWebhookUrl').value).then(() => alert('URL do webhook copiada!'))">
                                     <i class="ph ph-copy"></i> Copiar
                                 </button>
                             </div>
-                            <small style="display:block; margin-top:0.4rem; color:#777;">Evento recomendado: <strong>Pagamentos</strong> (type=payment).</small>
                         </div>
                         <div class="form-group">
                             <label>Access Token (Produção)</label>
-                            <input type="password" class="form-control" id="mpAccessToken" placeholder="APP_USR-..." required>
+                            <input type="password" class="form-control" id="mpAccessToken" placeholder="APP_USR-...">
                         </div>
-                        <div style="margin-top: 1.5rem; text-align: right;">
-                            <button type="button" class="btn btn-primary" id="saveMpBtn" style="background-color: #009EE3; border-color: #009EE3;">
-                                <i class="ph ph-floppy-disk"></i> Salvar Credenciais MercadoPago
-                            </button>
+                    </div>
+
+                    <!-- Toggle: PIX Manual -->
+                    <div class="payment-method-card" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem;">
+                        <label style="display:flex; align-items:center; gap:0.75rem; cursor:pointer; font-weight:600; margin-bottom:0.75rem;">
+                            <input type="checkbox" id="paymentManualActive" style="width:18px; height:18px; accent-color: var(--primary-color, #ea580c);">
+                            <i class="ph ph-whatsapp-logo" style="color: #25D366; font-size:1.25rem;"></i>
+                            <span>PIX Manual via WhatsApp <small style="color:#666; font-weight:400;">— comprovante validado pelo administrador</small></span>
+                        </label>
+                        <div style="margin-bottom: 0.75rem; padding: 0.75rem 1rem; border: 1px solid #d6f0de; background: #f4fbf6; border-radius: 6px; font-size:0.85rem; color:#1d5c34;">
+                            Ao selecionar este método, o hóspede é redirecionado ao WhatsApp com a chave PIX e as instruções abaixo. A reserva entra como <strong>Pendente</strong> até que você confirme o pagamento manualmente.
                         </div>
-                    </form>
+                        <div class="form-group">
+                            <label>Chave PIX Principal</label>
+                            <input type="text" class="form-control" id="manualPixKey" placeholder="CPF, e-mail, telefone ou chave aleatória">
+                        </div>
+                        <div class="form-group">
+                            <label>Instruções enviadas ao hóspede (WhatsApp)</label>
+                            <textarea class="form-control" id="manualPixInstructions" rows="3" placeholder="Ex.: Olá! Acabei de pré-reservar pelo site. Segue o comprovante do PIX."></textarea>
+                            <small style="display:block; margin-top:0.35rem; color:#777;">Este texto é usado como mensagem inicial do WhatsApp. Dados da reserva (nome, datas, valor) são acrescentados automaticamente.</small>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 1.5rem; text-align: right;">
+                        <button type="button" class="btn btn-primary" id="savePaymentMethodsBtn">
+                            <i class="ph ph-floppy-disk"></i> Salvar Métodos de Pagamento
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Redes Sociais Customization -->
@@ -1374,7 +1406,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <form id="locationForm">
                         <div class="form-group">
                             <label>Endereço Completo</label>
-                            <input type="text" class="form-control" id="customLocAddress" placeholder="Recanto da Serra Eco Park - Serra da Mantiqueira, MG">
+                            <input type="text" class="form-control" id="customLocAddress" placeholder="Rua, número, bairro, cidade/UF">
                         </div>
                         <div class="form-group">
                             <label>Instruções (De Carro)</label>
@@ -1441,7 +1473,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="form-group">
                             <label>Texto de Copyright</label>
-                            <input type="text" class="form-control" id="customFooterCopyright" placeholder="&copy; 2026 Recantos da Serra. Todos os direitos reservados.">
+                            <input type="text" class="form-control" id="customFooterCopyright" placeholder="&copy; 2026 Nome da Empresa. Todos os direitos reservados.">
                         </div>
                     </form>
                         </div>
@@ -1677,7 +1709,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (viewName === 'settings') {
                 await loadAllSettings();
                 document.getElementById('saveEvolutionBtn').addEventListener('click', saveEvolutionSettings);
-                document.getElementById('saveMpBtn').addEventListener('click', saveMpSettings);
+                const savePaymentMethodsBtnEl = document.getElementById('savePaymentMethodsBtn');
+                if (savePaymentMethodsBtnEl) savePaymentMethodsBtnEl.addEventListener('click', savePaymentMethodsSettings);
                 document.getElementById('saveLogoBtn').addEventListener('click', saveLogoSettings);
                 document.getElementById('saveSocialBtn').addEventListener('click', saveSocialSettings);
                 document.getElementById('saveIdentitySeoBtn').addEventListener('click', saveIdentitySeoSettings);
@@ -2096,15 +2129,45 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Credenciais da Evolution API salvas no Banco de Dados!');
     }
 
-    async function saveMpSettings() {
+    async function savePaymentMethodsSettings() {
+        const mpActiveEl = document.getElementById('paymentMpActive');
+        const manualActiveEl = document.getElementById('paymentManualActive');
+        const mpTokenEl = document.getElementById('mpAccessToken');
+        const pixKeyEl = document.getElementById('manualPixKey');
+        const pixInstrEl = document.getElementById('manualPixInstructions');
+
+        const mpActive = !!(mpActiveEl && mpActiveEl.checked);
+        const manualActive = !!(manualActiveEl && manualActiveEl.checked);
+        const mpToken = mpTokenEl ? mpTokenEl.value.trim() : '';
+        const pixKey = pixKeyEl ? pixKeyEl.value.trim() : '';
+        const pixInstr = pixInstrEl ? pixInstrEl.value.trim() : '';
+
+        if (!mpActive && !manualActive) {
+            alert('Ative pelo menos um método de pagamento. Caso contrário, o checkout público ficará inoperante.');
+            return;
+        }
+        if (mpActive && mpToken === '') {
+            alert('Para ativar o Mercado Pago, informe o Access Token de Produção (APP_USR-...).');
+            return;
+        }
+        if (manualActive && pixKey === '') {
+            alert('Para ativar o PIX Manual, informe a Chave PIX Principal.');
+            return;
+        }
+
         const settings = {
-            mercadoPagoSettings: {
-                accessToken: document.getElementById('mpAccessToken').value
-            }
+            payment_mercadopago_active: mpActive ? '1' : '0',
+            payment_manual_pix_active: manualActive ? '1' : '0',
+            manual_pix_key: pixKey,
+            manual_pix_instructions: pixInstr
         };
+        // Só reescreve o token se o admin digitou algo novo (evita apagar accidentalmente).
+        if (mpToken !== '') {
+            settings.mercadoPagoSettings = { accessToken: mpToken };
+        }
 
         await saveSettingsToAPI(settings);
-        alert('Access Token do MercadoPago salvo no Banco de Dados!');
+        alert('Métodos de pagamento salvos com sucesso!');
     }
 
     function normalizeTimeHHMM(raw, fallback) {
@@ -2406,12 +2469,29 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Popula MercadoPago
-            if (data.mercadoPagoSettings) {
-                document.getElementById('mpAccessToken').value = data.mercadoPagoSettings.accessToken || '';
-            }
+            const mpAccessTokenEl = document.getElementById('mpAccessToken');
+            if (mpAccessTokenEl) mpAccessTokenEl.value = (data.mercadoPagoSettings && data.mercadoPagoSettings.accessToken) || '';
             if (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '') {
                 internalApiKey = data.internalApiKey.trim();
             }
+
+            // Popula toggles e campos dos métodos de pagamento (híbrido MP + PIX manual).
+            const asBoolFlag = (v) => {
+                const s = String(v == null ? '' : v).trim().toLowerCase();
+                return s === '1' || s === 'true' || s === 'on' || s === 'yes';
+            };
+            const mpActiveEl = document.getElementById('paymentMpActive');
+            if (mpActiveEl) {
+                mpActiveEl.checked = data.payment_mercadopago_active === undefined
+                    ? true // default conservador: mantém MP ativo em instalações antigas
+                    : asBoolFlag(data.payment_mercadopago_active);
+            }
+            const manualActiveEl = document.getElementById('paymentManualActive');
+            if (manualActiveEl) manualActiveEl.checked = asBoolFlag(data.payment_manual_pix_active);
+            const pixKeyEl = document.getElementById('manualPixKey');
+            if (pixKeyEl) pixKeyEl.value = typeof data.manual_pix_key === 'string' ? data.manual_pix_key : '';
+            const pixInstrEl = document.getElementById('manualPixInstructions');
+            if (pixInstrEl) pixInstrEl.value = typeof data.manual_pix_instructions === 'string' ? data.manual_pix_instructions : '';
 
             // Popula Redes Sociais
             if (data.socialSettings) {
@@ -3108,7 +3188,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             <input type="number" step="0.01" id="editResTotal" class="form-control" required value="${res.total_amount}">
                             <small id="editResTotalBreakdown" style="color:#666; display:block; margin-top:0.25rem;">Preenchido automaticamente. Edite para sobrescrever.</small>
                         </div>
-                        
+
+                        ${isEditing ? `
+                        <div id="editResFinanceSection" class="form-group" style="margin-top:1.25rem; padding:1rem; border:1px solid #e5e7eb; border-radius:0.5rem; background:#f9fafb;">
+                            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;">
+                                <i class="ph ph-wallet" style="font-size:1.15rem; color:var(--primary-color, #ea580c);"></i>
+                                <strong style="font-size:0.95rem;">Gestão Financeira</strong>
+                            </div>
+                            <input type="hidden" id="editResBalancePaid" value="${Number(res.balance_paid || 0) === 1 ? '1' : '0'}">
+                            <div id="editResFinanceSummary" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;"></div>
+                            <div id="editResFinanceAction"></div>
+                        </div>
+                        ` : ''}
+
                         <button type="submit" class="btn" style="width:100%; justify-content:center; margin-top: 1rem;">${isEditing ? 'Atualizar Reserva' : 'Criar Reserva'}</button>
                     </form>
                 </div>
@@ -3194,22 +3286,92 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        // Gestão Financeira (50/50) — apenas em edição.
+        const financeSummaryEl = document.getElementById('editResFinanceSummary');
+        const financeActionEl = document.getElementById('editResFinanceAction');
+        const balancePaidHidden = document.getElementById('editResBalancePaid');
+
+        function renderFinanceSection() {
+            if (!isEditing || !financeSummaryEl || !financeActionEl || !balancePaidHidden) return;
+            const policy = getPaymentPolicy((res && res.payment_rule) ? res.payment_rule : 'full');
+            const percentNow = Math.min(100, Math.max(0, Number(policy.percent_now || 100)));
+            const percentBal = Math.max(0, 100 - percentNow);
+            const totalNum = Math.max(0, parseFloat(totalInput ? totalInput.value : (res.total_amount || 0)) || 0);
+            const sinalNum = Math.round((totalNum * percentNow) / 100 * 100) / 100;
+            const saldoNum = Math.round((totalNum * percentBal) / 100 * 100) / 100;
+            const fmt = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+            const isPaid = balancePaidHidden.value === '1';
+
+            const cardStyle = 'background:#fff; border:1px solid #e5e7eb; border-radius:0.4rem; padding:0.55rem 0.65rem;';
+            const labelStyle = 'font-size:0.7rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; display:block;';
+            const valueStyle = 'font-size:1rem; font-weight:700; color:#111827; display:block; margin-top:0.15rem;';
+
+            financeSummaryEl.innerHTML = `
+                <div style="${cardStyle}">
+                    <span style="${labelStyle}">Valor Total</span>
+                    <span style="${valueStyle}">${fmt(totalNum)}</span>
+                </div>
+                <div style="${cardStyle}">
+                    <span style="${labelStyle}">Sinal (${percentNow}%)</span>
+                    <span style="${valueStyle}; color:#198754;">${fmt(sinalNum)}</span>
+                </div>
+                <div style="${cardStyle}">
+                    <span style="${labelStyle}">Saldo (${percentBal}%)</span>
+                    <span style="${valueStyle}; color:${isPaid || percentBal === 0 ? '#198754' : '#dc3545'};">${fmt(saldoNum)}</span>
+                </div>
+            `;
+
+            if (percentBal === 0) {
+                financeActionEl.innerHTML = `<div style="padding:0.6rem 0.75rem; background:#d1fae5; border-left:4px solid #198754; border-radius:0.25rem; font-size:0.85rem; color:#065f46;">
+                    <i class="ph ph-check-circle"></i> Pagamento 100% antecipado — sem saldo a cobrar no check-in.
+                </div>`;
+                return;
+            }
+
+            if (isPaid) {
+                const when = res.balance_paid_at ? formatBalancePaidAtDisplay(res.balance_paid_at) : 'agora';
+                financeActionEl.innerHTML = `<div style="padding:0.6rem 0.75rem; background:#d1fae5; border-left:4px solid #198754; border-radius:0.25rem; font-size:0.88rem; color:#065f46;">
+                    <i class="ph ph-check-circle"></i> <strong>Saldo recebido</strong> — ${when}
+                    <button type="button" id="editResUndoBalance" style="float:right; background:none; border:none; color:#065f46; font-size:0.78rem; text-decoration:underline; cursor:pointer;">desfazer</button>
+                </div>`;
+                const undoBtn = document.getElementById('editResUndoBalance');
+                if (undoBtn) {
+                    undoBtn.addEventListener('click', () => {
+                        balancePaidHidden.value = '0';
+                        renderFinanceSection();
+                    });
+                }
+            } else {
+                financeActionEl.innerHTML = `<button type="button" id="editResMarkBalancePaid" class="btn" style="width:100%; justify-content:center; background:#198754; border-color:#198754; color:#fff; padding:0.7rem; font-weight:600;">
+                    <i class="ph ph-currency-circle-dollar"></i> Marcar Saldo (${percentBal}%) como Recebido — ${fmt(saldoNum)}
+                </button>`;
+                const markBtn = document.getElementById('editResMarkBalancePaid');
+                if (markBtn) {
+                    markBtn.addEventListener('click', () => {
+                        balancePaidHidden.value = '1';
+                        renderFinanceSection();
+                    });
+                }
+            }
+        }
+
         if (chaletSelect) {
-            chaletSelect.addEventListener('change', () => { updateGuestsDropdown(); recalculateTotalAdmin(); });
+            chaletSelect.addEventListener('change', () => { updateGuestsDropdown(); recalculateTotalAdmin(); renderFinanceSection(); });
             updateGuestsDropdown();
         }
         if (guestsSelect) {
-            guestsSelect.addEventListener('change', recalculateTotalAdmin);
+            guestsSelect.addEventListener('change', () => { recalculateTotalAdmin(); renderFinanceSection(); });
         }
-        if (checkinInput) checkinInput.addEventListener('change', recalculateTotalAdmin);
-        if (checkoutInput) checkoutInput.addEventListener('change', recalculateTotalAdmin);
-        if (additionalInput) additionalInput.addEventListener('input', recalculateTotalAdmin);
+        if (checkinInput) checkinInput.addEventListener('change', () => { recalculateTotalAdmin(); renderFinanceSection(); });
+        if (checkoutInput) checkoutInput.addEventListener('change', () => { recalculateTotalAdmin(); renderFinanceSection(); });
+        if (additionalInput) additionalInput.addEventListener('input', () => { recalculateTotalAdmin(); renderFinanceSection(); });
         if (totalInput) {
             totalInput.addEventListener('input', () => {
                 if (breakdownEl) {
                     breakdownEl.textContent = 'Valor total sobrescrito manualmente. Será recalculado se datas, hospedagem, hóspedes ou ajuste mudarem.';
                     breakdownEl.style.color = 'var(--warning, #b45309)';
                 }
+                renderFinanceSection();
             });
         }
 
@@ -3218,6 +3380,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isEditing || !res.total_amount) {
             recalculateTotalAdmin();
         }
+        renderFinanceSection();
     }
 
     window.handleEditReservation = async function (e, id) {
@@ -3225,6 +3388,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const additionalEl = document.getElementById('editResAdditionalValue');
         const additionalValue = additionalEl ? (parseFloat(additionalEl.value) || 0) : 0;
+        const balancePaidEl = document.getElementById('editResBalancePaid');
         const payload = {
             guest_name: document.getElementById('editResName').value,
             guest_email: document.getElementById('editResEmail').value,
@@ -3238,6 +3402,9 @@ document.addEventListener('DOMContentLoaded', () => {
             additional_value: additionalValue,
             status: document.getElementById('editResStatus').value
         };
+        if (balancePaidEl) {
+            payload.balance_paid = balancePaidEl.value === '1' ? 1 : 0;
+        }
 
         const method = id ? 'PUT' : 'POST';
         const url = id ? `../api/reservations.php?id=${id}` : '../api/reservations.php';
