@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let allChalets = {};
     const availabilityCache = new Map();
     let latestAvailabilityRequest = 0;
-    let currentChalet = 'Chalé Alpino';
+    let currentChalet = '';
 
     function countNightsBetween(checkinStr, checkoutStr) {
         const partsIn = checkinStr.split('-');

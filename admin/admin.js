@@ -379,7 +379,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="card stat-card">
                     <div class="stat-info">
-                        <h3>Chalés Ativos</h3>
+                        <h3>Hospedagens Ativas</h3>
                         <p>${chaletsData.filter(c => c.status === 'Ativo').length}</p>
                     </div>
                     <div class="stat-icon warning"><i class="ph ph-house-line"></i></div>
@@ -394,7 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <tr>
                                 <th>ID</th>
                                 <th>Hóspede</th>
-                                <th>Chalé</th>
+                                <th>Hospedagem</th>
                                 <th>Check-in / Out</th>
                                 <th>Status</th>
                             </tr>
@@ -455,7 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <th>Ações</th>
                                 <th>Reserva</th>
                                 <th>Hóspede</th>
-                                <th>Chalé</th>
+                                <th>Hospedagem</th>
                                 <th>Datas</th>
                                 <th>Valor Total</th>
                                 <th>Status</th>
@@ -505,8 +505,8 @@ document.addEventListener('DOMContentLoaded', () => {
         `,
         chalets: `
             <div class="page-header">
-                <h1 class="page-title">Gerenciar Chalés</h1>
-                ${canCreateChalet ? '<button class="btn" data-action="add-chalet" onclick="openChaletModal()"><i class="ph ph-plus"></i> Adicionar Chalé</button>' : ''}
+                <h1 class="page-title">Gerenciar Hospedagens</h1>
+                ${canCreateChalet ? '<button class="btn" data-action="add-chalet" onclick="openChaletModal()"><i class="ph ph-plus"></i> Adicionar Hospedagem</button>' : ''}
             </div>
 
             <div class="card">
@@ -791,7 +791,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <textarea class="form-control" id="evoReservationMsg" rows="6" placeholder="Olá {nome}! Parabéns pela sua reserva..."></textarea>
                                 <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">
                                     <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Nome do Hóspede">{nome}</small>
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Nome do Chalé">{chale}</small>
+                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Nome da Hospedagem">{chale}</small>
                                     <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Data de Check-in">{checkin}</small>
                                     <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Data de Check-out">{checkout}</small>
                                     <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Valor total da reserva">{total}</small>
@@ -968,10 +968,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
 
-                <!-- Seção Chalés / Acomodações -->
+                <!-- Seção Hospedagens / Acomodações -->
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
-                        <h3><i class="ph ph-house" style="color: var(--primary);"></i> Seção Chalés (Acomodações)</h3>
+                        <h3><i class="ph ph-house" style="color: var(--primary);"></i> Seção Hospedagens (Acomodações)</h3>
                         <i class="ph ph-caret-down accordion-icon"></i>
                     </div>
                     <div class="accordion-body">
@@ -2216,6 +2216,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (seoSecondaryColor) seoSecondaryColor.value = data.secondary_color || '#1e293b';
             applyAdminTheme(data.primary_color || '#ea580c', data.secondary_color || '#1e293b');
 
+            const brandName = (data.company_name && String(data.company_name).trim()) ||
+                (data.site_title && String(data.site_title).trim()) ||
+                'Admin';
+            const brandEl = document.getElementById('adminBrandName');
+            if (brandEl) brandEl.textContent = brandName;
+            const titleEl = document.getElementById('adminPageTitle');
+            if (titleEl) titleEl.textContent = 'Admin · ' + brandName;
+            try { document.title = 'Admin · ' + brandName; } catch (_) { /* noop */ }
+
             // Popula Logo Preview
             if (data.company_logo) {
                 document.getElementById('currentLogoPreview').innerHTML = `<img src="../${data.company_logo}" alt="Company Logo" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
@@ -2632,15 +2641,15 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="modal-overlay" id="addChaletModal" onclick="if(event.target === this) this.remove()">
                 <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
                     <div class="modal-header">
-                        <h3>${chalet ? 'Editar Chalé' : 'Adicionar Novo Chalé'}</h3>
+                        <h3>${chalet ? 'Editar Hospedagem' : 'Adicionar Nova Hospedagem'}</h3>
                         <button class="close-btn" onclick="document.getElementById('addChaletModal').remove()"><i class="ph ph-x"></i></button>
                     </div>
                     <form onsubmit="handleAdicionarChale(event)">
                         <input type="hidden" id="chaletId" value="${chalet ? chalet.id : ''}">
                         
                         <div class="form-group">
-                            <label>Nome do Chalé</label>
-                            <input type="text" id="addName" class="form-control" required placeholder="Ex: Chalé Romântico" value="${chalet ? chalet.name : ''}">
+                            <label>Nome da Hospedagem</label>
+                            <input type="text" id="addName" class="form-control" required placeholder="Ex: Flat Romântico, Suíte Master, Chalé Alpino" value="${chalet ? chalet.name : ''}">
                         </div>
                         
                         <div style="display:flex; gap:1rem;">
@@ -2650,8 +2659,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <small style="color: #666;">Aparece sobre a foto na página inicial</small>
                             </div>
                             <div class="form-group" style="flex:1;">
-                                <label>Tipo/Modelo</label>
-                                <input type="text" id="addType" class="form-control" required placeholder="A-Frame" value="${chalet ? chalet.type : ''}">
+                                <label>Tipo (Ex: Flat, Quarto, Chalé)</label>
+                                <input type="text" id="addType" class="form-control" required placeholder="Flat, Quarto, Chalé, Bangalô..." value="${chalet ? chalet.type : ''}">
                             </div>
                             <div class="form-group" style="flex:1;">
                                 <label>Preço Base Estático (R$)</label>
@@ -2676,7 +2685,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
 
                         <div class="form-group" style="background: var(--bg-light); padding: 1rem; border-radius: 8px;">
-                            <h4 style="margin-bottom:0.5rem; font-size:0.95rem; color:var(--text-dark);">Fotos do Chalé</h4>
+                            <h4 style="margin-bottom:0.5rem; font-size:0.95rem; color:var(--text-dark);">Fotos da Hospedagem</h4>
                             <div style="margin-bottom: 1rem;">
                                 <label style="display:block; margin-bottom: 0.25rem;">Foto Principal (Capa)</label>
                                 <div style="position: relative; border: 2px dashed var(--border-color); padding: 1rem; text-align: center; border-radius: 4px; background: #fff;">
@@ -2741,7 +2750,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
 
                         <button type="submit" class="btn" id="submitChaletBtn" style="width:100%; justify-content:center; margin-top: 1rem;">
-                            ${chalet ? 'Salvar Alterações' : 'Salvar Chalé no Banco'}
+                            ${chalet ? 'Salvar Alterações' : 'Salvar Hospedagem'}
                         </button>
                     </form>
                 </div>
@@ -2818,7 +2827,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Chalé</label>
+                            <label>Hospedagem</label>
                             <select id="editResChaletId" class="form-control" required>
                                 ${chaletsOptions}
                             </select>
@@ -3040,7 +3049,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!id && isSecretaryUser()) {
             alert('Você não tem permissão para cadastrar novos chalés.');
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Salvar Chalé';
+            submitBtn.textContent = 'Salvar Hospedagem';
             return;
         }
         if (id) formData.append('id', id);
@@ -3057,7 +3066,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (Number.isFinite(baseGuestsNum) && Number.isFinite(maxGuestsNum) && maxGuestsNum < baseGuestsNum) {
             alert('A capacidade máxima não pode ser menor que os hóspedes inclusos na base.');
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Salvar Chalé';
+            submitBtn.textContent = 'Salvar Hospedagem';
             return;
         }
         if (baseGuestsEl) formData.append('base_guests', baseGuestsEl.value);
@@ -3113,7 +3122,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (res.ok) {
-                alert('Chalé salvo com sucesso!');
+                alert('Hospedagem salva com sucesso!');
                 document.getElementById('addChaletModal').remove();
                 await fetchApiData();
                 renderView('chalets');
@@ -3130,7 +3139,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             if (document.getElementById('submitChaletBtn')) {
                 document.getElementById('submitChaletBtn').disabled = false;
-                document.getElementById('submitChaletBtn').textContent = 'Salvar Chalé';
+                document.getElementById('submitChaletBtn').textContent = 'Salvar Hospedagem';
             }
         }
     }
@@ -3140,7 +3149,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch(`../api/chalets.php?id=${id}`, { method: 'DELETE' });
             if (res.ok) {
-                alert('Chalé excluído com sucesso.');
+                alert('Hospedagem excluída com sucesso.');
                 await fetchApiData();
                 renderView('chalets');
             } else {
@@ -3158,7 +3167,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const MENU_OPTIONS = [
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'reservations', label: 'Reservas' },
-        { id: 'chalets', label: 'Chalés' },
+        { id: 'chalets', label: 'Hospedagens' },
         { id: 'financeiro', label: 'Financeiro' },
         { id: 'coupons', label: 'Cupons' },
         { id: 'extras', label: 'Serviços Extras' },
@@ -3315,6 +3324,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) return;
             const data = await res.json();
             applyAdminTheme(data.primary_color || '#ea580c', data.secondary_color || '#1e293b');
+            const brandName = (data.company_name && String(data.company_name).trim()) ||
+                (data.site_title && String(data.site_title).trim()) ||
+                'Admin';
+            const brandEl = document.getElementById('adminBrandName');
+            if (brandEl) brandEl.textContent = brandName;
+            const titleEl = document.getElementById('adminPageTitle');
+            if (titleEl) titleEl.textContent = 'Admin · ' + brandName;
+            try { document.title = 'Admin · ' + brandName; } catch (_) { /* noop */ }
         } catch (e) {
             // Usa tema padrão quando não conseguir carregar.
         }

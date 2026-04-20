@@ -150,7 +150,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
 
             <nav class="nav-links">
                 <a href="#about">Sobre</a>
-                <a href="#chalets">Chalés</a>
+                <a href="#chalets">Acomodações</a>
                 <a href="#amenities">Comodidades</a>
                 <a href="#booking" class="btn btn-primary">Reservar Agora</a>
             </nav>
@@ -174,7 +174,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
             <h1 class="fade-up" id="clientHeroTitle"><?= $h($c['heroTitle']) ?></h1>
             <p class="fade-up delay-1" id="clientHeroSubtitle"><?= $h($c['heroSubtitle']) ?></p>
             <div class="hero-actions fade-up delay-2">
-                <a href="#chalets" class="btn btn-primary">Ver Chalés</a>
+                <a href="#chalets" class="btn btn-primary">Ver Acomodações</a>
                 <a href="#about" class="btn btn-outline">Nossa História</a>
             </div>
         </div>
@@ -360,7 +360,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 <ul>
                     <li><a href="#home">Início</a></li>
                     <li><a href="#about">Sobre</a></li>
-                    <li><a href="#chalets">Chalés</a></li>
+                    <li><a href="#chalets">Acomodações</a></li>
                     <li><a href="#amenities">Comodidades</a></li>
                 </ul>
             </div>
@@ -389,7 +389,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
             <button class="close-modal" id="closeModal"><i class="ph ph-x"></i></button>
             <div class="modal-header">
                 <h3>Finalizar Reserva</h3>
-                <p id="modalChaletName">Chalé Selecionado</p>
+                <p id="modalChaletName"></p>
             </div>
             <div class="modal-body">
                 <div class="reservation-dates" style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
@@ -467,7 +467,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 <div class="badge" id="chaletDetailsBadge" style="position: absolute; bottom: 1rem; left: 1rem; top: auto; right: auto;">Exclusivo</div>
             </div>
             <div class="modal-body" style="padding: 2rem;">
-                <h2 id="chaletDetailsName" style="margin-bottom: 0.5rem; color: var(--text-dark);">Nome do Chalé</h2>
+                <h2 id="chaletDetailsName" style="margin-bottom: 0.5rem; color: var(--text-dark);"></h2>
                 <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; color: var(--text-muted); font-size: 0.95rem;">
                     <span><i class="ph ph-house"></i> <span id="chaletDetailsType">Tipo</span></span>
                     <span><i class="ph ph-money"></i> A partir de <strong>R$ <span id="chaletDetailsPrice">0</span>/noite</strong></span>
