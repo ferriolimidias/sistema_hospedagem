@@ -348,6 +348,133 @@ button {
     color: var(--text-main);
 }
 
+/* ===== Dashboard — Centro de Comando ===== */
+.dash-empty-ok,
+.dash-empty-neutral {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem 1.4rem;
+    border-radius: 12px;
+    border: 1px solid transparent;
+}
+
+.dash-empty-ok {
+    background: linear-gradient(0deg, #ecfdf5, #ecfdf5);
+    border-color: #a7f3d0;
+}
+
+.dash-empty-ok i {
+    font-size: 2rem;
+    color: #059669;
+    flex-shrink: 0;
+}
+
+.dash-empty-ok strong {
+    color: #065f46;
+    font-size: 1.05rem;
+}
+
+.dash-empty-neutral {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+.dash-empty-neutral i {
+    font-size: 2rem;
+    color: #64748b;
+    flex-shrink: 0;
+}
+
+.dash-empty-neutral strong {
+    color: #0f172a;
+    font-size: 1.05rem;
+}
+
+.data-table tr.dash-row-alert {
+    background: #fff7ed;
+}
+
+.data-table tr.dash-row-alert:hover {
+    background: #ffedd5;
+}
+
+.data-table tr.dash-row-expired {
+    background: #fee2e2;
+    border-left: 4px solid #7f1d1d;
+}
+
+.data-table tr.dash-row-expired:hover {
+    background: #fecaca;
+}
+
+.btn.btn-sm {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+/* Widget de ocupação */
+.occupancy-widget {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.occupancy-row {
+    display: grid;
+    grid-template-columns: 110px 1fr 110px;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.occupancy-label {
+    font-weight: 600;
+    color: var(--text-main);
+    font-size: 0.92rem;
+}
+
+.occupancy-bar-wrap {
+    background: #e2e8f0;
+    border-radius: 999px;
+    height: 10px;
+    overflow: hidden;
+    position: relative;
+}
+
+.occupancy-bar {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.35s ease;
+}
+
+.occupancy-meta {
+    text-align: right;
+    font-weight: 600;
+    color: var(--text-main);
+    font-size: 0.9rem;
+}
+
+.occupancy-legend {
+    margin-top: 1rem;
+    display: flex;
+    gap: 1.2rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.occupancy-legend i {
+    margin-right: 0.25rem;
+    vertical-align: middle;
+}
+
+@media (max-width: 600px) {
+    .occupancy-row {
+        grid-template-columns: 80px 1fr 90px;
+        gap: 0.5rem;
+    }
+}
+
 /* Tables */
 .table-container {
     overflow-x: auto;

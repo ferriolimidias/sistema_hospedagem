@@ -260,6 +260,7 @@ function runInitialSchema(PDO $pdo): void
             total_amount DECIMAL(10,2) NOT NULL,
             additional_value DECIMAL(10,2) NOT NULL DEFAULT 0,
             payment_rule VARCHAR(20) NOT NULL DEFAULT 'full',
+            payment_method VARCHAR(32) NOT NULL DEFAULT 'mercadopago',
             status VARCHAR(50) NOT NULL DEFAULT 'Confirmada',
             expires_at DATETIME NULL,
             mp_init_point TEXT NULL,
@@ -454,6 +455,14 @@ function runInitialSchema(PDO $pdo): void
 
     try {
         $pdo->exec('ALTER TABLE reservations ADD COLUMN additional_value DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER total_amount');
+    } catch (PDOException $e) {
+        // Coluna já existe.
+    }
+
+    // Método de pagamento (mercadopago | manual) — diferencia reservas automáticas (MP)
+    // das manuais (PIX via WhatsApp). Sem DROP; se a coluna já existir, o erro é ignorado.
+    try {
+        $pdo->exec("ALTER TABLE reservations ADD COLUMN payment_method VARCHAR(32) NOT NULL DEFAULT 'mercadopago' AFTER payment_rule");
     } catch (PDOException $e) {
         // Coluna já existe.
     }

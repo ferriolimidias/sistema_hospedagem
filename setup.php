@@ -40,9 +40,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Nome da base de dados deve conter apenas letras, números e underscore.';
     }
     if ($dbUser === '') $errors[] = 'Utilizador do banco é obrigatório.';
-    if ($adminName === '') $errors[] = 'Nome do primeiro administrador é obrigatório.';
-    if (!filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) $errors[] = 'Email do administrador é inválido.';
-    if (strlen($adminPass) < 8) $errors[] = 'Password do administrador deve ter no mínimo 8 caracteres.';
+
+    // Admin: só exigimos os dados quando for primeira instalação (tabela admins vazia).
+    // Se o banco já tiver administradores, preservamos os existentes e ignoramos os campos.
+    $requireAdminFields = true;
+    $adminFieldErrors = [];
+    if ($adminName === '') $adminFieldErrors[] = 'Nome do primeiro administrador é obrigatório.';
+    if (!filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) $adminFieldErrors[] = 'Email do administrador é inválido.';
+    if (strlen($adminPass) < 8) $adminFieldErrors[] = 'Password do administrador deve ter no mínimo 8 caracteres.';
 
     if (empty($errors)) {
         try {
@@ -69,6 +74,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]
             );
 
+            // Sincronização de schema (migrator): cria tabelas que faltam e adiciona colunas novas,
+            // sem apagar dados existentes. Todas as operações são idempotentes.
+            // Sem transação: CREATE/ALTER TABLE no MySQL fazem commit implícito.
+            runInitialSchema($pdo);
+
+            // Decide se precisamos criar o primeiro administrador ou preservar os existentes.
+            $existingAdmins = (int) $pdo->query('SELECT COUNT(*) FROM admins')->fetchColumn();
+            $requireAdminFields = $existingAdmins === 0;
+
+            if ($requireAdminFields && !empty($adminFieldErrors)) {
+                // Primeira instalação exige os dados do admin.
+                throw new RuntimeException(implode(' ', $adminFieldErrors));
+            }
+
+            // Escreve/atualiza config/database.php somente após o schema ter sido criado com sucesso,
+            // para evitar gravar credenciais de um banco que não aceita as migrações.
             if (!is_dir($configDir) && !mkdir($configDir, 0755, true) && !is_dir($configDir)) {
                 throw new RuntimeException('Não foi possível criar a pasta de configuração.');
             }
@@ -88,38 +109,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             @chmod($configPath, 0640);
 
-            // Sem transação: CREATE/ALTER TABLE no MySQL fazem commit implícito e quebrariam begin/commit.
-            runInitialSchema($pdo);
-
-            $stmt = $pdo->prepare('SELECT id FROM admins WHERE email = ? LIMIT 1');
-            $stmt->execute([$adminEmail]);
-            if ($stmt->fetch()) {
-                throw new RuntimeException('Já existe um administrador com este email.');
+            if ($requireAdminFields) {
+                // Banco vazio → cria o primeiro administrador informado.
+                $insertAdmin = $pdo->prepare(
+                    'INSERT INTO admins (name, email, password, role, permissions) VALUES (?, ?, ?, ?, ?)'
+                );
+                $insertAdmin->execute([
+                    $adminName,
+                    $adminEmail,
+                    password_hash($adminPass, PASSWORD_DEFAULT),
+                    'admin',
+                    json_encode(['dashboard', 'reservas', 'chales', 'usuarios', 'configuracoes', 'financeiro']),
+                ]);
+                $adminMsg = 'Primeiro administrador criado com sucesso.';
+            } else {
+                // Banco com admins existentes → preservados integralmente (senhas, permissões, etc.).
+                $adminMsg = "Administradores existentes preservados ({$existingAdmins}). Use o login atual para aceder.";
             }
-
-            $insertAdmin = $pdo->prepare(
-                'INSERT INTO admins (name, email, password, role, permissions) VALUES (?, ?, ?, ?, ?)'
-            );
-            $insertAdmin->execute([
-                $adminName,
-                $adminEmail,
-                password_hash($adminPass, PASSWORD_DEFAULT),
-                'admin',
-                json_encode(['dashboard', 'reservas', 'chales', 'usuarios', 'configuracoes', 'financeiro']),
-            ]);
 
             // Bloqueia reutilização direta do instalador após sucesso.
             $lockPath = __DIR__ . '/config/.installed.lock';
             @file_put_contents($lockPath, date('c'));
 
             $renamed = @rename(__FILE__, __DIR__ . '/setup.installed.php');
-            if ($renamed) {
-                $message = 'Instalação concluída com sucesso. O instalador foi desativado.';
-            } else {
-                $message = 'Instalação concluída com sucesso. Remova manualmente setup.php por segurança.';
-            }
+            $installerMsg = $renamed
+                ? 'O instalador foi desativado.'
+                : 'Remova manualmente setup.php por segurança.';
+            $message = 'Sincronização concluída com sucesso. ' . $adminMsg . ' ' . $installerMsg;
             $success = true;
-            header('Refresh: 3; URL=/index.php');
+            header('Refresh: 4; URL=/index.php');
         } catch (Throwable $e) {
             if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {
                 try {
@@ -233,8 +251,12 @@ function esc(string $value): string
 <body>
     <div class="wrap">
         <div class="card">
-            <h1>Instalação Inicial</h1>
-            <p class="lead">Configure a base de dados e o primeiro administrador para ativar o sistema.</p>
+            <h1>Instalação e Sincronização</h1>
+            <p class="lead">
+                Configure a base de dados e (na primeira instalação) o administrador inicial.
+                Se o banco já contiver dados, eles serão <strong>preservados</strong>: apenas serão criadas
+                as tabelas e colunas que faltam.
+            </p>
 
             <?php if (!empty($errors)): ?>
                 <div class="notice error">
@@ -278,24 +300,28 @@ function esc(string $value): string
                 </fieldset>
 
                 <fieldset>
-                    <legend>Primeiro Administrador</legend>
+                    <legend>Primeiro Administrador (apenas em base vazia)</legend>
+                    <p style="margin:.2rem 0 .9rem; color:var(--muted); font-size:.88rem;">
+                        Estes campos são usados apenas se o banco ainda não tiver nenhum administrador.
+                        Se já existir algum admin, estes valores são <strong>ignorados</strong> para preservar o login atual.
+                    </p>
                     <div class="grid">
                         <div>
                             <label for="admin_name">Nome</label>
-                            <input id="admin_name" name="admin_name" required value="<?= esc((string)$formData['admin_name']) ?>">
+                            <input id="admin_name" name="admin_name" value="<?= esc((string)$formData['admin_name']) ?>">
                         </div>
                         <div>
                             <label for="admin_email">Email</label>
-                            <input id="admin_email" name="admin_email" type="email" required value="<?= esc((string)$formData['admin_email']) ?>">
+                            <input id="admin_email" name="admin_email" type="email" value="<?= esc((string)$formData['admin_email']) ?>">
                         </div>
                         <div class="full">
                             <label for="admin_pass">Password</label>
-                            <input id="admin_pass" name="admin_pass" type="password" required minlength="8">
+                            <input id="admin_pass" name="admin_pass" type="password" minlength="8">
                         </div>
                     </div>
                 </fieldset>
 
-                <button type="submit">Instalar Sistema</button>
+                <button type="submit">Instalar / Sincronizar</button>
             </form>
         </div>
     </div>

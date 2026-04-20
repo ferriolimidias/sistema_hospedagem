@@ -569,65 +569,369 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Views Templates
     const getViews = () => ({
-        dashboard: `
+        dashboard: (() => {
+            // ===== Centro de Comando Operacional =====
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+            const toDateOnly = (s) => {
+                if (!s) return null;
+                const d = new Date(String(s).slice(0, 10) + 'T00:00:00');
+                return isNaN(d.getTime()) ? null : d;
+            };
+            const sameDay = (a, b) => a && b && a.getTime() === b.getTime();
+            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            const fmtBR = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+            const escH = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+            const reservationIndex = (r) => reservationsData.indexOf(r);
+
+            const activeStatuses = new Set(['Confirmada', 'Aguardando Pagamento', 'Pendente']);
+
+            // Reservas com pelo menos uma noite dentro do mês atual e não canceladas.
+            const activeMonth = reservationsData.filter(r => {
+                if (!activeStatuses.has(String(r.status))) return false;
+                const ci = toDateOnly(r.checkin_date);
+                const co = toDateOnly(r.checkout_date);
+                if (!ci || !co) return false;
+                return ci <= monthEnd && co >= monthStart;
+            });
+
+            const checkinsToday = reservationsData.filter(r => {
+                if (String(r.status) === 'Cancelada') return false;
+                const ci = toDateOnly(r.checkin_date);
+                return sameDay(ci, today);
+            });
+
+            // Receita estimada do mês: soma total_amount das reservas cujo check-in cai no mês corrente
+            // (exclui canceladas). Métrica simples e previsível para o operador.
+            const monthRevenue = reservationsData.reduce((acc, r) => {
+                if (String(r.status) === 'Cancelada') return acc;
+                const ci = toDateOnly(r.checkin_date);
+                if (!ci || ci < monthStart || ci > monthEnd) return acc;
+                return acc + (parseFloat(r.total_amount) || 0);
+            }, 0);
+
+            const nowTs = Date.now();
+            // Considera-se "expirada" quando expires_at passou e o status ainda não é terminal.
+            // Status terminais: Cancelada, Recusada, Confirmada.
+            const terminalStatuses = new Set(['Cancelada', 'Recusada', 'Confirmada']);
+            const parseExpiresAt = (s) => {
+                if (!s) return null;
+                const iso = String(s).replace(' ', 'T');
+                const d = new Date(iso);
+                return isNaN(d.getTime()) ? null : d;
+            };
+            const isExpired = (r) => {
+                if (terminalStatuses.has(String(r.status))) return false;
+                const exp = parseExpiresAt(r.expires_at);
+                if (!exp) return false;
+                return exp.getTime() < nowTs;
+            };
+            reservationsData.forEach(r => { r.__expired = isExpired(r); });
+
+            const expiredReservations = reservationsData.filter(r => r.__expired);
+
+            // "Ações necessárias" agrega: pendentes + aguardando pagamento + expiradas (sem duplicar).
+            const pendingApprovalsRaw = reservationsData.filter(r =>
+                ['Pendente', 'Aguardando Pagamento'].includes(String(r.status))
+            );
+            const pendingApprovalsMap = new Map();
+            [...expiredReservations, ...pendingApprovalsRaw].forEach(r => {
+                if (!pendingApprovalsMap.has(r.id)) pendingApprovalsMap.set(r.id, r);
+            });
+            const pendingApprovals = Array.from(pendingApprovalsMap.values());
+
+            // Operação do dia: qualquer reserva (não cancelada) com check-in OU check-out hoje ou amanhã.
+            const operationItems = [];
+            reservationsData.forEach(r => {
+                if (String(r.status) === 'Cancelada') return;
+                const ci = toDateOnly(r.checkin_date);
+                const co = toDateOnly(r.checkout_date);
+                if (sameDay(ci, today)) operationItems.push({ r, kind: 'checkin', when: 'Hoje', date: ci });
+                else if (sameDay(ci, tomorrow)) operationItems.push({ r, kind: 'checkin', when: 'Amanhã', date: ci });
+                if (sameDay(co, today)) operationItems.push({ r, kind: 'checkout', when: 'Hoje', date: co });
+                else if (sameDay(co, tomorrow)) operationItems.push({ r, kind: 'checkout', when: 'Amanhã', date: co });
+            });
+            operationItems.sort((a, b) => (a.date - b.date) || (a.kind === 'checkin' ? -1 : 1));
+
+            // ===== Ocupação dos próximos 7 dias =====
+            // Contabiliza reservas não-canceladas que cubram a data (checkin <= dia < checkout).
+            const totalActiveChalets = chaletsData.filter(c => c.status === 'Ativo').length || 0;
+            const weekdayLabel = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+            const occupancyDays = [];
+            for (let i = 0; i < 7; i++) {
+                const day = new Date(today); day.setDate(day.getDate() + i);
+                const dayMs = day.getTime();
+                let occupied = 0;
+                reservationsData.forEach(r => {
+                    if (String(r.status) === 'Cancelada') return;
+                    const ci = toDateOnly(r.checkin_date);
+                    const co = toDateOnly(r.checkout_date);
+                    if (!ci || !co) return;
+                    if (dayMs >= ci.getTime() && dayMs < co.getTime()) occupied += 1;
+                });
+                const pct = totalActiveChalets > 0
+                    ? Math.min(100, Math.round((occupied / totalActiveChalets) * 100))
+                    : 0;
+                let label;
+                if (i === 0) label = 'Hoje';
+                else if (i === 1) label = 'Amanhã';
+                else label = weekdayLabel[day.getDay()] + ' ' + String(day.getDate()).padStart(2, '0') + '/' + String(day.getMonth() + 1).padStart(2, '0');
+                occupancyDays.push({ date: day, label, occupied, pct });
+            }
+
+            const occupancyBarColor = (pct) => {
+                if (pct >= 90) return '#dc2626';   // lotado → urgência para liberar algo
+                if (pct >= 60) return '#f59e0b';
+                if (pct > 0) return '#16a34a';
+                return '#94a3b8';
+            };
+
+            const occupancyRow = (d) => {
+                const color = occupancyBarColor(d.pct);
+                return `
+                    <div class="occupancy-row">
+                        <div class="occupancy-label">${escH(d.label)}</div>
+                        <div class="occupancy-bar-wrap">
+                            <div class="occupancy-bar" style="width:${d.pct}%;background:${color};"></div>
+                        </div>
+                        <div class="occupancy-meta">${d.occupied}/${totalActiveChalets} <small style="color:#64748b;">(${d.pct}%)</small></div>
+                    </div>
+                `;
+            };
+
+            const pendingRow = (r) => {
+                const idx = reservationIndex(r);
+                const policy = getPaymentPolicy(r.payment_rule || 'full');
+                const total = parseFloat(r.total_amount) || 0;
+                const deposit = (total * (policy.percent_now || 0)) / 100;
+                const expired = !!r.__expired;
+
+                // Status badge — prioridade visual para expiradas.
+                let statusBadge;
+                if (expired) {
+                    statusBadge = `<span class="badge" style="background:#7f1d1d;color:#fff;font-weight:700;"><i class="ph ph-hourglass-low"></i> Reserva Expirada!</span>`;
+                } else if (r.status === 'Pendente') {
+                    statusBadge = `<span class="badge warning" style="background:#fef3c7;color:#92400e;">Pendente (WhatsApp)</span>`;
+                } else {
+                    statusBadge = `<span class="badge warning" style="background:#fde68a;color:#78350f;">Aguardando MP</span>`;
+                }
+
+                const rowClass = expired ? 'dash-row-expired' : 'dash-row-alert';
+                const iconColor = expired ? '#7f1d1d' : '#dc2626';
+                const iconName = expired ? 'ph-hourglass-low' : 'ph-warning-circle';
+
+                const expiredInfo = expired && r.expires_at
+                    ? `<br><small style="color:#991b1b;font-weight:600;">Expirou: ${formatDateBR(String(r.expires_at).slice(0,10))}</small>`
+                    : '';
+
+                const cancelBtn = expired
+                    ? `<button type="button" class="btn btn-sm" data-action="cancel-expired" data-id="${r.id}" style="padding:.35rem .7rem;background:#7f1d1d;color:#fff;border:0;margin-left:.4rem;">
+                           <i class="ph ph-x-circle"></i> Cancelar e Libertar
+                       </button>`
+                    : '';
+
+                return `
+                    <tr class="${rowClass}">
+                        <td><i class="ph ${iconName}" style="color:${iconColor};font-size:1.2rem;vertical-align:middle;"></i></td>
+                        <td><strong>${escH(r.guest_name)}</strong><br><small style="color:#666">#RES-${String(r.id).padStart(3, '0')}</small>${expiredInfo}</td>
+                        <td>${escH(r.chalet_name || '')}</td>
+                        <td>${formatDateBR(r.checkin_date)} → ${formatDateBR(r.checkout_date)}</td>
+                        <td><strong>${fmtBR(deposit)}</strong><br><small style="color:#666">${escH(policy.label || ('Sinal ' + (policy.percent_now || 0) + '%'))}</small></td>
+                        <td>${statusBadge}</td>
+                        <td style="white-space:nowrap;">
+                            <button type="button" class="btn btn-sm" data-action="edit-reservation" data-index="${idx}" style="padding:.35rem .7rem;">
+                                <i class="ph ph-eye"></i> Revisar
+                            </button>
+                            ${cancelBtn}
+                        </td>
+                    </tr>
+                `;
+            };
+
+            const operationRow = (item) => {
+                const r = item.r;
+                const idx = reservationIndex(r);
+                const isCheckin = item.kind === 'checkin';
+                const policy = getPaymentPolicy(r.payment_rule || 'full');
+                const total = parseFloat(r.total_amount) || 0;
+                const isPartial = (policy.percent_now || 100) < 100;
+                const balancePending = isPartial && Number(r.balance_paid || 0) === 0;
+                const pendingAmount = balancePending ? (total * (100 - policy.percent_now)) / 100 : 0;
+                const highlightCheckin = isCheckin && balancePending;
+                const rowStyle = highlightCheckin ? ' style="background:rgba(255, 235, 130, 0.45);"' : '';
+
+                const kindBadge = isCheckin
+                    ? `<span class="badge success" style="background:#dcfce7;color:#166534;"><i class="ph ph-sign-in"></i> Check-in</span>`
+                    : `<span class="badge" style="background:#e0e7ff;color:#3730a3;"><i class="ph ph-sign-out"></i> Check-out</span>`;
+
+                const balanceTag = balancePending
+                    ? `<span class="badge danger" style="display:inline-block;margin-top:.25rem;background:#dc2626;color:#fff;font-weight:600;"><i class="ph ph-warning"></i> Cobrar Saldo: ${fmtBR(pendingAmount)}</span>`
+                    : (isPartial ? `<span class="badge success" style="display:inline-block;margin-top:.25rem;">Saldo recebido</span>` : '');
+
+                const payBtn = (isCheckin && balancePending)
+                    ? `<button type="button" class="btn-icon" title="Receber Saldo" data-action="pay-balance" data-index="${idx}" style="color:#16a34a;"><i class="ph ph-currency-circle-dollar"></i></button>`
+                    : '';
+
+                return `
+                    <tr${rowStyle}>
+                        <td>${kindBadge}<br><small style="color:#666">${escH(item.when)}</small></td>
+                        <td><strong>${escH(r.guest_name)}</strong><br><small style="color:#666">#RES-${String(r.id).padStart(3, '0')}</small></td>
+                        <td>${escH(r.chalet_name || '')}</td>
+                        <td>${formatDateBR(item.date.toISOString().slice(0, 10))}</td>
+                        <td>${fmtBR(total)}${balanceTag ? '<br>' + balanceTag : ''}</td>
+                        <td style="white-space:nowrap;">
+                            ${payBtn}
+                            <button type="button" class="btn-icon" title="Abrir Reserva" data-action="edit-reservation" data-index="${idx}"><i class="ph ph-pencil-simple"></i></button>
+                        </td>
+                    </tr>
+                `;
+            };
+
+            return `
             <div class="page-header">
                 <h1 class="page-title">Dashboard</h1>
                 <button class="btn"><i class="ph ph-download-simple"></i> Relatório</button>
             </div>
-            
+
             <div class="grid-cards">
                 <div class="card stat-card">
                     <div class="stat-icon primary"><i class="ph ph-calendar-check"></i></div>
                     <div class="stat-info">
-                        <h3>Total de Reservas</h3>
-                        <p>${reservationsData.length}</p>
+                        <h3>Reservas Ativas do Mês</h3>
+                        <p>${activeMonth.length}</p>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-icon info"><i class="ph ph-sign-in"></i></div>
+                    <div class="stat-info">
+                        <h3>Check-ins Hoje</h3>
+                        <p>${checkinsToday.length}</p>
                     </div>
                 </div>
                 <div class="card stat-card">
                     <div class="stat-icon success"><i class="ph ph-money"></i></div>
                     <div class="stat-info">
-                        <h3>Faturamento Bruto</h3>
-                        <p>R$ ${reservationsData.reduce((acc, r) => acc + parseFloat(r.total_amount), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                        <h3>Receita Estimada do Mês</h3>
+                        <p>${fmtBR(monthRevenue)}</p>
                     </div>
                 </div>
                 <div class="card stat-card">
+                    <div class="stat-icon warning"><i class="ph ph-house-line"></i></div>
                     <div class="stat-info">
                         <h3>Hospedagens Ativas</h3>
                         <p>${chaletsData.filter(c => c.status === 'Ativo').length}</p>
                     </div>
-                    <div class="stat-icon warning"><i class="ph ph-house-line"></i></div>
                 </div>
             </div>
 
             <div class="card">
-                <h3 style="margin-bottom: 1.5rem;">Últimas 5 Reservas</h3>
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Hóspede</th>
-                                <th>Hospedagem</th>
-                                <th>Check-in / Out</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${reservationsData.slice(0, 5).map(r => `
-                                <tr>
-                                    <td><strong>#RES-${String(r.id).padStart(3, '0')}</strong></td>
-                                    <td>${r.guest_name}</td>
-                                    <td>${r.chalet_name}</td>
-                                    <td>${formatDateBR(r.checkin_date)} - ${formatDateBR(r.checkout_date)}</td>
-                                    <td><span class="badge ${getStatusClass(r.status)}">${r.status}</span></td>
-                                </tr>
-                            `).join('')}
-                            ${reservationsData.length === 0 ? '<tr><td colspan="5" style="text-align:center;">Nenhuma reserva encontrada</td></tr>' : ''}
-                        </tbody>
-                    </table>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+                    <h3 style="margin:0;"><i class="ph ph-bell-ringing" style="color:#dc2626;"></i> Ações Necessárias</h3>
+                    <div style="display:flex;gap:.4rem;flex-wrap:wrap;">
+                        <span class="badge ${pendingApprovals.length > 0 ? 'danger' : 'success'}" style="${pendingApprovals.length > 0 ? 'background:#fee2e2;color:#991b1b;' : 'background:#dcfce7;color:#166534;'}">
+                            ${pendingApprovals.length} pendente${pendingApprovals.length === 1 ? '' : 's'}
+                        </span>
+                        ${expiredReservations.length > 0 ? `
+                            <span class="badge" style="background:#7f1d1d;color:#fff;font-weight:700;">
+                                <i class="ph ph-hourglass-low"></i> ${expiredReservations.length} expirada${expiredReservations.length === 1 ? '' : 's'}
+                            </span>
+                        ` : ''}
+                    </div>
                 </div>
+
+                ${pendingApprovals.length === 0 ? `
+                    <div class="dash-empty-ok">
+                        <i class="ph ph-check-circle"></i>
+                        <div>
+                            <strong>Tudo em dia!</strong>
+                            <p style="margin:.15rem 0 0;color:#4b5563;font-size:.9rem;">Nenhuma aprovação pendente no momento.</p>
+                        </div>
+                    </div>
+                ` : `
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:40px;"></th>
+                                    <th>Hóspede</th>
+                                    <th>Hospedagem</th>
+                                    <th>Datas</th>
+                                    <th>Valor do Sinal</th>
+                                    <th>Origem</th>
+                                    <th>Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${pendingApprovals.slice(0, 10).map(pendingRow).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    ${pendingApprovals.length > 10 ? `<p style="margin-top:.75rem;text-align:center;color:var(--text-muted);font-size:.85rem;">Mostrando 10 de ${pendingApprovals.length}. Veja todas em <a href="#" data-jump="reservations" style="color:var(--primary);">Reservas</a>.</p>` : ''}
+                `}
             </div>
-            
+
+            <div class="card" style="margin-top:1.5rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+                    <h3 style="margin:0;"><i class="ph ph-calendar-dots"></i> Operação do Dia (Hoje e Amanhã)</h3>
+                    <span class="badge" style="background:#e0e7ff;color:#3730a3;">${operationItems.length} movimento${operationItems.length === 1 ? '' : 's'}</span>
+                </div>
+
+                ${operationItems.length === 0 ? `
+                    <div class="dash-empty-neutral">
+                        <i class="ph ph-moon"></i>
+                        <div>
+                            <strong>Sem movimentos hoje ou amanhã.</strong>
+                            <p style="margin:.15rem 0 0;color:#4b5563;font-size:.9rem;">Aproveite para preparar os próximos check-ins.</p>
+                        </div>
+                    </div>
+                ` : `
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Tipo / Quando</th>
+                                    <th>Hóspede</th>
+                                    <th>Hospedagem</th>
+                                    <th>Data</th>
+                                    <th>Valor / Saldo</th>
+                                    <th style="width:110px;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${operationItems.map(operationRow).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `}
+            </div>
+
+            <div class="card" style="margin-top:1.5rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+                    <h3 style="margin:0;"><i class="ph ph-chart-bar"></i> Ocupação dos Próximos 7 Dias</h3>
+                    <small style="color:var(--text-muted);">Base: ${totalActiveChalets} hospedage${totalActiveChalets === 1 ? 'm' : 'ns'} ativa${totalActiveChalets === 1 ? '' : 's'}</small>
+                </div>
+                ${totalActiveChalets === 0 ? `
+                    <div class="dash-empty-neutral">
+                        <i class="ph ph-house-line"></i>
+                        <div>
+                            <strong>Sem hospedagens ativas.</strong>
+                            <p style="margin:.15rem 0 0;color:#4b5563;font-size:.9rem;">Ative ao menos uma hospedagem para ver a ocupação.</p>
+                        </div>
+                    </div>
+                ` : `
+                    <div class="occupancy-widget">
+                        ${occupancyDays.map(occupancyRow).join('')}
+                    </div>
+                    <div class="occupancy-legend">
+                        <span><i class="ph ph-square-fill" style="color:#16a34a;"></i> Até 59%</span>
+                        <span><i class="ph ph-square-fill" style="color:#f59e0b;"></i> 60–89%</span>
+                        <span><i class="ph ph-square-fill" style="color:#dc2626;"></i> 90% ou mais</span>
+                    </div>
+                `}
+            </div>
+
             <div class="card" style="margin-top: 1.5rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                     <h3>Calendário Geral de Reservas</h3>
@@ -650,7 +954,8 @@ document.addEventListener('DOMContentLoaded', () => {
                    <div style="display:flex; align-items:center; gap:0.25rem;"><span style="display:inline-block; width:12px; height:12px; background:var(--warning); border-radius:3px;"></span> Reserva Pendente</div>
                 </div>
             </div>
-        `,
+            `;
+        })(),
         reservations: `
             <div class="page-header">
                 <h1 class="page-title">Gestão de Reservas</h1>
@@ -1728,6 +2033,47 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (viewName === 'dashboard') {
                 renderDashboardCalendar();
+                // Habilita botões "Revisar" / "Receber Saldo" dos widgets do Dashboard.
+                bindReservationButtons();
+                // Link "Veja todas" dos widgets → leva para a view de Reservas.
+                appContainer.querySelectorAll('[data-jump="reservations"]').forEach(link => {
+                    link.addEventListener('click', (ev) => {
+                        ev.preventDefault();
+                        renderView('reservations');
+                        const sidebarLink = document.querySelector('[data-view="reservations"]');
+                        if (sidebarLink) {
+                            document.querySelectorAll('.nav-item.active').forEach(n => n.classList.remove('active'));
+                            sidebarLink.classList.add('active');
+                        }
+                    });
+                });
+                // "Cancelar e Libertar Calendário" para reservas expiradas.
+                appContainer.querySelectorAll('[data-action="cancel-expired"]').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const id = btn.getAttribute('data-id');
+                        if (!id) return;
+                        if (!confirm('Cancelar esta reserva expirada e libertar o calendário? Esta ação não pode ser desfeita.')) return;
+                        btn.disabled = true;
+                        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> A cancelar...';
+                        try {
+                            const res = await fetch(`../api/reservations.php?id=${id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: 'Cancelada' })
+                            });
+                            if (!res.ok) {
+                                const err = await res.json().catch(() => ({}));
+                                throw new Error(err.error || err.message || ('HTTP ' + res.status));
+                            }
+                            await fetchApiData();
+                            renderView('dashboard');
+                        } catch (e) {
+                            alert('Falha ao cancelar reserva: ' + (e && e.message ? e.message : e));
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="ph ph-x-circle"></i> Cancelar e Libertar';
+                        }
+                    });
+                });
             }
             if (viewName === 'reservations') {
                 bindReservationButtons();
