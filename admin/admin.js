@@ -55,8 +55,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.add('role-secretaria');
     }
 
-    if (adminPermissions && Array.isArray(adminPermissions) && adminPermissions.length > 0) {
-        // Usuário com permissões customizadas: mostra apenas os menus permitidos
+    // Administrador total (role=admin) SEMPRE vê todos os menus, mesmo que tenha
+    // um adminPermissions antigo cacheado em localStorage sem as novas abas.
+    const isFullAdmin = !isSecretaryRole(adminRole);
+    if (!isFullAdmin && adminPermissions && Array.isArray(adminPermissions) && adminPermissions.length > 0) {
+        // Usuário NÃO-admin com permissões customizadas: mostra apenas os menus permitidos
         document.querySelectorAll('.nav-item[data-view]').forEach(nav => {
             const view = nav.getAttribute('data-view');
             nav.style.display = adminPermissions.includes(view) ? '' : 'none';
@@ -1424,7 +1427,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch { return null; }
         })();
 
-        if (adminPermissions && Array.isArray(adminPermissions)) {
+        // role=admin é administrador total: ignora adminPermissions antigos do localStorage
+        // (caso contrário, usuários criados antes das novas abas ficariam presos em "Acesso Negado").
+        const isFullAdmin = !isSecretaryRole(adminRole);
+        if (!isFullAdmin && adminPermissions && Array.isArray(adminPermissions)) {
             if (!adminPermissions.includes(viewName)) {
                 document.getElementById('app').innerHTML = `<div class="card"><h2 style="color:var(--danger)">Acesso Negado</h2><p>Você não tem permissão para acessar esta página.</p></div>`;
                 return;
