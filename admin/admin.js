@@ -372,11 +372,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function ensureInternalApiKey() {
         if (internalApiKey) return true;
+        // Se outra parte do app já guardou a chave globalmente, reaproveita.
+        try {
+            if (typeof window !== 'undefined' && typeof window.internalKey === 'string' && window.internalKey.trim() !== '') {
+                internalApiKey = window.internalKey.trim();
+                return true;
+            }
+        } catch (_) { /* noop */ }
         try {
             const res = await fetch('../api/settings.php');
             const data = await res.json();
-            if (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '') {
-                internalApiKey = data.internalApiKey.trim();
+            const key = (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '')
+                ? data.internalApiKey.trim()
+                : ((typeof data.internal_key === 'string' && data.internal_key.trim() !== '') ? data.internal_key.trim() : '');
+            if (key) {
+                internalApiKey = key;
+                try { window.internalKey = key; } catch (_) { /* noop */ }
                 return true;
             }
         } catch (e) { /* ignore */ }
@@ -4475,6 +4486,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('../api/settings.php');
             if (!res.ok) return;
             const data = await res.json();
+
+            // Captura a chave interna no arranque do painel para que qualquer view
+            // (FAQs, Cupons, Extras, Financeiro) já a tenha em memória no primeiro clique.
+            const keyFromApi = (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '')
+                ? data.internalApiKey.trim()
+                : ((typeof data.internal_key === 'string' && data.internal_key.trim() !== '') ? data.internal_key.trim() : '');
+            if (keyFromApi) {
+                internalApiKey = keyFromApi;
+                try { window.internalKey = keyFromApi; } catch (_) { /* noop */ }
+            }
+
             applyAdminTheme(data.primary_color || '#ea580c', data.secondary_color || '#1e293b');
             const brandName = (data.company_name && String(data.company_name).trim()) ||
                 (data.site_title && String(data.site_title).trim()) ||
