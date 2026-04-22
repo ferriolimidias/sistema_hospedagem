@@ -1908,6 +1908,63 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `,
+        faqs: `
+            <div class="page-header">
+                <h1 class="page-title"><i class="ph ph-question"></i> Perguntas Frequentes</h1>
+                <button type="button" class="btn btn-primary" id="faqNewBtn"><i class="ph ph-plus"></i> Nova Pergunta</button>
+            </div>
+            <div id="faqKeyWarn" class="card" style="display:none; border:1px solid var(--danger); color:var(--danger); margin-bottom:1rem;">
+                Não foi possível carregar a chave interna. Abra <strong>Configurações</strong> neste painel e volte aqui.
+            </div>
+            <div class="card" id="faqFormCard" style="display:none; margin-bottom: 1.5rem;">
+                <h3 style="margin-bottom: 1rem;" id="faqFormTitle">
+                    <i class="ph ph-plus-circle" style="color: var(--primary); vertical-align: bottom;"></i>
+                    Nova Pergunta
+                </h3>
+                <form id="faqForm">
+                    <input type="hidden" id="faqEditId" value="">
+                    <div class="form-group">
+                        <label for="faqQuestion">Pergunta</label>
+                        <input type="text" id="faqQuestion" class="form-control" maxlength="500" placeholder="Ex.: Qual o horário de check-in?" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="faqAnswer">Resposta</label>
+                        <textarea id="faqAnswer" class="form-control" rows="4" placeholder="Escreva a resposta exibida no site..." required></textarea>
+                    </div>
+                    <div style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap; margin-bottom: 1rem;">
+                        <label style="display:flex; align-items:center; gap:.5rem; margin:0;">
+                            <input type="checkbox" id="faqIsActive" checked>
+                            Publicar no site (ativo)
+                        </label>
+                    </div>
+                    <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+                        <button type="submit" class="btn btn-primary" id="faqSaveBtn"><i class="ph ph-floppy-disk"></i> Salvar</button>
+                        <button type="button" class="btn btn-outline" id="faqCancelBtn">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem; flex-wrap:wrap; gap:.5rem;">
+                    <h3 style="margin:0;">Lista de FAQs</h3>
+                    <small style="color:var(--text-muted);">Use as setas <i class="ph ph-arrow-up"></i> / <i class="ph ph-arrow-down"></i> para reordenar. A ordem é respeitada no site público.</small>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width:90px;">Ordem</th>
+                                <th>Pergunta</th>
+                                <th style="width:90px;">Ativo</th>
+                                <th style="width:200px;">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="faqsTableBody">
+                            <tr><td colspan="4" style="text-align:center;">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `,
         users: `
             <div class="page-header">
                 <h1 class="page-title">Gestão de Usuários</h1>
@@ -2086,6 +2143,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (viewName === 'extras') {
                 void initExtrasView();
+            }
+            if (viewName === 'faqs') {
+                void initFaqsView();
             }
         } else {
             appContainer.innerHTML = `<h2>View não encontrada</h2>`;
@@ -2364,6 +2424,219 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cancelBtn) cancelBtn.onclick = () => resetForm();
         if (refreshBtn) refreshBtn.onclick = () => loadExtras();
         await loadExtras();
+    }
+
+    /* =========================================
+       FAQs (Perguntas Frequentes)
+       ========================================= */
+    async function initFaqsView() {
+        const warn = document.getElementById('faqKeyWarn');
+        const ok = await ensureInternalApiKey();
+        if (warn) warn.style.display = ok ? 'none' : 'block';
+        if (!ok) return;
+
+        const formCard = document.getElementById('faqFormCard');
+        const formTitle = document.getElementById('faqFormTitle');
+        const form = document.getElementById('faqForm');
+        const idEl = document.getElementById('faqEditId');
+        const questionEl = document.getElementById('faqQuestion');
+        const answerEl = document.getElementById('faqAnswer');
+        const activeEl = document.getElementById('faqIsActive');
+        const saveBtn = document.getElementById('faqSaveBtn');
+        const cancelBtn = document.getElementById('faqCancelBtn');
+        const newBtn = document.getElementById('faqNewBtn');
+        const tbody = document.getElementById('faqsTableBody');
+
+        let faqsCache = [];
+
+        const escAttr = (s) => String(s == null ? '' : s).replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        const escText = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+        function resetForm() {
+            idEl.value = '';
+            questionEl.value = '';
+            answerEl.value = '';
+            activeEl.checked = true;
+            if (formTitle) formTitle.innerHTML = '<i class="ph ph-plus-circle" style="color: var(--primary); vertical-align: bottom;"></i> Nova Pergunta';
+            if (saveBtn) saveBtn.innerHTML = '<i class="ph ph-floppy-disk"></i> Salvar';
+            if (formCard) formCard.style.display = 'none';
+        }
+
+        function openForm(faq) {
+            if (formCard) formCard.style.display = 'block';
+            if (!faq) {
+                resetForm();
+                if (formCard) formCard.style.display = 'block';
+                if (formTitle) formTitle.innerHTML = '<i class="ph ph-plus-circle" style="color: var(--primary); vertical-align: bottom;"></i> Nova Pergunta';
+                questionEl.focus();
+                return;
+            }
+            idEl.value = String(faq.id || '');
+            questionEl.value = String(faq.question || '');
+            answerEl.value = String(faq.answer || '');
+            activeEl.checked = Number(faq.is_active) === 1;
+            if (formTitle) formTitle.innerHTML = '<i class="ph ph-pencil-simple" style="color: var(--primary); vertical-align: bottom;"></i> Editar Pergunta #' + faq.id;
+            questionEl.focus();
+            if (formCard) formCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        async function loadFaqs() {
+            if (!tbody) return;
+            try {
+                const res = await fetch('../api/faqs.php', { headers: { 'X-Internal-Key': internalApiKey } });
+                const rows = await res.json();
+                if (!Array.isArray(rows)) throw new Error('Resposta inválida');
+                faqsCache = rows;
+                if (rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#666;">Nenhuma FAQ cadastrada. Clique em "Nova Pergunta" para começar.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map((f, i) => {
+                    const isFirst = i === 0;
+                    const isLast = i === rows.length - 1;
+                    return `
+                        <tr data-faq-id="${f.id}">
+                            <td>
+                                <div style="display:flex; gap:.25rem; align-items:center;">
+                                    <button type="button" class="btn-icon" data-faq-up="${f.id}" title="Subir" ${isFirst ? 'disabled style="opacity:.3;cursor:not-allowed;"' : ''}><i class="ph ph-arrow-up"></i></button>
+                                    <button type="button" class="btn-icon" data-faq-down="${f.id}" title="Descer" ${isLast ? 'disabled style="opacity:.3;cursor:not-allowed;"' : ''}><i class="ph ph-arrow-down"></i></button>
+                                    <small style="color:#888; margin-left:.25rem;">${i + 1}</small>
+                                </div>
+                            </td>
+                            <td>
+                                <strong>${escText(f.question)}</strong>
+                                <div style="color:#666; font-size:.85rem; margin-top:.25rem; max-width:60ch; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escText(f.answer)}</div>
+                            </td>
+                            <td>
+                                <label style="display:inline-flex; align-items:center; gap:.35rem; cursor:pointer;">
+                                    <input type="checkbox" data-faq-toggle="${f.id}" ${Number(f.is_active) === 1 ? 'checked' : ''}>
+                                    <small>${Number(f.is_active) === 1 ? 'Visível' : 'Oculto'}</small>
+                                </label>
+                            </td>
+                            <td>
+                                <button type="button" class="btn-icon" data-faq-edit="${f.id}" title="Editar"><i class="ph ph-pencil-simple"></i></button>
+                                <button type="button" class="btn-icon" data-faq-del="${f.id}" title="Excluir" style="color: var(--danger);"><i class="ph ph-trash"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                tbody.querySelectorAll('[data-faq-edit]').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        const id = parseInt(btn.getAttribute('data-faq-edit'), 10);
+                        const target = faqsCache.find((x) => Number(x.id) === id);
+                        if (target) openForm(target);
+                    });
+                });
+
+                tbody.querySelectorAll('[data-faq-del]').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        const id = parseInt(btn.getAttribute('data-faq-del'), 10);
+                        if (!confirm('Excluir esta pergunta? Esta ação não pode ser desfeita.')) return;
+                        await fetch(`../api/faqs.php?id=${id}`, { method: 'DELETE', headers: { 'X-Internal-Key': internalApiKey } });
+                        await loadFaqs();
+                    });
+                });
+
+                tbody.querySelectorAll('[data-faq-toggle]').forEach((cb) => {
+                    cb.addEventListener('change', async () => {
+                        const id = parseInt(cb.getAttribute('data-faq-toggle'), 10);
+                        await fetch(`../api/faqs.php?id=${id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                            body: JSON.stringify({ is_active: cb.checked ? 1 : 0 })
+                        });
+                        await loadFaqs();
+                    });
+                });
+
+                tbody.querySelectorAll('[data-faq-up]').forEach((btn) => {
+                    btn.addEventListener('click', () => moveFaq(parseInt(btn.getAttribute('data-faq-up'), 10), -1));
+                });
+                tbody.querySelectorAll('[data-faq-down]').forEach((btn) => {
+                    btn.addEventListener('click', () => moveFaq(parseInt(btn.getAttribute('data-faq-down'), 10), +1));
+                });
+            } catch (e) {
+                console.error('Erro ao carregar FAQs:', e);
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--danger);">Falha ao carregar FAQs.</td></tr>';
+            }
+        }
+
+        async function moveFaq(id, direction) {
+            const idx = faqsCache.findIndex((x) => Number(x.id) === id);
+            if (idx === -1) return;
+            const swapIdx = idx + direction;
+            if (swapIdx < 0 || swapIdx >= faqsCache.length) return;
+
+            const a = faqsCache[idx];
+            const b = faqsCache[swapIdx];
+            // Troca o sort_order entre os dois vizinhos; se empatarem, redistribui.
+            let aNewOrder = Number(b.sort_order) || 0;
+            let bNewOrder = Number(a.sort_order) || 0;
+            if (aNewOrder === bNewOrder) {
+                aNewOrder = (idx + direction) * 10;
+                bNewOrder = idx * 10;
+            }
+
+            try {
+                await Promise.all([
+                    fetch(`../api/faqs.php?id=${a.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                        body: JSON.stringify({ sort_order: aNewOrder })
+                    }),
+                    fetch(`../api/faqs.php?id=${b.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                        body: JSON.stringify({ sort_order: bNewOrder })
+                    })
+                ]);
+                await loadFaqs();
+            } catch (e) {
+                console.error('Erro ao reordenar:', e);
+                alert('Não foi possível reordenar.');
+            }
+        }
+
+        if (newBtn) newBtn.onclick = () => openForm(null);
+        if (cancelBtn) cancelBtn.onclick = () => resetForm();
+
+        if (form) {
+            form.onsubmit = async (ev) => {
+                ev.preventDefault();
+                const question = questionEl.value.trim();
+                const answer = answerEl.value.trim();
+                const is_active = activeEl.checked ? 1 : 0;
+                if (!question || !answer) {
+                    alert('Pergunta e resposta são obrigatórias.');
+                    return;
+                }
+                const isEditing = !!idEl.value;
+                const url = isEditing ? `../api/faqs.php?id=${parseInt(idEl.value, 10)}` : '../api/faqs.php';
+                const method = isEditing ? 'PUT' : 'POST';
+                const payload = { question, answer, is_active };
+                saveBtn.disabled = true;
+                try {
+                    const res = await fetch(url, {
+                        method,
+                        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.error || ('HTTP ' + res.status));
+                    }
+                    resetForm();
+                    await loadFaqs();
+                } catch (e) {
+                    alert('Erro ao salvar: ' + (e && e.message ? e.message : e));
+                } finally {
+                    saveBtn.disabled = false;
+                }
+            };
+        }
+
+        await loadFaqs();
     }
 
     // Função Exposta para atualizar status da reserva via SELECT
@@ -4049,6 +4322,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'financeiro', label: 'Financeiro' },
         { id: 'coupons', label: 'Cupons' },
         { id: 'extras', label: 'Serviços Extras' },
+        { id: 'faqs', label: 'Perguntas Frequentes' },
         { id: 'settings', label: 'Configurações' },
         { id: 'customization', label: 'Personalização' },
         { id: 'users', label: 'Usuários' }

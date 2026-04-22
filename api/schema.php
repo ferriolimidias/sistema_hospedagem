@@ -188,6 +188,37 @@ function runInitialDataSeed(PDO $pdo): void
         }
     }
 
+    // Seed protegido: FAQs padrão apenas na primeira instalação (tabela vazia).
+    try {
+        $stmtF = $pdo->query('SELECT COUNT(*) FROM faqs');
+        $fc = $stmtF ? (int) $stmtF->fetchColumn() : 0;
+    } catch (PDOException $e) {
+        $fc = 0;
+    }
+    if ($fc === 0) {
+        $defaultFaqs = [
+            [
+                'Qual o horário de check-in e check-out?',
+                'O check-in é a partir das 14:00 e o check-out até as 12:00. Se precisar de um horário diferente, fale com a nossa equipa pelo WhatsApp — faremos o possível dentro da disponibilidade.',
+                10,
+            ],
+            [
+                'A pousada aceita animais de estimação (pets)?',
+                'Sim! Somos pet friendly. Aceitamos animais de pequeno e médio porte mediante aviso prévio no momento da reserva. Pode haver uma taxa de limpeza adicional — consulte a nossa equipa.',
+                20,
+            ],
+            [
+                'Qual a política de cancelamento?',
+                'Cancelamentos feitos com mais de 7 dias de antecedência têm reembolso integral do sinal. Entre 7 e 3 dias, devolvemos 50%. Em cima da data, o sinal não é reembolsado, mas pode ser usado como crédito para uma nova estadia dentro de 90 dias.',
+                30,
+            ],
+        ];
+        $insF = $pdo->prepare('INSERT INTO faqs (question, answer, sort_order, is_active) VALUES (?, ?, ?, 1)');
+        foreach ($defaultFaqs as $f) {
+            $insF->execute([$f[0], $f[1], $f[2]]);
+        }
+    }
+
     $stmt = $pdo->query('SELECT COUNT(*) FROM chalets');
     $cc = $stmt ? (int) $stmt->fetchColumn() : 0;
     if ($cc === 0) {
@@ -355,6 +386,17 @@ function runInitialSchema(PDO $pdo): void
             description TEXT NULL,
             active TINYINT(1) NOT NULL DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS faqs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            question VARCHAR(500) NOT NULL,
+            answer TEXT NOT NULL,
+            sort_order INT NOT NULL DEFAULT 0,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            KEY idx_faqs_order (is_active, sort_order, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
 

@@ -1778,3 +1778,53 @@ document.addEventListener('DOMContentLoaded', () => {
         alert("O pagamento não foi concluído. A reserva foi cancelada e as datas estão disponíveis para nova reserva.");
     }
 });
+
+/* ===== FAQ Accordion (site público) ===== */
+document.addEventListener('DOMContentLoaded', () => {
+    const items = document.querySelectorAll('.faq-section .faq-item');
+    if (!items.length) return;
+
+    function closeItem(item) {
+        const btn = item.querySelector('.faq-question');
+        const answer = item.querySelector('.faq-answer');
+        item.classList.remove('is-open');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+        if (answer) answer.style.maxHeight = '0px';
+    }
+
+    function openItem(item) {
+        const btn = item.querySelector('.faq-question');
+        const answer = item.querySelector('.faq-answer');
+        const inner = item.querySelector('.faq-answer-inner');
+        item.classList.add('is-open');
+        if (btn) btn.setAttribute('aria-expanded', 'true');
+        if (answer && inner) {
+            answer.style.maxHeight = inner.scrollHeight + 40 + 'px';
+        }
+    }
+
+    items.forEach((item) => {
+        const btn = item.querySelector('.faq-question');
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            const isOpen = item.classList.contains('is-open');
+            // Comportamento de acordeão: fecha os outros antes de abrir este.
+            items.forEach((other) => { if (other !== item) closeItem(other); });
+            if (isOpen) {
+                closeItem(item);
+            } else {
+                openItem(item);
+            }
+        });
+    });
+
+    // Garante o recálculo de altura em resize (respostas longas + viewport).
+    window.addEventListener('resize', () => {
+        items.forEach((item) => {
+            if (!item.classList.contains('is-open')) return;
+            const answer = item.querySelector('.faq-answer');
+            const inner = item.querySelector('.faq-answer-inner');
+            if (answer && inner) answer.style.maxHeight = inner.scrollHeight + 40 + 'px';
+        });
+    });
+});

@@ -347,6 +347,22 @@ try {
     // Tabela já existe ou erro de permissão.
 }
 
+// FAQs — perguntas frequentes geríveis pelo admin.
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS faqs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        question VARCHAR(500) NOT NULL,
+        answer TEXT NOT NULL,
+        sort_order INT NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_faqs_order (is_active, sort_order, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (PDOException $e) {
+    // Tabela já existe ou erro de permissão.
+}
+
 function cleanupExpiredPendingReservations(PDO $pdo): void
 {
     $stmt = $pdo->prepare("

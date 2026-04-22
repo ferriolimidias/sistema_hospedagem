@@ -97,6 +97,15 @@ try {
     }
 } catch (Exception $e) { }
 
+// FAQs ativas (para SEO: renderizadas diretamente no HTML).
+$faqsList = [];
+try {
+    $stmtFaq = $pdo->query("SELECT id, question, answer FROM faqs WHERE is_active = 1 ORDER BY sort_order ASC, id ASC");
+    $faqsList = $stmtFaq ? $stmtFaq->fetchAll(PDO::FETCH_ASSOC) : [];
+} catch (Exception $e) {
+    $faqsList = [];
+}
+
 // Helper
 $h = function($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
 $aboutHtml = implode('', array_map(fn($p) => '<p>' . $h(trim($p)) . '</p>', array_filter(explode("\n", $c['aboutText'] ?? ''))));
@@ -152,6 +161,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 <a href="#about">Sobre</a>
                 <a href="#chalets">Acomodações</a>
                 <a href="#amenities">Comodidades</a>
+                <?php if (!empty($faqsList)): ?><a href="#faq">FAQ</a><?php endif; ?>
                 <a href="#booking" class="btn btn-primary">Reservar Agora</a>
             </nav>
 
@@ -308,6 +318,36 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
             </div>
         </div>
     </section>
+
+    <?php if (!empty($faqsList)): ?>
+    <section class="faq-section section" id="faq">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-subtitle">Dúvidas Comuns</span>
+                <h2 class="section-title">Perguntas Frequentes</h2>
+                <p class="section-description">Reunimos aqui as respostas para as dúvidas mais comuns dos nossos hóspedes.</p>
+            </div>
+            <div class="faq-accordion" itemscope itemtype="https://schema.org/FAQPage">
+                <?php foreach ($faqsList as $idx => $faq): ?>
+                    <?php $faqId = 'faq-item-' . (int)($faq['id'] ?? $idx); ?>
+                    <div class="faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+                        <button type="button" class="faq-question"
+                                aria-expanded="false" aria-controls="<?= $h($faqId) ?>-a"
+                                id="<?= $h($faqId) ?>-q">
+                            <span itemprop="name"><?= $h($faq['question']) ?></span>
+                            <i class="ph ph-plus faq-icon" aria-hidden="true"></i>
+                        </button>
+                        <div class="faq-answer" id="<?= $h($faqId) ?>-a"
+                             role="region" aria-labelledby="<?= $h($faqId) ?>-q"
+                             itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+                            <div class="faq-answer-inner" itemprop="text"><?= nl2br($h($faq['answer'])) ?></div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
 
     <section class="booking-cta section" id="booking">
         <div class="container">
