@@ -322,10 +322,10 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     <?php if (!empty($faqsList)): ?>
     <section class="faq-section section" id="faq">
         <div class="container">
-            <div class="section-header">
-                <span class="section-subtitle">Dúvidas Comuns</span>
+            <div class="section-header text-center">
+                <span class="subtitle">Dúvidas Comuns</span>
                 <h2 class="section-title">Perguntas Frequentes</h2>
-                <p class="section-description">Reunimos aqui as respostas para as dúvidas mais comuns dos nossos hóspedes.</p>
+                <p class="faq-intro">Reunimos aqui as respostas para as dúvidas mais comuns dos nossos hóspedes. Não encontrou o que procurava? Fale connosco pelo WhatsApp.</p>
             </div>
             <div class="faq-accordion" itemscope itemtype="https://schema.org/FAQPage">
                 <?php foreach ($faqsList as $idx => $faq): ?>
