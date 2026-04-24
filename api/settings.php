@@ -87,7 +87,12 @@ switch ($method) {
             }
 
             $referer = (string)($_SERVER['HTTP_REFERER'] ?? '');
-            $isAdminContext = stripos($referer, '/admin/') !== false;
+            $refPath = parse_url($referer, PHP_URL_PATH);
+            $refPath = is_string($refPath) ? str_replace('\\', '/', $refPath) : '';
+            $refPathNorm = rtrim($refPath, '/');
+            // Inclui /admin/, /admin/index.html e /admin (sem barra final no path).
+            $isAdminContext = (stripos($referer, '/admin/') !== false)
+                || preg_match('#/admin$#i', $refPathNorm) === 1;
             if (!$isAdminContext) {
                 unset($parsedSettings['internalApiKey']);
             }

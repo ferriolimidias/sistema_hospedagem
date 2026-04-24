@@ -1,6 +1,6 @@
 
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
     function normalizeRole(value) {
         let raw = value;
@@ -152,6 +152,30 @@ document.addEventListener('DOMContentLoaded', () => {
     let chaletsData = [];
     let reservationsData = [];
     let internalApiKey = '';
+
+    /* ------------------------------------------------------------------
+     * CHAVE INTERNA (X-Internal-Key) — NÃO duplicar fora deste bloco.
+     * Qualquer resposta JSON de api/settings.php deve passar por
+     * persistInternalApiKeyFromPayload() para manter internalApiKey e
+     * window.internalKey alinhados (FAQs, cupons, extras, financeiro).
+     * ------------------------------------------------------------------ */
+    function extractInternalKeyFromSettingsJson(data) {
+        if (!data || typeof data !== 'object') return '';
+        const a = data.internalApiKey;
+        const b = data.internal_key;
+        if (typeof a === 'string' && a.trim() !== '') return a.trim();
+        if (typeof b === 'string' && b.trim() !== '') return b.trim();
+        return '';
+    }
+
+    function persistInternalApiKeyFromPayload(data) {
+        const key = extractInternalKeyFromSettingsJson(data);
+        if (!key) return false;
+        internalApiKey = key;
+        try { window.internalKey = key; } catch (_) { /* noop */ }
+        return true;
+    }
+
     let paymentPolicies = [
         { code: 'half', label: 'Sinal de 50% para reserva', percent_now: 50 },
         { code: 'full', label: 'Pagamento 100% Antecipado', percent_now: 100 }
@@ -380,14 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('../api/settings.php');
             const data = await res.json();
-            const key = (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '')
-                ? data.internalApiKey.trim()
-                : ((typeof data.internal_key === 'string' && data.internal_key.trim() !== '') ? data.internal_key.trim() : '');
-            if (key) {
-                internalApiKey = key;
-                try { window.internalKey = key; } catch (_) { /* noop */ }
-                return true;
-            }
+            if (persistInternalApiKeyFromPayload(data)) return true;
         } catch (e) { /* ignore */ }
         return false;
     }
@@ -3157,9 +3174,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Popula MercadoPago
             const mpAccessTokenEl = document.getElementById('mpAccessToken');
             if (mpAccessTokenEl) mpAccessTokenEl.value = (data.mercadoPagoSettings && data.mercadoPagoSettings.accessToken) || '';
-            if (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '') {
-                internalApiKey = data.internalApiKey.trim();
-            }
+            persistInternalApiKeyFromPayload(data);
 
             // Popula toggles e campos dos métodos de pagamento (híbrido MP + PIX manual).
             const mpActiveEl = document.getElementById('paymentMpActive');
@@ -5247,15 +5262,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) return;
             const data = await res.json();
 
-            // Captura a chave interna no arranque do painel para que qualquer view
-            // (FAQs, Cupons, Extras, Financeiro) já a tenha em memória no primeiro clique.
-            const keyFromApi = (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '')
-                ? data.internalApiKey.trim()
-                : ((typeof data.internal_key === 'string' && data.internal_key.trim() !== '') ? data.internal_key.trim() : '');
-            if (keyFromApi) {
-                internalApiKey = keyFromApi;
-                try { window.internalKey = keyFromApi; } catch (_) { /* noop */ }
-            }
+            // Captura a chave interna no arranque (ver bloco CHAVE INTERNA no topo do ficheiro).
+            persistInternalApiKeyFromPayload(data);
 
             applyAdminTheme(data.primary_color || '#ea580c', data.secondary_color || '#1e293b');
             const brandName = (data.company_name && String(data.company_name).trim()) ||
@@ -5271,8 +5279,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Initialize the admin app
-    loadAdminThemeFromSettings();
+    // Initialize the admin app (aguarda settings para popular a chave interna antes do primeiro clique)
+    await loadAdminThemeFromSettings();
     renderView('dashboard');
     removeAddChaletButtonsForSecretary(document);
 
