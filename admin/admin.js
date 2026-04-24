@@ -109,13 +109,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const usersNav = document.querySelector('.nav-item[data-view="users"]');
         const financeiroNav = document.querySelector('.nav-item[data-view="financeiro"]');
         const couponsNav = document.querySelector('.nav-item[data-view="coupons"]');
-        const extrasNav = document.querySelector('.nav-item[data-view="extras"]');
         if (settingsNav) settingsNav.style.display = 'none';
         if (customizationNav) customizationNav.style.display = 'none';
         if (usersNav) usersNav.style.display = 'none';
         if (financeiroNav) financeiroNav.style.display = 'none';
         if (couponsNav) couponsNav.style.display = 'none';
-        if (extrasNav) extrasNav.style.display = 'none';
     }
 
     /* =========================================
@@ -794,6 +792,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>${fmtBR(total)}${balanceTag ? '<br>' + balanceTag : ''}</td>
                         <td style="white-space:nowrap;">
                             ${payBtn}
+                            <button type="button" class="btn-icon" title="Enviar Pré-Check-in (WhatsApp)" data-action="send-precheckin" data-id="${r.id}" style="color:#0ea5e9"><i class="ph ph-paper-plane-tilt"></i></button>
+                            ${isCheckin ? `<button type="button" class="btn-icon" title="Fazer Check-in" data-action="start-checkin" data-id="${r.id}" style="color:#16a34a"><i class="ph ph-key"></i></button>` : ''}
                             <button type="button" class="btn-icon" title="Abrir Reserva" data-action="edit-reservation" data-index="${idx}"><i class="ph ph-pencil-simple"></i></button>
                         </td>
                     </tr>
@@ -1015,6 +1015,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                             : ''
                                         }
                                         <button type="button" class="btn-icon" title="Notificar (Reenviar)" data-action="notify-reservation" data-index="${index}" style="color: #25D366"><i class="ph ph-whatsapp-logo"></i></button>
+                                        <button type="button" class="btn-icon" title="Enviar Pré-Check-in (WhatsApp)" data-action="send-precheckin" data-id="${r.id}" style="color:#0ea5e9"><i class="ph ph-paper-plane-tilt"></i></button>
+                                        <button type="button" class="btn-icon" title="Fazer Check-in" data-action="start-checkin" data-id="${r.id}" style="color:#16a34a"><i class="ph ph-key"></i></button>
                                         <button type="button" class="btn-icon" title="Excluir" data-action="delete-reservation" data-id="${r.id}" style="color: var(--danger)"><i class="ph ph-trash"></i></button>
                                     </td>
                                     <td><strong>#RES-${String(r.id).padStart(3, '0')}</strong></td>
@@ -1280,75 +1282,43 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
                     <h3 style="margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
                         <i class="ph ph-whatsapp-logo" style="color: #25D366; margin-right: 0.5rem; vertical-align: bottom;"></i>
-                        Integração WhatsApp (Evolution API)
+                        Comunicação e Integrações
                     </h3>
-                    <p style="margin-bottom: 1.5rem; color: #666; font-size: 0.9rem;">Configure as credenciais da Evolution API para envio de notificações automatizadas de reservas. Os dados ficam salvos apenas neste navegador (localStorage).</p>
+                    <p style="margin-bottom: 1.5rem; color: #666; font-size: 0.9rem;">Configure a integração nativa da Evolution API e escolha em quais eventos o PMS deve disparar mensagens automáticas.</p>
                     <form id="evolutionForm">
-                        <div class="form-group" style="margin-bottom: 1.5rem;">
-                            <label>URL Base da Evolution API (ex: https://api.seudominio.com)</label>
-                            <input type="url" class="form-control" id="evoUrl" placeholder="https://..." required>
-                        </div>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
-                            <!-- Instância Cliente -->
-                            <div style="background-color: var(--bg-light); padding: 1.5rem; border-radius: 8px;">
-                                <h4 style="margin-bottom: 1rem; color: var(--primary-color);">Instância: Envio ao Cliente</h4>
-                                <div class="form-group">
-                                    <label>Nome da Instância</label>
-                                    <input type="text" class="form-control" id="evoClientInstance" placeholder="ex: Atendimento" required>
-                                </div>
-                                <div class="form-group" style="margin-top: 1rem;">
-                                    <label>Global API Key</label>
-                                    <input type="password" class="form-control" id="evoClientApikey" placeholder="Sua apikey secreta..." required>
-                                </div>
-                            </div>
-
-                            <!-- Instância Empresa -->
-                            <div style="background-color: var(--bg-light); padding: 1.5rem; border-radius: 8px;">
-                                <h4 style="margin-bottom: 1rem; color: var(--primary-color);">Instância: Notificação Interna</h4>
-                                <div class="form-group">
-                                    <label>Nome da Instância</label>
-                                    <input type="text" class="form-control" id="evoCompanyInstance" placeholder="ex: Sistema" required>
-                                </div>
-                                <div class="form-group" style="margin-top: 1rem;">
-                                    <label>Global API Key</label>
-                                    <input type="password" class="form-control" id="evoCompanyApikey" placeholder="Sua apikey secreta..." required>
-                                </div>
-                                <div class="form-group" style="margin-top: 1rem;">
-                                    <label>WhatsApp Destino (Central da Empresa)</label>
-                                    <input type="text" class="form-control" id="evoCompanyPhone" placeholder="Ex: 553599999999" required>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Mensagem de Reserva Customizada -->
-                        <div style="margin-top: 1.5rem; background-color: #fff9e6; padding: 1.5rem; border-radius: 8px; border: 1px solid #ffeeba;">
-                            <h4 style="margin-bottom: 1rem; color: #856404;">
-                                <i class="ph ph-chat-centered-dots" style="margin-right:0.5rem;"></i>
-                                Mensagem Automática de Reserva
-                            </h4>
-                            <p style="font-size: 0.85rem; color: #856404; margin-bottom: 1rem;">
-                                Personalize a mensagem que o cliente recebe no WhatsApp assim que faz a reserva.
-                            </p>
+                        <div style="display:grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 0.75rem;">
                             <div class="form-group">
-                                <label>Texto da Mensagem</label>
-                                <textarea class="form-control" id="evoReservationMsg" rows="6" placeholder="Olá {nome}! Parabéns pela sua reserva..."></textarea>
-                                <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Nome do Hóspede">{nome}</small>
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Nome da Hospedagem">{chale}</small>
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Data de Check-in">{checkin}</small>
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Data de Check-out">{checkout}</small>
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Valor total da reserva">{total}</small>
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Valor efetivamente pago na entrada">{valor_pago}</small>
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="Condição aplicada para a reserva">{condicao}</small>
-                                    <small style="background: #eee; padding: 2px 6px; border-radius: 4px; cursor: help;" title="ID da Reserva">{id}</small>
-                                </div>
+                                <label>URL Base da Evolution API</label>
+                                <input type="url" class="form-control" id="evoUrl" placeholder="https://api.seudominio.com">
                             </div>
+                            <div class="form-group">
+                                <label>Instância</label>
+                                <input type="text" class="form-control" id="evoInstance" placeholder="nome-da-instancia">
+                            </div>
+                            <div class="form-group">
+                                <label>API Key</label>
+                                <input type="password" class="form-control" id="evoApikey" placeholder="apikey">
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 1rem; display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem;">
+                            <label style="display:flex; align-items:center; gap:.5rem; border:1px solid var(--border-color); border-radius:8px; padding:.7rem .8rem;">
+                                <input type="checkbox" id="evoNotifyReserva">
+                                Notificar nova reserva
+                            </label>
+                            <label style="display:flex; align-items:center; gap:.5rem; border:1px solid var(--border-color); border-radius:8px; padding:.7rem .8rem;">
+                                <input type="checkbox" id="evoNotifyCheckin">
+                                Notificar check-in
+                            </label>
+                            <label style="display:flex; align-items:center; gap:.5rem; border:1px solid var(--border-color); border-radius:8px; padding:.7rem .8rem;">
+                                <input type="checkbox" id="evoNotifyCheckout">
+                                Notificar check-out
+                            </label>
                         </div>
 
                         <div style="margin-top: 1.5rem; text-align: right;">
                             <button type="button" class="btn btn-primary" id="saveEvolutionBtn">
-                                <i class="ph ph-floppy-disk"></i> Salvar Credenciais WhatsApp
+                                <i class="ph ph-floppy-disk"></i> Salvar Comunicação e Integrações
                             </button>
                         </div>
                     </form>
@@ -1410,6 +1380,55 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div style="margin-top: 1.5rem; text-align: right;">
                         <button type="button" class="btn btn-primary" id="savePaymentMethodsBtn">
                             <i class="ph ph-floppy-disk"></i> Salvar Métodos de Pagamento
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Integração FNRH (Gov.br) -->
+                <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
+                    <h3 style="margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                        <i class="ph ph-identification-card" style="color: var(--primary); margin-right: 0.5rem; vertical-align: bottom;"></i>
+                        Integração FNRH (Gov.br) e Pré-Check-in
+                    </h3>
+                    <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
+                        Configure o envio automático de hóspedes para a Ficha Nacional de Registro de Hóspedes (FNRH Digital)
+                        e a mensagem padrão do pré-check-in enviada via WhatsApp.
+                    </p>
+                    <div style="background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1.25rem; font-size: 0.88rem; display: flex; gap: 0.5rem; align-items: flex-start;">
+                        <i class="ph ph-warning-circle" style="margin-top: 2px;"></i>
+                        <span><strong>Atenção:</strong> ative apenas se a pousada possui registo no <strong>CADASTUR</strong> e Chave de API válida do <strong>Serpro</strong>. Caso contrário, mantenha desligado — o check-in continuará a funcionar normalmente no sistema local.</span>
+                    </div>
+
+                    <div class="form-group" style="background: #f9fafb; padding: 0.9rem 1rem; border-radius: 10px; margin-bottom: 1rem; display:flex; align-items:center; justify-content:space-between; gap:1rem;">
+                        <div>
+                            <strong>Enviar reservas para a FNRH Digital</strong>
+                            <div style="color:#666; font-size:0.82rem;">Quando ativo, o botão "Efetivar Check-in" dispara o envio ao governo.</div>
+                        </div>
+                        <label class="switch" style="display:inline-flex; align-items:center; gap:.5rem;">
+                            <input type="checkbox" id="fnrhActive">
+                            <span>Ativo</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 1.25rem;">
+                        <label>Chave API (Serpro / FNRH)</label>
+                        <input type="password" class="form-control" id="fnrhApiKey" placeholder="Cole aqui a chave fornecida pelo Serpro" autocomplete="off">
+                        <small style="display:block; margin-top:0.35rem; color:#777;">
+                            Armazenamos a chave de forma segura no banco. Ela só é usada pelo servidor, nunca vai para o navegador do hóspede.
+                        </small>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 1.25rem;">
+                        <label>Mensagem padrão do Pré-Check-in (WhatsApp)</label>
+                        <textarea class="form-control" id="preCheckinMessage" rows="5" placeholder="Ex.: Olá, {nome}! Sua reserva está confirmada..."></textarea>
+                        <small style="display:block; margin-top:0.35rem; color:#777;">
+                            Tokens disponíveis: <code>{nome}</code>, <code>{pousada}</code>, <code>{checkin}</code>, <code>{checkout}</code>, <code>{link}</code>.
+                        </small>
+                    </div>
+
+                    <div style="text-align: right;">
+                        <button type="button" class="btn btn-primary" id="saveFnrhSettingsBtn">
+                            <i class="ph ph-floppy-disk"></i> Salvar Configurações FNRH
                         </button>
                     </div>
                 </div>
@@ -2084,6 +2103,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('saveEvolutionBtn').addEventListener('click', saveEvolutionSettings);
                 const savePaymentMethodsBtnEl = document.getElementById('savePaymentMethodsBtn');
                 if (savePaymentMethodsBtnEl) savePaymentMethodsBtnEl.addEventListener('click', savePaymentMethodsSettings);
+                const saveFnrhBtnEl = document.getElementById('saveFnrhSettingsBtn');
+                if (saveFnrhBtnEl) saveFnrhBtnEl.addEventListener('click', saveFnrhSettings);
                 document.getElementById('saveLogoBtn').addEventListener('click', saveLogoSettings);
                 document.getElementById('saveSocialBtn').addEventListener('click', saveSocialSettings);
                 document.getElementById('saveIdentitySeoBtn').addEventListener('click', saveIdentitySeoSettings);
@@ -2743,20 +2764,17 @@ document.addEventListener('DOMContentLoaded', () => {
        SETTINGS LOGIC (Evolution & MercadoPago via API)
        ========================================= */
     async function saveEvolutionSettings() {
+        const evoApikey = (document.getElementById('evoApikey')?.value || '').trim();
         const settings = {
-            evolutionSettings: {
-                url: document.getElementById('evoUrl').value,
-                clientInstance: document.getElementById('evoClientInstance').value,
-                clientApikey: document.getElementById('evoClientApikey').value,
-                companyInstance: document.getElementById('evoCompanyInstance').value,
-                companyApikey: document.getElementById('evoCompanyApikey').value,
-                companyPhone: document.getElementById('evoCompanyPhone').value,
-                reservationMsg: document.getElementById('evoReservationMsg').value
-            }
+            evo_url: (document.getElementById('evoUrl')?.value || '').trim(),
+            evo_instance: (document.getElementById('evoInstance')?.value || '').trim(),
+            evo_notify_reserva: document.getElementById('evoNotifyReserva')?.checked ? '1' : '0',
+            evo_notify_checkin: document.getElementById('evoNotifyCheckin')?.checked ? '1' : '0',
+            evo_notify_checkout: document.getElementById('evoNotifyCheckout')?.checked ? '1' : '0'
         };
-
+        if (evoApikey !== '') settings.evo_apikey = evoApikey;
         await saveSettingsToAPI(settings);
-        alert('Credenciais da Evolution API salvas no Banco de Dados!');
+        alert('Configuração de Comunicação e Integrações salva com sucesso!');
     }
 
     async function savePaymentMethodsSettings() {
@@ -2798,6 +2816,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
         await saveSettingsToAPI(settings);
         alert('Métodos de pagamento salvos com sucesso!');
+    }
+
+    /* =========================================
+       FNRH (Check-in 360º) — configurações
+       ========================================= */
+    async function saveFnrhSettings() {
+        const activeEl = document.getElementById('fnrhActive');
+        const apiKeyEl = document.getElementById('fnrhApiKey');
+        const msgEl = document.getElementById('preCheckinMessage');
+
+        const active = !!(activeEl && activeEl.checked);
+        const apiKey = apiKeyEl ? apiKeyEl.value.trim() : '';
+        const msg = msgEl ? msgEl.value.trim() : '';
+
+        if (active && apiKey === '') {
+            const cont = confirm('Você ativou a integração FNRH mas não informou a Chave API. Deseja continuar assim mesmo?');
+            if (!cont) return;
+        }
+
+        const payload = {
+            fnrh_active: active ? '1' : '0',
+            pre_checkin_message: msg
+        };
+        // Só sobrescreve a chave se o admin digitou algo (evita apagar acidentalmente).
+        if (apiKey !== '') payload.fnrh_api_key = apiKey;
+
+        try {
+            await saveSettingsToAPI(payload);
+            if (apiKeyEl) apiKeyEl.value = '';
+            alert('Configurações FNRH salvas com sucesso!');
+        } catch (e) {
+            alert('Não foi possível salvar as configurações FNRH.');
+        }
     }
 
     function normalizeTimeHHMM(raw, fallback) {
@@ -3086,17 +3137,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('../api/settings.php');
             const data = await res.json();
 
-            // Popula Evolution
-            if (data.evolutionSettings) {
-                const evo = data.evolutionSettings;
-                document.getElementById('evoUrl').value = evo.url || '';
-                document.getElementById('evoClientInstance').value = evo.clientInstance || '';
-                document.getElementById('evoClientApikey').value = evo.clientApikey || '';
-                document.getElementById('evoCompanyInstance').value = evo.companyInstance || '';
-                document.getElementById('evoCompanyApikey').value = evo.companyApikey || '';
-                document.getElementById('evoCompanyPhone').value = evo.companyPhone || '';
-                document.getElementById('evoReservationMsg').value = evo.reservationMsg || '';
+            // Popula Comunicação e Integrações (Evolution API nativa).
+            const asBoolFlag = (v) => {
+                const s = String(v == null ? '' : v).trim().toLowerCase();
+                return s === '1' || s === 'true' || s === 'on' || s === 'yes';
+            };
+            if (document.getElementById('evoUrl')) document.getElementById('evoUrl').value = data.evo_url || '';
+            if (document.getElementById('evoInstance')) document.getElementById('evoInstance').value = data.evo_instance || '';
+            if (document.getElementById('evoApikey')) {
+                const hasEvoKey = typeof data.evo_apikey === 'string' && data.evo_apikey.trim() !== '';
+                const el = document.getElementById('evoApikey');
+                el.value = '';
+                el.placeholder = hasEvoKey ? 'Chave armazenada — deixe em branco para manter' : 'apikey';
             }
+            if (document.getElementById('evoNotifyReserva')) document.getElementById('evoNotifyReserva').checked = asBoolFlag(data.evo_notify_reserva);
+            if (document.getElementById('evoNotifyCheckin')) document.getElementById('evoNotifyCheckin').checked = asBoolFlag(data.evo_notify_checkin);
+            if (document.getElementById('evoNotifyCheckout')) document.getElementById('evoNotifyCheckout').checked = asBoolFlag(data.evo_notify_checkout);
 
             // Popula MercadoPago
             const mpAccessTokenEl = document.getElementById('mpAccessToken');
@@ -3106,10 +3162,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Popula toggles e campos dos métodos de pagamento (híbrido MP + PIX manual).
-            const asBoolFlag = (v) => {
-                const s = String(v == null ? '' : v).trim().toLowerCase();
-                return s === '1' || s === 'true' || s === 'on' || s === 'yes';
-            };
             const mpActiveEl = document.getElementById('paymentMpActive');
             if (mpActiveEl) {
                 mpActiveEl.checked = data.payment_mercadopago_active === undefined
@@ -3122,6 +3174,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (pixKeyEl) pixKeyEl.value = typeof data.manual_pix_key === 'string' ? data.manual_pix_key : '';
             const pixInstrEl = document.getElementById('manualPixInstructions');
             if (pixInstrEl) pixInstrEl.value = typeof data.manual_pix_instructions === 'string' ? data.manual_pix_instructions : '';
+
+            // Popula Integração FNRH (Check-in 360º).
+            const fnrhActiveEl = document.getElementById('fnrhActive');
+            if (fnrhActiveEl) fnrhActiveEl.checked = asBoolFlag(data.fnrh_active);
+            const preMsgEl = document.getElementById('preCheckinMessage');
+            if (preMsgEl) {
+                preMsgEl.value = typeof data.pre_checkin_message === 'string' && data.pre_checkin_message.trim() !== ''
+                    ? data.pre_checkin_message
+                    : "Olá, {nome}! Sua reserva na {pousada} está confirmada para {checkin} — {checkout}.\n\nPara agilizar sua chegada, preencha o pré-check-in online (FNRH) neste link seguro:\n{link}\n\nNos vemos em breve!";
+            }
+            // Placeholder indica se existe chave armazenada sem nunca expô-la.
+            const fnrhKeyEl = document.getElementById('fnrhApiKey');
+            if (fnrhKeyEl) {
+                const hasKey = typeof data.fnrh_api_key === 'string' && data.fnrh_api_key.trim() !== '';
+                fnrhKeyEl.value = '';
+                fnrhKeyEl.placeholder = hasKey
+                    ? 'Chave armazenada — deixe em branco para manter, ou digite nova'
+                    : 'Cole aqui a chave fornecida pelo Serpro';
+            }
 
             // Popula Redes Sociais
             if (data.socialSettings) {
@@ -3510,6 +3581,348 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (window._handleDelete) window._handleDelete(parseInt(id, 10));
             };
         });
+        appContainer.querySelectorAll('[data-action="send-precheckin"]').forEach(btn => {
+            btn.onclick = () => {
+                const id = btn.getAttribute('data-id');
+                sendPreCheckinWhatsApp(parseInt(id, 10));
+            };
+        });
+        appContainer.querySelectorAll('[data-action="start-checkin"]').forEach(btn => {
+            btn.onclick = () => {
+                const id = btn.getAttribute('data-id');
+                openCheckinModal(parseInt(id, 10));
+            };
+        });
+    }
+
+    /* =========================================================
+       Check-in 360º — Pré-Check-in (WhatsApp) e Modal Híbrido
+       ========================================================= */
+
+    async function ensureCheckinLinkData(reservationId) {
+        const ok = await ensureInternalApiKey();
+        if (!ok) {
+            alert('Chave interna indisponível. Abra Configurações e recarregue.');
+            return null;
+        }
+        try {
+            const r = await fetch(`../api/checkin_link.php?id=${encodeURIComponent(reservationId)}`, {
+                headers: { 'X-Internal-Key': internalApiKey }
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                alert('Falha ao gerar link de pré-check-in: ' + (data.error || ('HTTP ' + r.status)));
+                return null;
+            }
+            return data; // { id, token, url, guest_name, checkin_date, checkout_date }
+        } catch (e) {
+            alert('Erro de rede ao gerar link de pré-check-in.');
+            return null;
+        }
+    }
+
+    function renderPreCheckinMessage(template, info, brand) {
+        const fmt = (d) => {
+            if (!d) return '';
+            try { return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR'); } catch (_) { return String(d); }
+        };
+        return String(template || '')
+            .replace(/\{nome\}/g, info.guest_name || '')
+            .replace(/\{pousada\}/g, brand || '')
+            .replace(/\{checkin\}/g, fmt(info.checkin_date))
+            .replace(/\{checkout\}/g, fmt(info.checkout_date))
+            .replace(/\{link\}/g, info.url || '');
+    }
+
+    async function sendPreCheckinWhatsApp(reservationId) {
+        if (!reservationId) return;
+        const reservation = Array.isArray(reservationsData)
+            ? reservationsData.find(r => Number(r.id) === Number(reservationId))
+            : null;
+        const rawPhone = reservation && reservation.guest_phone ? String(reservation.guest_phone) : '';
+        const phone = rawPhone.replace(/\D/g, '');
+        if (phone.length < 8) {
+            alert('Esta reserva não tem um telefone válido cadastrado. Edite a reserva antes de enviar o pré-check-in.');
+            return;
+        }
+
+        const info = await ensureCheckinLinkData(reservationId);
+        if (!info) return;
+
+        // Busca template e branding das settings já carregadas (ou fetch rápido).
+        let template = '';
+        let brand = 'Pousada';
+        try {
+            const res = await fetch('../api/settings.php');
+            const data = await res.json();
+            if (typeof data.pre_checkin_message === 'string' && data.pre_checkin_message.trim() !== '') {
+                template = data.pre_checkin_message;
+            }
+            brand = (data.company_name && String(data.company_name).trim())
+                || (data.site_title && String(data.site_title).trim())
+                || brand;
+        } catch (_) { /* usa fallback abaixo */ }
+        if (!template) {
+            template = "Olá, {nome}! Sua reserva na {pousada} está confirmada para {checkin} — {checkout}.\n\nPara agilizar sua chegada, preencha o pré-check-in online (FNRH) neste link seguro:\n{link}\n\nNos vemos em breve!";
+        }
+
+        const text = renderPreCheckinMessage(template, info, brand);
+        // Formato internacional: WhatsApp aceita DDI 55 para Brasil sem +.
+        const normalized = phone.startsWith('55') ? phone : ('55' + phone);
+        const waUrl = `https://wa.me/${normalized}?text=${encodeURIComponent(text)}`;
+        window.open(waUrl, '_blank', 'noopener');
+    }
+
+    async function openCheckinModal(reservationId) {
+        if (!reservationId) return;
+        const ok = await ensureInternalApiKey();
+        if (!ok) {
+            alert('Chave interna indisponível. Abra Configurações e recarregue.');
+            return;
+        }
+
+        // Busca reserva fresca (com campos FNRH).
+        let reservation = null;
+        try {
+            const r = await fetch(`../api/reservations.php?id=${encodeURIComponent(reservationId)}`);
+            reservation = await r.json();
+            if (!r.ok || !reservation || reservation.error) {
+                alert('Não foi possível carregar a reserva.');
+                return;
+            }
+        } catch (e) {
+            alert('Erro de rede ao carregar reserva.');
+            return;
+        }
+
+        // Descobre se integração FNRH está ativa (para rótulo do botão).
+        let fnrhActive = false;
+        try {
+            const sr = await fetch('../api/settings.php');
+            const sd = await sr.json();
+            fnrhActive = String(sd.fnrh_active || '0') === '1';
+        } catch (_) { /* assume false */ }
+
+        buildCheckinModal(reservation, fnrhActive);
+    }
+
+    function buildCheckinModal(r, fnrhActive) {
+        const host = document.getElementById('modalContainer') || document.body;
+        // Fecha qualquer modal de check-in aberto.
+        const old = document.getElementById('checkinModalOverlay');
+        if (old) old.remove();
+
+        const escH = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+        const policy = getPaymentPolicy(r.payment_rule || 'full');
+        const total = Number(r.total_amount || 0);
+        const percentNow = Math.max(0, Math.min(100, Number(policy.percent_now || 100)));
+        const depositAmount = total * (percentNow / 100);
+        const balanceAmount = Math.max(0, total - depositAmount);
+        const balancePaid = Number(r.balance_paid || 0) === 1;
+        const isPartial = percentNow > 0 && percentNow < 100;
+        const balancePending = isPartial && !balancePaid;
+
+        const hasCpf = r.guest_cpf && String(r.guest_cpf).trim() !== '';
+        const mode = hasCpf ? 'review' : 'manual';
+
+        const fmtBR = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+        const fnrhBtnLabel = fnrhActive ? 'Efetivar Check-in e Enviar FNRH' : 'Efetivar Check-in (local)';
+
+        const html = `
+            <div class="modal-overlay" id="checkinModalOverlay">
+                <div class="modal-container" style="max-width:640px;">
+                    <div class="modal-header">
+                        <h3><i class="ph ph-key" style="color:var(--primary);"></i> Check-in — Reserva #RES-${String(r.id).padStart(3, '0')}</h3>
+                        <button type="button" class="btn-icon" id="checkinModalClose"><i class="ph ph-x"></i></button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="background:#f9fafb; border:1px solid var(--border-color); border-radius:10px; padding:.9rem 1rem; margin-bottom:1rem;">
+                            <div style="font-weight:600; font-size:1.05rem; color:var(--secondary);">${escH(r.guest_name)}</div>
+                            <div style="color:#6b7280; font-size:.9rem; margin-top:.15rem;">
+                                ${escH(r.chalet_name || '')} · ${escH(r.checkin_date)} → ${escH(r.checkout_date)}
+                            </div>
+                        </div>
+
+                        <!-- TRAVA FINANCEIRA -->
+                        ${balancePending ? `
+                            <div id="checkinBalanceBox" style="background:#fef3c7; border:1px solid #fcd34d; border-radius:10px; padding:1rem 1.1rem; margin-bottom:1rem;">
+                                <div style="display:flex; gap:.75rem; align-items:flex-start;">
+                                    <i class="ph ph-warning-circle" style="color:#b45309; font-size:1.4rem;"></i>
+                                    <div style="flex:1;">
+                                        <div style="font-weight:700; color:#78350f; margin-bottom:.2rem;">Saldo pendente</div>
+                                        <div style="color:#92400e; font-size:.92rem;">Total <strong>${fmtBR(total)}</strong> · Sinal pago <strong>${fmtBR(depositAmount)}</strong> · Falta pagar <strong style="color:#b91c1c; font-size:1.05rem;">${fmtBR(balanceAmount)}</strong></div>
+                                        <label style="display:flex; gap:.5rem; align-items:center; margin-top:.75rem; font-weight:600; color:#78350f; cursor:pointer;">
+                                            <input type="checkbox" id="checkinConfirmBalance">
+                                            Confirmo o recebimento físico de ${fmtBR(balanceAmount)} (PIX, dinheiro ou cartão na recepção).
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : `
+                            <div style="background:#ecfdf5; border:1px solid #86efac; border-radius:10px; padding:.8rem 1rem; margin-bottom:1rem; display:flex; gap:.5rem; align-items:center; color:#065f46; font-weight:500;">
+                                <i class="ph ph-check-circle"></i>
+                                <span>${isPartial ? 'Saldo já está quitado — liberado para check-in.' : 'Reserva 100% paga — liberada para check-in.'}</span>
+                            </div>
+                        `}
+
+                        <!-- DADOS FNRH -->
+                        <h4 style="margin:0 0 .6rem; color:var(--secondary); font-size:1rem;">
+                            <i class="ph ph-identification-card" style="color:var(--primary)"></i>
+                            ${mode === 'review' ? 'Dados do hóspede (conferência)' : 'Dados do hóspede (preenchimento manual)'}
+                        </h4>
+
+                        <div class="form-group">
+                            <label>Nome completo</label>
+                            <input type="text" class="form-control" id="ckGuestName" value="${escH(r.guest_name)}" ${mode === 'review' ? 'readonly' : ''}>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:.75rem;">
+                            <div class="form-group">
+                                <label>CPF</label>
+                                <input type="text" class="form-control" id="ckCpf" maxlength="14" placeholder="000.000.000-00" value="${escH(r.guest_cpf || '')}" ${mode === 'review' ? 'readonly' : ''}>
+                            </div>
+                            <div class="form-group">
+                                <label>Telefone</label>
+                                <input type="tel" class="form-control" id="ckPhone" placeholder="(11) 91234-5678" value="${escH(r.guest_phone || '')}" ${mode === 'review' ? 'readonly' : ''}>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Endereço</label>
+                            <textarea class="form-control" id="ckAddress" rows="2" placeholder="Rua, número, bairro, cidade, UF, CEP" ${mode === 'review' ? 'readonly' : ''}>${escH(r.guest_address || '')}</textarea>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 2fr; gap:.75rem;">
+                            <div class="form-group">
+                                <label>Placa do veículo</label>
+                                <input type="text" class="form-control" id="ckCarPlate" maxlength="10" style="text-transform:uppercase" value="${escH(r.guest_car_plate || '')}" ${mode === 'review' ? 'readonly' : ''}>
+                            </div>
+                            <div class="form-group">
+                                <label>Acompanhantes</label>
+                                <input type="text" class="form-control" id="ckCompanions" placeholder="Nomes dos acompanhantes" value="${escH(r.guest_companion_names || '')}" ${mode === 'review' ? 'readonly' : ''}>
+                            </div>
+                        </div>
+
+                        <div id="checkinAlert" style="display:none; margin-top:.5rem;"></div>
+                    </div>
+                    <div class="modal-footer" style="display:flex; justify-content:space-between; gap:.75rem; flex-wrap:wrap;">
+                        <button type="button" class="btn btn-outline" id="checkinModalCancel">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="checkinModalSubmit" disabled>
+                            <i class="ph ph-check-circle"></i> ${fnrhBtnLabel}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html;
+        host.appendChild(wrapper.firstElementChild);
+
+        const overlay = document.getElementById('checkinModalOverlay');
+        const closeModal = () => { if (overlay) overlay.remove(); };
+        document.getElementById('checkinModalClose').onclick = closeModal;
+        document.getElementById('checkinModalCancel').onclick = closeModal;
+        overlay.addEventListener('click', (ev) => { if (ev.target === overlay) closeModal(); });
+
+        // Máscara de CPF em modo manual.
+        const cpfEl = document.getElementById('ckCpf');
+        if (cpfEl && mode === 'manual') {
+            cpfEl.addEventListener('input', function () {
+                let v = (this.value || '').replace(/\D/g, '').slice(0, 11);
+                if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, '$1.$2.$3-$4');
+                else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, '$1.$2.$3');
+                else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, '$1.$2');
+                this.value = v;
+            });
+        }
+
+        // Trava financeira → habilita submit.
+        const submitBtn = document.getElementById('checkinModalSubmit');
+        const confirmChk = document.getElementById('checkinConfirmBalance');
+        const updateSubmitState = () => {
+            if (balancePending) {
+                submitBtn.disabled = !(confirmChk && confirmChk.checked);
+            } else {
+                submitBtn.disabled = false;
+            }
+        };
+        if (confirmChk) confirmChk.addEventListener('change', updateSubmitState);
+        updateSubmitState();
+
+        submitBtn.onclick = async () => {
+            const alertEl = document.getElementById('checkinAlert');
+            const showAlert = (type, msg) => {
+                if (!alertEl) return;
+                alertEl.style.display = 'block';
+                const bg = type === 'err' ? '#fef2f2' : (type === 'ok' ? '#ecfdf5' : '#eff6ff');
+                const fg = type === 'err' ? '#991b1b' : (type === 'ok' ? '#065f46' : '#1e40af');
+                alertEl.innerHTML = `<div style="background:${bg}; color:${fg}; padding:.7rem .9rem; border-radius:8px; font-size:.9rem;">${msg}</div>`;
+            };
+
+            // Colher dados.
+            const payload = {
+                guest_phone: document.getElementById('ckPhone').value.trim(),
+                guest_cpf: (document.getElementById('ckCpf').value || '').replace(/\D/g, ''),
+                guest_address: document.getElementById('ckAddress').value.trim(),
+                guest_car_plate: document.getElementById('ckCarPlate').value.trim().toUpperCase(),
+                guest_companion_names: document.getElementById('ckCompanions').value.trim()
+            };
+
+            // Validação mínima.
+            if (payload.guest_cpf.length < 11) { showAlert('err', 'Informe um CPF válido (11 dígitos).'); return; }
+            if (payload.guest_address.length < 8) { showAlert('err', 'Informe o endereço completo do hóspede.'); return; }
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> A processar…';
+
+            try {
+                // 1) Se houver saldo pendente, regista o recebimento.
+                if (balancePending) {
+                    const pb = await fetch('../api/pay_balance.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                        body: JSON.stringify({ reservation_id: r.id })
+                    });
+                    const pbd = await pb.json().catch(() => ({}));
+                    if (!pb.ok || !pbd.success) {
+                        throw new Error(pbd.error || 'Falha ao registar recebimento do saldo.');
+                    }
+                }
+
+                // 2) Atualiza dados de check-in (PUT parcial) e status → Hospedado.
+                const upPayload = Object.assign({}, payload, { status: 'Hospedado' });
+                const up = await fetch(`../api/reservations.php?id=${encodeURIComponent(r.id)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(upPayload)
+                });
+                if (!up.ok) {
+                    const err = await up.json().catch(() => ({}));
+                    throw new Error(err.error || ('HTTP ' + up.status));
+                }
+
+                // 3) Dispara envio FNRH (o backend decide se contacta o gov ou não).
+                let fnrhMessage = '';
+                try {
+                    const fr = await fetch(`../api/fnrh_service.php?id=${encodeURIComponent(r.id)}`, {
+                        method: 'POST',
+                        headers: { 'X-Internal-Key': internalApiKey }
+                    });
+                    const fd = await fr.json().catch(() => ({}));
+                    fnrhMessage = fd.message || '';
+                } catch (_) { /* não crítico */ }
+
+                showAlert('ok', 'Check-in efetivado com sucesso. ' + (fnrhMessage ? fnrhMessage : ''));
+                await fetchApiData();
+                setTimeout(() => {
+                    closeModal();
+                    renderView(document.querySelector('.nav-item.active')?.getAttribute('data-view') || 'reservations');
+                }, 1200);
+            } catch (e) {
+                showAlert('err', 'Falha: ' + (e && e.message ? e.message : e));
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = `<i class="ph ph-check-circle"></i> ${fnrhBtnLabel}`;
+            }
+        };
     }
 
     // Navigation Click Handler
@@ -3729,7 +4142,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('holidaysList').appendChild(row);
     }
 
-    // Reservation Handling
+    // Reservation Handling (Guest Folio centralizado com abas)
     window.openEditReservationModal = function (index) {
         const isEditing = index !== null;
         const res = isEditing ? reservationsData[index] : {
@@ -3743,103 +4156,156 @@ document.addEventListener('DOMContentLoaded', () => {
             checkin_date: '',
             checkout_date: '',
             total_amount: '',
+            total_consumed: 0,
             status: 'Pendente'
         };
 
-        let chaletsOptions = chaletsData.map(c =>
+        const chaletsOptions = chaletsData.map(c =>
             `<option value="${c.id}" ${res.chalet_id == c.id ? 'selected' : ''}>${c.name}</option>`
         ).join('');
 
-        const formTitle = isEditing ? `Editar Reserva #${String(res.id).padStart(3, '0')}` : 'Criar Nova Reserva';
+        const formTitle = isEditing ? `Guest Folio #${String(res.id).padStart(3, '0')}` : 'Criar Nova Reserva';
         const jsParamId = isEditing ? res.id : 'null';
+        const canUseLifecycleTabs = isEditing && !!res.id;
 
         const modalHtml = `
             <div class="modal-overlay" id="editResModal" onclick="if(event.target === this) this.remove()">
-                <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-content guest-folio-modal" style="max-width: 980px;">
                     <div class="modal-header">
                         <h3>${formTitle}</h3>
                         <button class="close-btn" onclick="document.getElementById('editResModal').remove()"><i class="ph ph-x"></i></button>
                     </div>
+
+                    <div class="folio-tabs" id="folioTabs">
+                        <button type="button" class="folio-tab active" data-tab="summary">Dados Gerais</button>
+                        <button type="button" class="folio-tab ${canUseLifecycleTabs ? '' : 'disabled'}" data-tab="checkin" ${canUseLifecycleTabs ? '' : 'disabled'}>FNRH / Check-in</button>
+                        <button type="button" class="folio-tab ${canUseLifecycleTabs ? '' : 'disabled'}" data-tab="consumption" ${canUseLifecycleTabs ? '' : 'disabled'}>Conta do Quarto (Frigobar)</button>
+                        <button type="button" class="folio-tab ${canUseLifecycleTabs ? '' : 'disabled'}" data-tab="checkout" ${canUseLifecycleTabs ? '' : 'disabled'}>Financeiro & Check-out</button>
+                    </div>
+
                     <form onsubmit="handleEditReservation(event, ${jsParamId})">
-                        <div class="form-group">
-                            <label>Nome do Hóspede</label>
-                            <input type="text" id="editResName" class="form-control" required value="${res.guest_name}">
-                        </div>
-                        <div style="display:flex; gap:1rem;">
-                            <div class="form-group" style="flex:1;">
-                                <label>E-mail</label>
-                                <input type="email" id="editResEmail" class="form-control" value="${res.guest_email || ''}">
-                            </div>
-                            <div class="form-group" style="flex:1;">
-                                <label>Telefone</label>
-                                <input type="text" id="editResPhone" class="form-control" value="${res.guest_phone || ''}">
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Hóspedes</label>
-                            <select id="editResGuestsOption" class="form-control">
-                                <option value="">Carregando...</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Hospedagem</label>
-                            <select id="editResChaletId" class="form-control" required>
-                                ${chaletsOptions}
-                            </select>
-                        </div>
-                        <div style="display:flex; gap:1rem;">
-                            <div class="form-group" style="flex:1;">
-                                <label>Check-in</label>
-                                <input type="date" id="editResCheckin" class="form-control" required value="${res.checkin_date}">
-                            </div>
-                            <div class="form-group" style="flex:1;">
-                                <label>Check-out</label>
-                                <input type="date" id="editResCheckout" class="form-control" required value="${res.checkout_date}">
-                            </div>
-                        </div>
-                        <div style="display:flex; gap:1rem;">
-                            <div class="form-group" style="flex:1;">
-                                <label>Valor Adicional / Ajuste (R$)</label>
-                                <input type="number" step="0.01" id="editResAdditionalValue" class="form-control" value="${res.additional_value != null ? res.additional_value : '0'}">
-                                <small style="color:#666;">Use para somar extras ou aplicar descontos (valor negativo).</small>
-                            </div>
-                            <div class="form-group" style="flex:1;">
-                                <label>Status</label>
-                                <select id="editResStatus" class="form-control">
-                                    <option value="Pendente" ${res.status === 'Pendente' ? 'selected' : ''}>Pendente</option>
-                                    <option value="Confirmada" ${res.status === 'Confirmada' ? 'selected' : ''}>Confirmada</option>
-                                    <option value="Cancelada" ${res.status === 'Cancelada' ? 'selected' : ''}>Cancelada</option>
-                                </select>
-                            </div>
-                        </div>
+                        <input type="hidden" id="editResBalancePaid" value="${Number(res.balance_paid || 0) === 1 ? '1' : '0'}">
 
-                        <div class="form-group">
-                            <label>Valor Total (R$)</label>
-                            <input type="number" step="0.01" id="editResTotal" class="form-control" required value="${res.total_amount}">
-                            <small id="editResTotalBreakdown" style="color:#666; display:block; margin-top:0.25rem;">Preenchido automaticamente. Edite para sobrescrever.</small>
-                        </div>
-
-                        ${isEditing ? `
-                        <div id="editResFinanceSection" class="form-group" style="margin-top:1.25rem; padding:1rem; border:1px solid #e5e7eb; border-radius:0.5rem; background:#f9fafb;">
-                            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.75rem;">
-                                <i class="ph ph-wallet" style="font-size:1.15rem; color:var(--primary-color, #ea580c);"></i>
-                                <strong style="font-size:0.95rem;">Gestão Financeira</strong>
+                        <section class="folio-pane active" data-pane="summary">
+                            <div class="form-group">
+                                <label>Nome do Hóspede</label>
+                                <input type="text" id="editResName" class="form-control" required value="${res.guest_name || ''}">
                             </div>
-                            <input type="hidden" id="editResBalancePaid" value="${Number(res.balance_paid || 0) === 1 ? '1' : '0'}">
-                            <div id="editResFinanceSummary" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem; margin-bottom:0.75rem;"></div>
-                            <div id="editResFinanceAction"></div>
-                        </div>
-                        ` : ''}
+                            <div style="display:flex; gap:1rem;">
+                                <div class="form-group" style="flex:1;">
+                                    <label>E-mail</label>
+                                    <input type="email" id="editResEmail" class="form-control" value="${res.guest_email || ''}">
+                                </div>
+                                <div class="form-group" style="flex:1;">
+                                    <label>Telefone</label>
+                                    <input type="text" id="editResPhone" class="form-control" value="${res.guest_phone || ''}">
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:1rem;">
+                                <div class="form-group" style="flex:1;">
+                                    <label>Hóspedes</label>
+                                    <select id="editResGuestsOption" class="form-control">
+                                        <option value="">Carregando...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex:1;">
+                                    <label>Hospedagem</label>
+                                    <select id="editResChaletId" class="form-control" required>${chaletsOptions}</select>
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:1rem;">
+                                <div class="form-group" style="flex:1;">
+                                    <label>Check-in</label>
+                                    <input type="date" id="editResCheckin" class="form-control" required value="${res.checkin_date || ''}">
+                                </div>
+                                <div class="form-group" style="flex:1;">
+                                    <label>Check-out</label>
+                                    <input type="date" id="editResCheckout" class="form-control" required value="${res.checkout_date || ''}">
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:1rem;">
+                                <div class="form-group" style="flex:1;">
+                                    <label>Valor Adicional / Ajuste (R$)</label>
+                                    <input type="number" step="0.01" id="editResAdditionalValue" class="form-control" value="${res.additional_value != null ? res.additional_value : '0'}">
+                                    <small style="color:#666;">Use para somar extras ou aplicar descontos (valor negativo).</small>
+                                </div>
+                                <div class="form-group" style="flex:1;">
+                                    <label>Status atual</label>
+                                    <select id="editResStatus" class="form-control">
+                                        <option value="Pendente" ${res.status === 'Pendente' ? 'selected' : ''}>Pendente</option>
+                                        <option value="Confirmada" ${res.status === 'Confirmada' ? 'selected' : ''}>Confirmada</option>
+                                        <option value="Hospedado" ${res.status === 'Hospedado' ? 'selected' : ''}>Hospedado</option>
+                                        <option value="Finalizada" ${res.status === 'Finalizada' ? 'selected' : ''}>Finalizada</option>
+                                        <option value="Cancelada" ${res.status === 'Cancelada' ? 'selected' : ''}>Cancelada</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Valor Total (R$)</label>
+                                <input type="number" step="0.01" id="editResTotal" class="form-control" required value="${res.total_amount || ''}">
+                                <small id="editResTotalBreakdown" style="color:#666; display:block; margin-top:0.25rem;">Preenchido automaticamente. Edite para sobrescrever.</small>
+                            </div>
+                            <button type="submit" class="btn" style="width:100%; justify-content:center;">${isEditing ? 'Atualizar Reserva' : 'Criar Reserva'}</button>
+                        </section>
 
-                        <button type="submit" class="btn" style="width:100%; justify-content:center; margin-top: 1rem;">${isEditing ? 'Atualizar Reserva' : 'Criar Reserva'}</button>
+                        <section class="folio-pane" data-pane="checkin">
+                            ${canUseLifecycleTabs ? `
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                                <div class="form-group"><label>CPF</label><input id="editResGuestCpf" class="form-control" value="${res.guest_cpf || ''}"></div>
+                                <div class="form-group"><label>Telefone FNRH</label><input id="editResGuestPhoneFnrh" class="form-control" value="${res.guest_phone || ''}"></div>
+                            </div>
+                            <div class="form-group"><label>Endereço</label><textarea id="editResGuestAddress" class="form-control" rows="2">${res.guest_address || ''}</textarea></div>
+                            <div style="display:grid; grid-template-columns:1fr 2fr; gap:0.75rem;">
+                                <div class="form-group"><label>Placa</label><input id="editResGuestPlate" class="form-control" value="${res.guest_car_plate || ''}"></div>
+                                <div class="form-group"><label>Acompanhantes</label><input id="editResCompanions" class="form-control" value="${res.guest_companion_names || ''}"></div>
+                            </div>
+                            <div style="padding:.8rem 1rem; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; margin:.5rem 0 1rem;">
+                                <strong>Status FNRH:</strong> ${res.fnrh_status || 'pendente'}
+                            </div>
+                            <button type="button" class="btn btn-primary" id="folioStartCheckinBtn" style="width:100%; justify-content:center;">
+                                <i class="ph ph-key"></i> Fazer Check-in / Enviar FNRH
+                            </button>
+                            ` : '<div class="dash-empty-neutral">Salve a reserva primeiro para habilitar o fluxo de Check-in 360º.</div>'}
+                        </section>
+
+                        <section class="folio-pane" data-pane="consumption">
+                            ${canUseLifecycleTabs ? `
+                            <div class="folio-inline-form">
+                                <select id="consCatalog" class="form-control"><option value="">Catálogo (opcional)</option></select>
+                                <input id="consDesc" class="form-control" placeholder="Descrição">
+                                <input id="consQty" class="form-control" type="number" min="1" value="1">
+                                <input id="consUnit" class="form-control" type="number" step="0.01" min="0" placeholder="Preço unit.">
+                                <button type="button" class="btn btn-primary" id="consAddBtn"><i class="ph ph-plus"></i> Adicionar</button>
+                            </div>
+                            <div id="consList" class="folio-cons-list"></div>
+                            <div id="consTotal" style="margin-top:.75rem; font-weight:600;"></div>
+                            ` : '<div class="dash-empty-neutral">Salve a reserva primeiro para lançar consumos.</div>'}
+                        </section>
+
+                        <section class="folio-pane" data-pane="checkout">
+                            ${canUseLifecycleTabs ? `
+                            <div id="folioFinanceSummary" class="folio-fin-summary"></div>
+                            <div id="folioFinanceAction" style="margin-top:1rem;"></div>
+                            ` : '<div class="dash-empty-neutral">Salve a reserva primeiro para gerir o fechamento financeiro.</div>'}
+                        </section>
                     </form>
                 </div>
             </div>
         `;
         document.getElementById('modalContainer').innerHTML = modalHtml;
 
-        // Popula o dropdown de hóspedes dinamicamente com base no max_guests da
-        // hospedagem selecionada e reage à troca de hospedagem.
+        const tabsHost = document.getElementById('folioTabs');
+        const tabButtons = tabsHost ? Array.from(tabsHost.querySelectorAll('.folio-tab')) : [];
+        const panes = Array.from(document.querySelectorAll('#editResModal .folio-pane'));
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.classList.contains('disabled')) return;
+                const target = btn.getAttribute('data-tab');
+                tabButtons.forEach(b => b.classList.toggle('active', b === btn));
+                panes.forEach(p => p.classList.toggle('active', p.getAttribute('data-pane') === target));
+            });
+        });
+
         const chaletSelect = document.getElementById('editResChaletId');
         const guestsSelect = document.getElementById('editResGuestsOption');
         const checkinInput = document.getElementById('editResCheckin');
@@ -3847,6 +4313,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalInput = document.getElementById('editResTotal');
         const additionalInput = document.getElementById('editResAdditionalValue');
         const breakdownEl = document.getElementById('editResTotalBreakdown');
+        const balancePaidHidden = document.getElementById('editResBalancePaid');
+        let consumptionTotal = Number(res.total_consumed || 0);
+        let currentConsumptionItems = [];
         const currentGuestsVal = res ? `${res.guests_adults || 2}_${res.guests_children || 0}` : '2_0';
 
         function updateGuestsDropdown() {
@@ -3856,7 +4325,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const valToSet = guestsSelect.value && guestsSelect.value !== '' ? guestsSelect.value : currentGuestsVal;
             renderGuestOptionsAdmin(guestsSelect, maxGuests, valToSet);
         }
-
         function diffNightsAdmin(checkinStr, checkoutStr) {
             if (!checkinStr || !checkoutStr) return 0;
             const ci = new Date(checkinStr + 'T00:00:00');
@@ -3866,21 +4334,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (diffMs <= 0) return 0;
             return Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
         }
+        const fmtMoney = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
         function recalculateTotalAdmin() {
             if (!totalInput) return;
-
             const chaletObj = (typeof chaletsData !== 'undefined')
                 ? (chaletsData.find(c => String(c.id) === String(chaletSelect ? chaletSelect.value : '')) || null)
                 : null;
             const price = chaletObj ? (parseFloat(chaletObj.price) || 0) : 0;
             const baseGuests = chaletObj && chaletObj.base_guests != null ? parseInt(chaletObj.base_guests, 10) || 0 : 0;
             const extraFee = chaletObj && chaletObj.extra_guest_fee != null ? parseFloat(chaletObj.extra_guest_fee) || 0 : 0;
-
             const ciStr = checkinInput ? checkinInput.value : '';
             const coStr = checkoutInput ? checkoutInput.value : '';
             const nights = diffNightsAdmin(ciStr, coStr);
-
             if (ciStr && coStr && nights === 0) {
                 totalInput.value = '0.00';
                 if (breakdownEl) {
@@ -3889,128 +4355,413 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return;
             }
-
-            const totalGuests = guestsSelect ? (parseGuestsOptionAdmin(guestsSelect.value).adults + parseGuestsOptionAdmin(guestsSelect.value).children) : 0;
+            const parsedGuests = guestsSelect ? parseGuestsOptionAdmin(guestsSelect.value) : { adults: 0, children: 0 };
+            const totalGuests = parsedGuests.adults + parsedGuests.children;
             const extraGuests = Math.max(0, totalGuests - baseGuests);
-
             const lodging = Math.round(price * nights * 100) / 100;
             const extra = Math.round(extraGuests * extraFee * nights * 100) / 100;
             const adjustment = additionalInput ? (parseFloat(additionalInput.value) || 0) : 0;
             const total = Math.round((lodging + extra + adjustment) * 100) / 100;
-
             totalInput.value = total.toFixed(2);
             if (breakdownEl) {
                 breakdownEl.style.color = '#666';
-                const fmt = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-                const parts = [
-                    `${nights} noite(s) × ${fmt(price)} = ${fmt(lodging)}`
-                ];
-                if (extraGuests > 0) {
-                    parts.push(`${extraGuests} hóspede(s) extra × ${fmt(extraFee)} × ${nights} = ${fmt(extra)}`);
-                }
-                if (adjustment !== 0) {
-                    parts.push(`Ajuste: ${fmt(adjustment)}`);
-                }
-                parts.push(`Total: ${fmt(total)}`);
+                const parts = [`${nights} noite(s) × ${fmtMoney(price)} = ${fmtMoney(lodging)}`];
+                if (extraGuests > 0) parts.push(`${extraGuests} hóspede(s) extra × ${fmtMoney(extraFee)} × ${nights} = ${fmtMoney(extra)}`);
+                if (adjustment !== 0) parts.push(`Ajuste: ${fmtMoney(adjustment)}`);
+                parts.push(`Total: ${fmtMoney(total)}`);
                 breakdownEl.textContent = parts.join(' · ');
             }
         }
 
-        // Gestão Financeira (50/50) — apenas em edição.
-        const financeSummaryEl = document.getElementById('editResFinanceSummary');
-        const financeActionEl = document.getElementById('editResFinanceAction');
-        const balancePaidHidden = document.getElementById('editResBalancePaid');
-
-        function renderFinanceSection() {
-            if (!isEditing || !financeSummaryEl || !financeActionEl || !balancePaidHidden) return;
+        function buildFinanceNumbers() {
             const policy = getPaymentPolicy((res && res.payment_rule) ? res.payment_rule : 'full');
             const percentNow = Math.min(100, Math.max(0, Number(policy.percent_now || 100)));
             const percentBal = Math.max(0, 100 - percentNow);
-            const totalNum = Math.max(0, parseFloat(totalInput ? totalInput.value : (res.total_amount || 0)) || 0);
-            const sinalNum = Math.round((totalNum * percentNow) / 100 * 100) / 100;
-            const saldoNum = Math.round((totalNum * percentBal) / 100 * 100) / 100;
-            const fmt = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-            const isPaid = balancePaidHidden.value === '1';
+            const totalDiarias = Math.max(0, parseFloat(totalInput ? totalInput.value : (res.total_amount || 0)) || 0);
+            const sinal = Math.round((totalDiarias * percentNow) / 100 * 100) / 100;
+            const saldo = Math.round((totalDiarias * percentBal) / 100 * 100) / 100;
+            const saldoPago = balancePaidHidden && balancePaidHidden.value === '1';
+            const saldoPendente = saldoPago ? 0 : saldo;
+            const consumo = Math.max(0, Number(consumptionTotal || 0));
+            const finalAgora = Math.round((saldoPendente + consumo) * 100) / 100;
+            return { totalDiarias, sinal, saldo, saldoPago, saldoPendente, consumo, finalAgora, percentBal };
+        }
 
-            const cardStyle = 'background:#fff; border:1px solid #e5e7eb; border-radius:0.4rem; padding:0.55rem 0.65rem;';
-            const labelStyle = 'font-size:0.7rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; display:block;';
-            const valueStyle = 'font-size:1rem; font-weight:700; color:#111827; display:block; margin-top:0.15rem;';
+        async function renderConsumptionList() {
+            if (!canUseLifecycleTabs) return;
+            const listEl = document.getElementById('consList');
+            const totalEl = document.getElementById('consTotal');
+            if (!listEl || !totalEl) return;
+            const ok = await ensureInternalApiKey();
+            if (!ok) {
+                listEl.innerHTML = '<div class="dash-empty-neutral">Não foi possível validar sessão admin.</div>';
+                return;
+            }
+            try {
+                const req = await fetch(`../api/consumptions.php?reservation_id=${encodeURIComponent(res.id)}`, {
+                    headers: { 'X-Internal-Key': internalApiKey }
+                });
+                const data = await req.json().catch(() => ({}));
+                if (!req.ok) throw new Error(data.error || ('HTTP ' + req.status));
+                const items = Array.isArray(data.items) ? data.items : [];
+                currentConsumptionItems = items;
+                consumptionTotal = Number(data.total_consumed || 0);
+                if (!items.length) {
+                    listEl.innerHTML = '<div class="dash-empty-neutral">Nenhum consumo lançado ainda.</div>';
+                } else {
+                    listEl.innerHTML = items.map(it => `
+                        <div class="folio-cons-item">
+                            <div>
+                                <strong>${it.description}</strong><br>
+                                <small>${it.quantity} × ${fmtMoney(it.unit_price)}</small>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:.5rem;">
+                                <strong>${fmtMoney(it.total_price)}</strong>
+                                <button type="button" class="btn-icon" data-cons-del="${it.id}" title="Apagar"><i class="ph ph-trash"></i></button>
+                            </div>
+                        </div>
+                    `).join('');
+                    listEl.querySelectorAll('[data-cons-del]').forEach(btn => {
+                        btn.addEventListener('click', async () => {
+                            if (!confirm('Remover este consumo?')) return;
+                            await fetch(`../api/consumptions.php?id=${encodeURIComponent(btn.getAttribute('data-cons-del'))}`, {
+                                method: 'DELETE',
+                                headers: { 'X-Internal-Key': internalApiKey }
+                            });
+                            await renderConsumptionList();
+                            renderCheckoutTab();
+                        });
+                    });
+                }
+                totalEl.textContent = `Total consumido: ${fmtMoney(consumptionTotal)}`;
+                renderCheckoutTab();
+            } catch (e) {
+                currentConsumptionItems = [];
+                listEl.innerHTML = `<div class="dash-empty-neutral">Erro ao carregar consumo: ${e.message || e}</div>`;
+            }
+        }
 
-            financeSummaryEl.innerHTML = `
-                <div style="${cardStyle}">
-                    <span style="${labelStyle}">Valor Total</span>
-                    <span style="${valueStyle}">${fmt(totalNum)}</span>
+        function printGuestFolio(brand, finance) {
+            const w = window.open('', '_blank', 'width=980,height=760');
+            if (!w) return;
+            const safeBrand = String(brand || 'Hospedagem').replace(/</g, '&lt;');
+            const receiptNo = `#RES-${String(res.id).padStart(3, '0')}`;
+            const now = new Date();
+            const auditDateTime = now.toLocaleString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            }).replace(',', '');
+            const operator = (
+                localStorage.getItem('adminName')
+                || localStorage.getItem('adminUser')
+                || localStorage.getItem('adminEmail')
+                || localStorage.getItem('userName')
+                || localStorage.getItem('userEmail')
+                || document.getElementById('adminBrandName')?.textContent
+                || (localStorage.getItem('adminRole') ? `role:${localStorage.getItem('adminRole')}` : '')
+                || 'Operador'
+            ).trim();
+            const auditTrail = `Emitido em: ${auditDateTime} | Operador: ${operator.replace(/</g, '&lt;')}`;
+            const consumptionRows = currentConsumptionItems.length
+                ? currentConsumptionItems.map(it => `
+                    <tr>
+                        <td>${it.description}</td>
+                        <td style="text-align:center;">${it.quantity}</td>
+                        <td style="text-align:right;">${fmtMoney(it.unit_price)}</td>
+                        <td style="text-align:right;"><strong>${fmtMoney(it.total_price)}</strong></td>
+                    </tr>
+                `).join('')
+                : `<tr><td colspan="4" style="text-align:center;color:#6b7280;">Sem lançamentos de consumo</td></tr>`;
+            const folioTemplate = `
+                <div class="doc {{VIA_CLASS}}">
+                    <div class="head">
+                        <div><div class="brand">${safeBrand}</div><h1>Folio de Hospedagem / Extrato de Conta</h1></div>
+                        <div style="text-align:right;">
+                            <div class="via-badge">{{VIA_LABEL}}</div>
+                            <div class="rec">${receiptNo}</div>
+                        </div>
+                    </div>
+                    <div class="box">
+                        <div class="grid">
+                            <div><div class="k">Hóspede</div><div class="v">${res.guest_name || '-'}</div></div>
+                            <div><div class="k">CPF</div><div class="v">${(document.getElementById('editResGuestCpf')?.value || '-')}</div></div>
+                            <div><div class="k">Acomodação</div><div class="v">${res.chalet_name || '-'}</div></div>
+                            <div><div class="k">Período</div><div class="v">${formatDateBR(res.checkin_date)} a ${formatDateBR(res.checkout_date)}</div></div>
+                        </div>
+                    </div>
+                    <div class="sec-title">Diárias da Acomodação</div>
+                    <table><thead><tr><th>Descrição</th><th style="text-align:right;">Valor</th></tr></thead>
+                    <tbody>
+                        <tr><td>Total de diárias</td><td style="text-align:right;">${fmtMoney(finance.totalDiarias)}</td></tr>
+                        <tr><td>Sinal pago</td><td style="text-align:right;">${fmtMoney(finance.sinal)}</td></tr>
+                        <tr><td>Saldo de diárias</td><td style="text-align:right;">${finance.saldoPago ? 'Pago' : fmtMoney(finance.saldoPendente)}</td></tr>
+                    </tbody></table>
+                    <div class="sec-title">Itens de Consumo (Frigobar / Extras)</div>
+                    <table><thead><tr><th>Item</th><th style="text-align:center;">Qtd</th><th style="text-align:right;">Unit.</th><th style="text-align:right;">Total</th></tr></thead>
+                    <tbody>${consumptionRows}</tbody></table>
+                    <div class="totals">
+                        <div class="tot-row"><span>Consumo total</span><strong>${fmtMoney(finance.consumo)}</strong></div>
+                        <div class="tot-row final"><span>TOTAL A PAGAR</span><span>${fmtMoney(finance.finalAgora)}</span></div>
+                    </div>
+                    <div class="foot">
+                        <div class="sign">Assinatura do(a) hóspede / responsável</div>
+                        <div class="thanks">Agradecemos por escolher ${safeBrand}.<br>Desejamos uma excelente experiência.</div>
+                    </div>
+                    <div class="audit-trail">${auditTrail}</div>
                 </div>
-                <div style="${cardStyle}">
-                    <span style="${labelStyle}">Sinal (${percentNow}%)</span>
-                    <span style="${valueStyle}; color:#198754;">${fmt(sinalNum)}</span>
+            `;
+            const viaHospede = folioTemplate.replace('{{VIA_LABEL}}', 'Via do Hóspede').replace('{{VIA_CLASS}}', 'via-guest');
+            const viaEstabelecimento = folioTemplate.replace('{{VIA_LABEL}}', 'Via do Estabelecimento').replace('{{VIA_CLASS}}', 'via-establishment');
+
+            const html = `<!doctype html><html><head><meta charset="utf-8"><title>Folio ${receiptNo}</title>
+                <style>
+                    @page { size: A4; margin: 10mm; }
+                    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    body { font-family: Inter, Arial, sans-serif; color: #111827; margin: 0; background: #fff; font-size: 12.2px; line-height: 1.28; }
+                    .doc { padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; page-break-inside: avoid; break-inside: avoid; }
+                    .head { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #111827; padding-bottom:12px; margin-bottom:14px; }
+                    .head h1 { margin:0; font-size:1rem; }
+                    .head .brand { font-size:1.1rem; font-weight:700; }
+                    .head .rec { font-size:.9rem; font-weight:700; }
+                    .via-badge { display:inline-block; margin-bottom:4px; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:999px; padding:2px 9px; font-size:.72rem; font-weight:700; }
+                    .box { border:1px solid #d1d5db; border-radius:8px; padding:8px; margin-bottom:9px; background:#f9fafb; page-break-inside: avoid; break-inside: avoid; }
+                    .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; }
+                    .k { color:#6b7280; font-size:.74rem; text-transform:uppercase; letter-spacing:.03em; }
+                    .v { font-weight:600; font-size:.84rem; }
+                    .sec-title { margin:10px 0 5px; font-size:.84rem; font-weight:700; background:#eef2ff; padding:5px 8px; border-radius:6px; page-break-inside: avoid; break-inside: avoid; }
+                    table { width:100%; border-collapse:collapse; font-size:.8rem; page-break-inside: avoid; break-inside: avoid; }
+                    th,td { border-bottom:1px solid #e5e7eb; padding:6px 5px; text-align:left; }
+                    th { background:#f3f4f6; font-size:.72rem; text-transform:uppercase; letter-spacing:.03em; }
+                    .totals { margin-top:9px; border-top:2px solid #111827; padding-top:7px; page-break-inside: avoid; break-inside: avoid; }
+                    .tot-row { display:flex; justify-content:space-between; margin:3px 0; font-size:.82rem; }
+                    .tot-row.final { font-size:1rem; font-weight:800; margin-top:6px; }
+                    .foot { margin-top:12px; display:flex; justify-content:space-between; gap:16px; page-break-inside: avoid; break-inside: avoid; }
+                    .sign { flex:1; border-top:1px solid #111827; padding-top:6px; font-size:.76rem; color:#374151; text-align:center; }
+                    .thanks { font-size:.78rem; color:#374151; text-align:right; }
+                    .audit-trail { font-size:10px; color:#777; text-align:center; margin-top:15px; border-top:1px solid #eee; padding-top:5px; font-family:monospace; }
+                    .via-establishment .sign { font-weight:700; color:#111827; }
+                    .cut-line { border-top: 1px dashed #999; margin: 30px 0; text-align: center; color: #666; font-size: 12px; opacity: 0.7; }
+                    @media print {
+                        html, body { width: 210mm; }
+                        body { font-size: 11px; }
+                        .doc { border: none; border-radius: 0; padding: 0; }
+                        .head { margin-bottom: 8px; padding-bottom: 7px; }
+                        table, tr, td, th, .box, .totals, .foot, .sec-title { page-break-inside: avoid; break-inside: avoid; }
+                    }
+                </style></head><body>
+                ${viaHospede}
+                <div class="cut-line">✂ - - - - - - - - - - Corte Aqui - - - - - - - - - - ✂</div>
+                ${viaEstabelecimento}
+                <script>window.onload = function(){ window.print(); }<\/script>
+                </body></html>`;
+            w.document.write(html);
+            w.document.close();
+            w.focus();
+        }
+
+        async function loadConsumptionCatalog() {
+            if (!canUseLifecycleTabs) return;
+            const sel = document.getElementById('consCatalog');
+            if (!sel) return;
+            try {
+                const ok = await ensureInternalApiKey();
+                if (!ok) return;
+                const req = await fetch('../api/admin_extra_services.php', { headers: { 'X-Internal-Key': internalApiKey } });
+                const rows = await req.json().catch(() => []);
+                if (!Array.isArray(rows)) return;
+                rows.filter(r => Number(r.active || 0) === 1).forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = JSON.stringify({ name: r.name, price: r.price });
+                    opt.textContent = `${r.name} (${fmtMoney(r.price)})`;
+                    sel.appendChild(opt);
+                });
+                sel.addEventListener('change', () => {
+                    if (!sel.value) return;
+                    try {
+                        const obj = JSON.parse(sel.value);
+                        const d = document.getElementById('consDesc');
+                        const u = document.getElementById('consUnit');
+                        if (d && !d.value) d.value = obj.name || '';
+                        if (u && (!u.value || Number(u.value) <= 0)) u.value = Number(obj.price || 0).toFixed(2);
+                    } catch (_) { /* noop */ }
+                });
+            } catch (_) { /* catálogo opcional */ }
+        }
+
+        function renderCheckoutTab() {
+            if (!canUseLifecycleTabs) return;
+            const summaryEl = document.getElementById('folioFinanceSummary');
+            const actionEl = document.getElementById('folioFinanceAction');
+            if (!summaryEl || !actionEl) return;
+            const f = buildFinanceNumbers();
+            summaryEl.innerHTML = `
+                <div class="folio-fin-card">
+                    <small>Total Diárias</small>
+                    <strong>${fmtMoney(f.totalDiarias)}</strong>
+                    <span>Sinal: ${fmtMoney(f.sinal)} · Saldo: ${f.saldoPago ? 'Pago' : 'Pendente'}</span>
                 </div>
-                <div style="${cardStyle}">
-                    <span style="${labelStyle}">Saldo (${percentBal}%)</span>
-                    <span style="${valueStyle}; color:${isPaid || percentBal === 0 ? '#198754' : '#dc3545'};">${fmt(saldoNum)}</span>
+                <div class="folio-fin-card">
+                    <small>Total Consumo</small>
+                    <strong>${fmtMoney(f.consumo)}</strong>
+                    <span>Lançamentos da aba Consumo</span>
+                </div>
+                <div class="folio-fin-card accent">
+                    <small>Total final a pagar agora</small>
+                    <strong>${fmtMoney(f.finalAgora)}</strong>
+                    <span>Saldo de diárias + consumo</span>
                 </div>
             `;
 
-            if (percentBal === 0) {
-                financeActionEl.innerHTML = `<div style="padding:0.6rem 0.75rem; background:#d1fae5; border-left:4px solid #198754; border-radius:0.25rem; font-size:0.85rem; color:#065f46;">
-                    <i class="ph ph-check-circle"></i> Pagamento 100% antecipado — sem saldo a cobrar no check-in.
-                </div>`;
+            const isHospedado = String(document.getElementById('editResStatus')?.value || '') === 'Hospedado';
+            if (!isHospedado) {
+                actionEl.innerHTML = '<div class="dash-empty-neutral">O check-out é liberado apenas quando o status está como <strong>Hospedado</strong>.</div>';
                 return;
             }
-
-            if (isPaid) {
-                const when = res.balance_paid_at ? formatBalancePaidAtDisplay(res.balance_paid_at) : 'agora';
-                financeActionEl.innerHTML = `<div style="padding:0.6rem 0.75rem; background:#d1fae5; border-left:4px solid #198754; border-radius:0.25rem; font-size:0.88rem; color:#065f46;">
-                    <i class="ph ph-check-circle"></i> <strong>Saldo recebido</strong> — ${when}
-                    <button type="button" id="editResUndoBalance" style="float:right; background:none; border:none; color:#065f46; font-size:0.78rem; text-decoration:underline; cursor:pointer;">desfazer</button>
-                </div>`;
-                const undoBtn = document.getElementById('editResUndoBalance');
-                if (undoBtn) {
-                    undoBtn.addEventListener('click', () => {
-                        balancePaidHidden.value = '0';
-                        renderFinanceSection();
+            const needsConfirm = f.finalAgora > 0;
+            actionEl.innerHTML = `
+                ${needsConfirm ? `<label style="display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem;"><input type="checkbox" id="checkoutConfirmMoney"> Confirmo o recebimento do saldo (${fmtMoney(f.finalAgora)})</label>` : ''}
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:.5rem; margin-bottom:.5rem;">
+                    <button type="button" id="folioPrintStatementBtn" class="btn btn-outline" style="justify-content:center;">
+                        <i class="ph ph-printer"></i> Imprimir Extrato
+                    </button>
+                    <button type="button" id="folioSendStatementBtn" class="btn btn-outline" style="justify-content:center; color:#16a34a; border-color:#86efac;">
+                        <i class="ph ph-whatsapp-logo"></i> Enviar Extrato por WhatsApp
+                    </button>
+                </div>
+                <button type="button" id="folioCheckoutBtn" class="btn btn-primary" style="background:#16a34a; border-color:#16a34a; width:100%; justify-content:center;">
+                    <i class="ph ph-check-circle"></i> Finalizar Conta e Fazer Check-out
+                </button>
+            `;
+            const checkoutBtn = document.getElementById('folioCheckoutBtn');
+            const printBtn = document.getElementById('folioPrintStatementBtn');
+            const sendBtn = document.getElementById('folioSendStatementBtn');
+            const checkEl = document.getElementById('checkoutConfirmMoney');
+            if (checkoutBtn && checkEl) {
+                checkoutBtn.disabled = !checkEl.checked;
+                checkEl.addEventListener('change', () => { checkoutBtn.disabled = !checkEl.checked; });
+            }
+            const brand = (document.getElementById('adminBrandName')?.textContent || '').trim() || 'Hospedagem';
+            if (printBtn) {
+                printBtn.addEventListener('click', () => {
+                    printGuestFolio(brand, f);
+                });
+            }
+            if (sendBtn) {
+                sendBtn.addEventListener('click', async () => {
+                    const phoneRaw = String(res.guest_phone || '').trim();
+                    const phone = phoneRaw.replace(/\D/g, '');
+                    if (!phone) return alert('Telefone do hóspede não informado.');
+                    const ok = await ensureInternalApiKey();
+                    if (!ok) return alert('Não foi possível validar sessão interna.');
+                    const req = await fetch('../api/evolution_service.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                        body: JSON.stringify({
+                            action: 'folio_receipt',
+                            number: phone,
+                            reservation_id: Number(res.id),
+                            guest_name: res.guest_name || '',
+                            total_diarias: f.totalDiarias,
+                            consumo_extra: f.consumo,
+                            total_final: f.finalAgora
+                        })
                     });
-                }
-            } else {
-                financeActionEl.innerHTML = `<button type="button" id="editResMarkBalancePaid" class="btn" style="width:100%; justify-content:center; background:#198754; border-color:#198754; color:#fff; padding:0.7rem; font-weight:600;">
-                    <i class="ph ph-currency-circle-dollar"></i> Marcar Saldo (${percentBal}%) como Recebido — ${fmt(saldoNum)}
-                </button>`;
-                const markBtn = document.getElementById('editResMarkBalancePaid');
-                if (markBtn) {
-                    markBtn.addEventListener('click', () => {
-                        balancePaidHidden.value = '1';
-                        renderFinanceSection();
-                    });
-                }
+                    const data = await req.json().catch(() => ({}));
+                    if (!req.ok || !data.ok) return alert(data.error || 'Falha ao enviar extrato via WhatsApp.');
+                    alert('Extrato enviado via WhatsApp com sucesso.');
+                });
+            }
+            if (checkoutBtn) {
+                checkoutBtn.addEventListener('click', async () => {
+                    if (!confirm('Confirma o check-out e fechamento desta conta?')) return;
+                    try {
+                        const ok = await ensureInternalApiKey();
+                        if (!ok) throw new Error('Não foi possível validar sessão interna.');
+                        if (!f.saldoPago && f.saldo > 0) {
+                            const pb = await fetch('../api/pay_balance.php', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                                body: JSON.stringify({ reservation_id: res.id })
+                            });
+                            const pbd = await pb.json().catch(() => ({}));
+                            if (!pb.ok || !pbd.success) {
+                                throw new Error(pbd.error || 'Falha ao registrar quitação do saldo.');
+                            }
+                        }
+                        const payload = { status: 'Finalizada' };
+                        const req = await fetch(`../api/reservations.php?id=${encodeURIComponent(res.id)}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await req.json().catch(() => ({}));
+                        if (!req.ok) throw new Error(data.error || ('HTTP ' + req.status));
+                        alert('Check-out finalizado com sucesso.');
+                        document.getElementById('editResModal').remove();
+                        await fetchApiData();
+                        renderView('reservations');
+                    } catch (e) {
+                        alert('Falha ao finalizar check-out: ' + (e.message || e));
+                    }
+                });
             }
         }
 
         if (chaletSelect) {
-            chaletSelect.addEventListener('change', () => { updateGuestsDropdown(); recalculateTotalAdmin(); renderFinanceSection(); });
+            chaletSelect.addEventListener('change', () => { updateGuestsDropdown(); recalculateTotalAdmin(); renderCheckoutTab(); });
             updateGuestsDropdown();
         }
-        if (guestsSelect) {
-            guestsSelect.addEventListener('change', () => { recalculateTotalAdmin(); renderFinanceSection(); });
-        }
-        if (checkinInput) checkinInput.addEventListener('change', () => { recalculateTotalAdmin(); renderFinanceSection(); });
-        if (checkoutInput) checkoutInput.addEventListener('change', () => { recalculateTotalAdmin(); renderFinanceSection(); });
-        if (additionalInput) additionalInput.addEventListener('input', () => { recalculateTotalAdmin(); renderFinanceSection(); });
+        if (guestsSelect) guestsSelect.addEventListener('change', () => { recalculateTotalAdmin(); renderCheckoutTab(); });
+        if (checkinInput) checkinInput.addEventListener('change', () => { recalculateTotalAdmin(); renderCheckoutTab(); });
+        if (checkoutInput) checkoutInput.addEventListener('change', () => { recalculateTotalAdmin(); renderCheckoutTab(); });
+        if (additionalInput) additionalInput.addEventListener('input', () => { recalculateTotalAdmin(); renderCheckoutTab(); });
         if (totalInput) {
             totalInput.addEventListener('input', () => {
                 if (breakdownEl) {
                     breakdownEl.textContent = 'Valor total sobrescrito manualmente. Será recalculado se datas, hospedagem, hóspedes ou ajuste mudarem.';
                     breakdownEl.style.color = 'var(--warning, #b45309)';
                 }
-                renderFinanceSection();
+                renderCheckoutTab();
             });
         }
 
-        // Em edição, não sobrescrevemos imediatamente um total já existente — só
-        // quando o admin alterar algum dos inputs que participam do cálculo.
-        if (!isEditing || !res.total_amount) {
-            recalculateTotalAdmin();
+        if (!isEditing || !res.total_amount) recalculateTotalAdmin();
+        renderCheckoutTab();
+
+        const checkinBtn = document.getElementById('folioStartCheckinBtn');
+        if (checkinBtn && canUseLifecycleTabs) {
+            checkinBtn.addEventListener('click', () => openCheckinModal(Number(res.id)));
         }
-        renderFinanceSection();
+
+        const consAddBtn = document.getElementById('consAddBtn');
+        if (consAddBtn && canUseLifecycleTabs) {
+            consAddBtn.addEventListener('click', async () => {
+                const desc = (document.getElementById('consDesc')?.value || '').trim();
+                const qty = parseInt(document.getElementById('consQty')?.value || '1', 10) || 1;
+                const unit = parseFloat(document.getElementById('consUnit')?.value || '0') || 0;
+                if (!desc) return alert('Informe a descrição do consumo.');
+                const ok = await ensureInternalApiKey();
+                if (!ok) return alert('Não foi possível validar sessão admin.');
+                const req = await fetch('../api/consumptions.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                    body: JSON.stringify({ reservation_id: res.id, description: desc, quantity: qty, unit_price: unit })
+                });
+                const data = await req.json().catch(() => ({}));
+                if (!req.ok) return alert(data.error || 'Erro ao adicionar consumo');
+                document.getElementById('consDesc').value = '';
+                document.getElementById('consQty').value = '1';
+                document.getElementById('consUnit').value = '';
+                await renderConsumptionList();
+                await fetchApiData();
+            });
+            loadConsumptionCatalog();
+            renderConsumptionList();
+        }
     }
 
     window.handleEditReservation = async function (e, id) {
@@ -4032,6 +4783,16 @@ document.addEventListener('DOMContentLoaded', () => {
             additional_value: additionalValue,
             status: document.getElementById('editResStatus').value
         };
+        const cpfEl = document.getElementById('editResGuestCpf');
+        const fnrhPhoneEl = document.getElementById('editResGuestPhoneFnrh');
+        const addrEl = document.getElementById('editResGuestAddress');
+        const plateEl = document.getElementById('editResGuestPlate');
+        const companionsEl = document.getElementById('editResCompanions');
+        if (cpfEl) payload.guest_cpf = (cpfEl.value || '').replace(/\D/g, '');
+        if (fnrhPhoneEl && !payload.guest_phone) payload.guest_phone = fnrhPhoneEl.value || '';
+        if (addrEl) payload.guest_address = addrEl.value || '';
+        if (plateEl) payload.guest_car_plate = plateEl.value || '';
+        if (companionsEl) payload.guest_companion_names = companionsEl.value || '';
         if (balancePaidEl) {
             payload.balance_paid = balancePaidEl.value === '1' ? 1 : 0;
         }
@@ -4332,7 +5093,6 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 'chalets', label: 'Hospedagens' },
         { id: 'financeiro', label: 'Financeiro' },
         { id: 'coupons', label: 'Cupons' },
-        { id: 'extras', label: 'Serviços Extras' },
         { id: 'faqs', label: 'Perguntas Frequentes' },
         { id: 'settings', label: 'Configurações' },
         { id: 'customization', label: 'Personalização' },

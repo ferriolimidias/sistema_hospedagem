@@ -2,6 +2,7 @@
 require_once 'db.php';
 require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/booking_extras.php';
+require_once __DIR__ . '/evolution_service.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -19,7 +20,11 @@ switch ($method) {
 
         // Busca reservas
         if (isset($_GET['id'])) {
-            $stmt = $pdo->prepare("SELECT r.*, c.name as chalet_name FROM reservations r LEFT JOIN chalets c ON r.chalet_id = c.id WHERE r.id = ?");
+            $stmt = $pdo->prepare("SELECT r.*, c.name as chalet_name,
+                COALESCE((SELECT SUM(rc.total_price) FROM reservation_consumptions rc WHERE rc.reservation_id = r.id), 0) AS total_consumed
+                FROM reservations r
+                LEFT JOIN chalets c ON r.chalet_id = c.id
+                WHERE r.id = ?");
             $stmt->execute([$_GET['id']]);
             $reservation = $stmt->fetch();
             if ($reservation) {
@@ -30,7 +35,11 @@ switch ($method) {
             }
         }
         else {
-            $stmt = $pdo->query("SELECT r.*, c.name as chalet_name FROM reservations r LEFT JOIN chalets c ON r.chalet_id = c.id ORDER BY r.created_at DESC");
+            $stmt = $pdo->query("SELECT r.*, c.name as chalet_name,
+                COALESCE((SELECT SUM(rc.total_price) FROM reservation_consumptions rc WHERE rc.reservation_id = r.id), 0) AS total_consumed
+                FROM reservations r
+                LEFT JOIN chalets c ON r.chalet_id = c.id
+                ORDER BY r.created_at DESC");
             $reservations = $stmt->fetchAll();
             jsonResponse($reservations);
         }
@@ -209,10 +218,24 @@ switch ($method) {
             $extrasTotal,
             $fnrhToken,
         ])) {
+            $newId = (int) $pdo->lastInsertId();
+            try {
+                $eventRes = [
+                    'id' => $newId,
+                    'guest_name' => (string) ($data['guest_name'] ?? ''),
+                    'guest_phone' => (string) ($phone ?? ''),
+                    'checkin_date' => (string) $checkin,
+                    'checkout_date' => (string) $checkout,
+                    'fnrh_access_token' => (string) $fnrhToken,
+                ];
+                evo_notify_event($pdo, $eventRes, 'reserva');
+            } catch (Throwable $e) {
+                error_log('[reservations] evo reserva notify fail: ' . $e->getMessage());
+            }
             jsonResponse([
                 'status' => 'success',
                 'message' => 'Reserva criada com sucesso',
-                'id' => $pdo->lastInsertId()
+                'id' => $newId
             ], 201);
         }
         else {
@@ -245,17 +268,18 @@ switch ($method) {
                     'requested_guests' => $totalGuests
                 ], 400);
             }
-            $stmt = $pdo->prepare("UPDATE reservations SET guest_name = ?, guest_email = ?, guest_phone = ?, guests_adults = ?, guests_children = ?, chalet_id = ?, checkin_date = ?, checkout_date = ?, total_amount = ?, additional_value = ?, payment_rule = ?, status = ?, balance_paid = ?, balance_paid_at = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE reservations SET guest_name = ?, guest_email = ?, guest_phone = ?, guest_cpf = ?, guest_address = ?, guest_car_plate = ?, guest_companion_names = ?, guests_adults = ?, guests_children = ?, chalet_id = ?, checkin_date = ?, checkout_date = ?, total_amount = ?, additional_value = ?, payment_rule = ?, status = ?, balance_paid = ?, balance_paid_at = ? WHERE id = ?");
             $pr = $data['payment_rule'] ?? 'full';
             $st = $data['status'] ?? 'Confirmada';
             $additional_value = isset($data['additional_value']) ? (float) $data['additional_value'] : 0;
 
             // Lê estado anterior para decidir transição do saldo.
-            $stmtPrev = $pdo->prepare("SELECT balance_paid, balance_paid_at FROM reservations WHERE id = ? LIMIT 1");
+            $stmtPrev = $pdo->prepare("SELECT balance_paid, balance_paid_at, status, guest_phone, guest_name, checkin_date, checkout_date, fnrh_access_token FROM reservations WHERE id = ? LIMIT 1");
             $stmtPrev->execute([$_GET['id']]);
             $prevRow = $stmtPrev->fetch();
             $prevBalancePaid = (int)($prevRow['balance_paid'] ?? 0);
             $prevAt = $prevRow['balance_paid_at'] ?? null;
+            $prevStatus = (string)($prevRow['status'] ?? '');
 
             // Se o frontend enviou balance_paid explicitamente, respeita-o.
             // Caso contrário, mantém o estado anterior (evita zerar por omissão).
@@ -276,6 +300,10 @@ switch ($method) {
             $data['guest_name'],
             $data['guest_email'] ?? null,
             $data['guest_phone'] ?? null,
+            isset($data['guest_cpf']) ? preg_replace('/\D/', '', (string) $data['guest_cpf']) : null,
+            $data['guest_address'] ?? null,
+            $data['guest_car_plate'] ?? null,
+            $data['guest_companion_names'] ?? null,
             $guestsAdults,
             $guestsChildren,
             $data['chalet_id'],
@@ -289,13 +317,86 @@ switch ($method) {
             $balancePaidAt,
             $_GET['id']
             ])) {
+                try {
+                    $newStatus = (string) $st;
+                    if ($newStatus !== $prevStatus && in_array($newStatus, ['Hospedado', 'Finalizada'], true)) {
+                        $evt = $newStatus === 'Hospedado' ? 'checkin' : 'checkout';
+                        $eventRes = [
+                            'id' => (int) $_GET['id'],
+                            'guest_name' => (string) ($data['guest_name'] ?? ($prevRow['guest_name'] ?? '')),
+                            'guest_phone' => (string) ($data['guest_phone'] ?? ($prevRow['guest_phone'] ?? '')),
+                            'checkin_date' => (string) ($data['checkin_date'] ?? ($prevRow['checkin_date'] ?? '')),
+                            'checkout_date' => (string) ($data['checkout_date'] ?? ($prevRow['checkout_date'] ?? '')),
+                            'fnrh_access_token' => (string) ($prevRow['fnrh_access_token'] ?? ''),
+                        ];
+                        evo_notify_event($pdo, $eventRes, $evt);
+                    }
+                } catch (Throwable $e) {
+                    error_log('[reservations] evo status notify fail: ' . $e->getMessage());
+                }
                 jsonResponse(['status' => 'success']);
             }
         }
+        elseif (
+            array_key_exists('guest_cpf', $data) ||
+            array_key_exists('guest_address', $data) ||
+            array_key_exists('guest_car_plate', $data) ||
+            array_key_exists('guest_companion_names', $data) ||
+            array_key_exists('fnrh_status', $data) ||
+            (array_key_exists('guest_phone', $data) && !isset($data['guest_name']))
+        ) {
+            // Atualização parcial de dados de check-in/FNRH (Fase 2).
+            $allowed = [
+                'guest_phone', 'guest_cpf', 'guest_address', 'guest_car_plate',
+                'guest_companion_names', 'fnrh_status', 'fnrh_submitted_at',
+                'fnrh_last_response', 'status'
+            ];
+            $fields = [];
+            $params = [];
+            foreach ($allowed as $col) {
+                if (array_key_exists($col, $data)) {
+                    $fields[] = "$col = ?";
+                    $v = $data[$col];
+                    if ($col === 'guest_cpf' && is_string($v)) {
+                        $v = preg_replace('/\D/', '', $v);
+                    }
+                    $params[] = is_string($v) ? trim($v) : $v;
+                }
+            }
+            if (empty($fields)) {
+                jsonResponse(['error' => 'Nenhum campo válido para atualizar'], 400);
+            }
+            $params[] = $_GET['id'];
+            $stmt = $pdo->prepare("UPDATE reservations SET " . implode(', ', $fields) . " WHERE id = ?");
+            if ($stmt->execute($params)) {
+                jsonResponse(['status' => 'success']);
+            }
+            jsonResponse(['error' => 'Falha ao atualizar check-in'], 500);
+        }
         elseif (isset($data['status'])) {
             // Edição só de status (via select rápido da tabela)
+            $stPrev = $pdo->prepare("SELECT id, status, guest_name, guest_phone, checkin_date, checkout_date, fnrh_access_token FROM reservations WHERE id = ? LIMIT 1");
+            $stPrev->execute([$_GET['id']]);
+            $prev = $stPrev->fetch();
             $stmt = $pdo->prepare("UPDATE reservations SET status = ? WHERE id = ?");
             if ($stmt->execute([$data['status'], $_GET['id']])) {
+                try {
+                    $newStatus = (string) $data['status'];
+                    $oldStatus = (string) ($prev['status'] ?? '');
+                    if ($newStatus !== $oldStatus && in_array($newStatus, ['Hospedado', 'Finalizada'], true)) {
+                        $evt = $newStatus === 'Hospedado' ? 'checkin' : 'checkout';
+                        evo_notify_event($pdo, [
+                            'id' => (int) ($_GET['id'] ?? 0),
+                            'guest_name' => (string) ($prev['guest_name'] ?? ''),
+                            'guest_phone' => (string) ($prev['guest_phone'] ?? ''),
+                            'checkin_date' => (string) ($prev['checkin_date'] ?? ''),
+                            'checkout_date' => (string) ($prev['checkout_date'] ?? ''),
+                            'fnrh_access_token' => (string) ($prev['fnrh_access_token'] ?? ''),
+                        ], $evt);
+                    }
+                } catch (Throwable $e) {
+                    error_log('[reservations] evo status-only notify fail: ' . $e->getMessage());
+                }
                 jsonResponse(['status' => 'success']);
             }
         }

@@ -241,6 +241,24 @@ try {
     // Coluna já existe.
 }
 
+/* =============================================================
+ * Check-in 360º — campos dedicados da FNRH (Fase 1).
+ * Mantemos fnrh_data como histórico/backup; as novas colunas
+ * permitem leitura direta e filtros no admin.
+ * ============================================================= */
+$checkinColumns = [
+    "ALTER TABLE reservations ADD COLUMN guest_cpf VARCHAR(14) NULL AFTER guest_phone",
+    "ALTER TABLE reservations ADD COLUMN guest_address TEXT NULL AFTER guest_cpf",
+    "ALTER TABLE reservations ADD COLUMN guest_car_plate VARCHAR(16) NULL AFTER guest_address",
+    "ALTER TABLE reservations ADD COLUMN guest_companion_names TEXT NULL AFTER guest_car_plate",
+    "ALTER TABLE reservations ADD COLUMN fnrh_status VARCHAR(32) NOT NULL DEFAULT 'pendente' AFTER fnrh_data",
+    "ALTER TABLE reservations ADD COLUMN fnrh_submitted_at DATETIME NULL AFTER fnrh_status",
+    "ALTER TABLE reservations ADD COLUMN fnrh_last_response TEXT NULL AFTER fnrh_submitted_at",
+];
+foreach ($checkinColumns as $sql) {
+    try { $pdo->exec($sql); } catch (PDOException $e) { /* coluna já existe */ }
+}
+
 try {
     $pdo->exec('ALTER TABLE reservations ADD COLUMN additional_value DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER total_amount');
 } catch (PDOException $e) {
@@ -311,6 +329,26 @@ try {
     $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_instructions', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute([$defaultInstructions]);
 } catch (PDOException $e) { /* chave já existe */ }
 
+// Integração FNRH (Fase 1 — Check-in 360º).
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('fnrh_active', '0') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) { /* chave já existe */ }
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('fnrh_api_key', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) { /* chave já existe */ }
+try {
+    $defaultPreCheckinMsg = "Olá, {nome}! Sua reserva na {pousada} está confirmada para {checkin} — {checkout}.\n\nPara agilizar sua chegada, preencha o pré-check-in online (FNRH) neste link seguro:\n{link}\n\nNos vemos em breve!";
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pre_checkin_message', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute([$defaultPreCheckinMsg]);
+} catch (PDOException $e) { /* chave já existe */ }
+
+// Comunicação e Integrações (Evolution API nativa)
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_url', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_instance', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_apikey', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_reserva', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_checkin', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_checkout', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+
 // Coluna payment_method identifica se a reserva veio do MP (automática) ou manual (PIX/WhatsApp).
 try {
     $pdo->exec("ALTER TABLE reservations ADD COLUMN IF NOT EXISTS payment_method VARCHAR(32) NOT NULL DEFAULT 'mercadopago'");
@@ -342,6 +380,22 @@ try {
         description TEXT NULL,
         active TINYINT(1) NOT NULL DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (PDOException $e) {
+    // Tabela já existe ou erro de permissão.
+}
+
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS reservation_consumptions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        reservation_id INT NOT NULL,
+        description VARCHAR(255) NOT NULL,
+        quantity INT NOT NULL DEFAULT 1,
+        unit_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        total_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_consumptions_reservation FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
+        KEY idx_consumptions_reservation (reservation_id, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (PDOException $e) {
     // Tabela já existe ou erro de permissão.
