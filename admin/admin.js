@@ -431,7 +431,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function ensureInternalApiKey() {
         if (getStoredInternalApiKey()) return true;
         try {
-            const res = await fetch('../api/settings.php', { cache: 'no-store', credentials: 'same-origin' });
+            const res = await fetch('../api/settings.php?_t=' + new Date().getTime(), { credentials: 'same-origin', cache: 'no-store' });
             const data = await res.json();
             if (persistInternalApiKeyFromPayload(data)) return true;
         } catch (e) { /* ignore */ }
@@ -5296,7 +5296,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadAdminThemeFromSettings() {
         try {
-            const res = await fetch('../api/settings.php', { cache: 'no-store', credentials: 'same-origin' });
+            const res = await fetch('../api/settings.php?_t=' + new Date().getTime(), { credentials: 'same-origin', cache: 'no-store' });
             if (!res.ok) return false;
             const data = await res.json();
 
