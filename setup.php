@@ -51,9 +51,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($dbUser === '') $errors[] = 'Utilizador do banco é obrigatório.';
 
-    // Admin: só exigimos os dados quando for primeira instalação (tabela admins vazia).
-    // Se o banco já tiver administradores, preservamos os existentes e ignoramos os campos.
-    $requireAdminFields = true;
     $adminFieldErrors = [];
     if ($adminName === '') $adminFieldErrors[] = 'Nome do primeiro administrador é obrigatório.';
     if (!filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) $adminFieldErrors[] = 'Email do administrador é inválido.';
@@ -157,12 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $installChecklist['evolution']['ok'] = true;
             $installChecklist['evolution']['detail'] = 'Configurações da Evolution API presentes.';
 
-            // Decide se precisamos criar o primeiro administrador ou preservar os existentes.
-            $existingAdmins = (int) $pdo->query('SELECT COUNT(*) FROM admins')->fetchColumn();
-            $requireAdminFields = $existingAdmins === 0;
-
-            if ($requireAdminFields && !empty($adminFieldErrors)) {
-                // Primeira instalação exige os dados do admin.
+            if (!empty($adminFieldErrors)) {
                 throw new RuntimeException(implode(' ', $adminFieldErrors));
             }
 
@@ -187,23 +179,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             @chmod($configPath, 0640);
 
-            if ($requireAdminFields) {
-                // Banco vazio → cria o primeiro administrador informado.
-                $insertAdmin = $pdo->prepare(
-                    'INSERT INTO admins (name, email, password, role, permissions) VALUES (?, ?, ?, ?, ?)'
-                );
-                $insertAdmin->execute([
-                    $adminName,
-                    $adminEmail,
-                    password_hash($adminPass, PASSWORD_DEFAULT),
-                    'admin',
-                    json_encode(['dashboard', 'reservas', 'chales', 'usuarios', 'configuracoes', 'financeiro']),
-                ]);
-                $adminMsg = 'Primeiro administrador criado com sucesso.';
-            } else {
-                // Banco com admins existentes → preservados integralmente (senhas, permissões, etc.).
-                $adminMsg = "Administradores existentes preservados ({$existingAdmins}). Use o login atual para aceder.";
-            }
+            // Cria/atualiza o administrador informado no formulário.
+            $adminPasswordHash = password_hash($adminPass, PASSWORD_DEFAULT);
+            $adminPermissions = json_encode([
+                'dashboard',
+                'reservations',
+                'chalets',
+                'financeiro',
+                'coupons',
+                'faqs',
+                'settings',
+                'customization',
+                'users',
+            ], JSON_UNESCAPED_UNICODE);
+            $upsertAdmin = $pdo->prepare(
+                'INSERT INTO admins (name, email, password, role, permissions)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                    name = VALUES(name),
+                    password = VALUES(password),
+                    role = VALUES(role),
+                    permissions = VALUES(permissions)'
+            );
+            $upsertAdmin->execute([
+                $adminName,
+                $adminEmail,
+                $adminPasswordHash,
+                'admin',
+                $adminPermissions,
+            ]);
+            $adminMsg = 'Administrador criado com sucesso! Use o e-mail ' . $adminEmail . ' para fazer login.';
 
             // Bloqueia reutilização direta do instalador após sucesso.
             $lockPath = __DIR__ . '/config/.installed.lock';
@@ -388,7 +393,7 @@ function esc(string $value): string
         <div class="card">
             <h1>Instalação e Sincronização</h1>
             <p class="lead">
-                Configure a base de dados e (na primeira instalação) o administrador inicial.
+                Configure a base de dados e o administrador principal.
                 Se o banco já contiver dados, eles serão <strong>preservados</strong>: apenas serão criadas
                 as tabelas e colunas que faltam.
             </p>
@@ -462,10 +467,9 @@ function esc(string $value): string
                 </fieldset>
 
                 <fieldset>
-                    <legend>Primeiro Administrador (apenas em base vazia)</legend>
+                    <legend>Administrador Principal</legend>
                     <p style="margin:.2rem 0 .9rem; color:var(--muted); font-size:.88rem;">
-                        Estes campos são usados apenas se o banco ainda não tiver nenhum administrador.
-                        Se já existir algum admin, estes valores são <strong>ignorados</strong> para preservar o login atual.
+                        Estes campos serão usados para criar ou atualizar o administrador informado durante a instalação.
                     </p>
                     <div class="grid">
                         <div>
