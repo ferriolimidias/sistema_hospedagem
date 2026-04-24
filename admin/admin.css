@@ -2,14 +2,14 @@
    ADMIN VARIABLES
    ========================================= */
 :root {
-    --primary-color: #c96621;
-    --secondary-color: #C89B5F;
+    --primary-color: #2563eb;
+    --secondary-color: #64748b;
     --primary: var(--primary-color);
     /* Brand Green */
-    --primary-light: #fbebe0;
+    --primary-light: #dbeafe;
     --secondary: var(--secondary-color);
     /* Brand Gold */
-    --bg-main: #F4F7F6;
+    --bg-main: #f8fafc;
     --bg-surface: #FFFFFF;
     --text-main: #1F2937;
     --text-muted: #6B7280;
@@ -918,11 +918,11 @@ body.role-secretaria .page-header .btn[onclick*="openChaletModal"] {
 }
 
 .gallery-thumb.drop-before {
-    box-shadow: -4px 0 0 0 var(--primary-color, #ea580c), 0 2px 6px rgba(0, 0, 0, 0.08);
+    box-shadow: -4px 0 0 0 var(--primary-color, #2563eb), 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .gallery-thumb.drop-after {
-    box-shadow: 4px 0 0 0 var(--primary-color, #ea580c), 0 2px 6px rgba(0, 0, 0, 0.08);
+    box-shadow: 4px 0 0 0 var(--primary-color, #2563eb), 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .gallery-thumb .thumb-order {

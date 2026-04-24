@@ -62,15 +62,17 @@ function loadContractPresentationConfig(PDO $pdo): array
     $checkinTime = '14:00';
     $checkoutTime = '12:00';
     $companyName = '';
+    $primaryColor = '#2563eb';
 
     try {
-        $stmtSettings = $pdo->query("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('checkin_time', 'checkout_time', 'company_name')");
+        $stmtSettings = $pdo->query("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('checkin_time', 'checkout_time', 'company_name', 'primary_color')");
         foreach ($stmtSettings ? $stmtSettings->fetchAll(PDO::FETCH_ASSOC) : [] as $row) {
             $k = (string) ($row['setting_key'] ?? '');
             $v = trim((string) ($row['setting_value'] ?? ''));
             if ($k === 'checkin_time' && $v !== '') $checkinTime = $v;
             if ($k === 'checkout_time' && $v !== '') $checkoutTime = $v;
             if ($k === 'company_name' && $v !== '') $companyName = $v;
+            if ($k === 'primary_color' && preg_match('/^#[0-9a-fA-F]{6}$/', $v) === 1) $primaryColor = strtolower($v);
         }
     } catch (Throwable $e) {
         // Mantém defaults para evitar quebra da geração do contrato.
@@ -95,6 +97,7 @@ function loadContractPresentationConfig(PDO $pdo): array
         'checkin_time' => $checkinTime,
         'checkout_time' => $checkoutTime,
         'company_name' => $companyName,
+        'primary_color' => $primaryColor,
     ];
 }
 
@@ -116,6 +119,8 @@ function buildContractHtml(array $res, array $cfg, array $paymentPolicy): string
     $checkinTime = htmlspecialchars((string)($cfg['checkin_time'] ?? '14:00'), ENT_QUOTES, 'UTF-8');
     $checkoutTime = htmlspecialchars((string)($cfg['checkout_time'] ?? '12:00'), ENT_QUOTES, 'UTF-8');
     $companyName = htmlspecialchars((string)($cfg['company_name'] ?? 'Hospedagem'), ENT_QUOTES, 'UTF-8');
+    $primaryColorRaw = (string)($cfg['primary_color'] ?? '#2563eb');
+    $primaryColor = preg_match('/^#[0-9a-fA-F]{6}$/', $primaryColorRaw) === 1 ? strtolower($primaryColorRaw) : '#2563eb';
     $logoPath = __DIR__ . '/../images/logo.png';
     $logoHtml = file_exists($logoPath) ? '<img src="' . $logoPath . '" alt="Logo">' : '<h1>' . $companyName . '</h1>';
 
@@ -126,9 +131,9 @@ function buildContractHtml(array $res, array $cfg, array $paymentPolicy): string
   <meta charset="utf-8">
   <style>
     body { font-family: DejaVu Sans, sans-serif; color: #212121; margin: 30px; font-size: 12px; }
-    .header { border-bottom: 2px solid #c96621; padding-bottom: 12px; margin-bottom: 18px; }
+    .header { border-bottom: 2px solid {$primaryColor}; padding-bottom: 12px; margin-bottom: 18px; }
     .header img { max-height: 52px; }
-    .title { color: #c96621; font-size: 20px; margin: 0 0 4px; }
+    .title { color: {$primaryColor}; font-size: 20px; margin: 0 0 4px; }
     .subtitle { margin: 0; color: #666; }
     .section { margin-top: 16px; }
     .section h2 { font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 4px; margin: 0 0 8px; }

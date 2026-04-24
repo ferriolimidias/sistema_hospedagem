@@ -9,6 +9,16 @@ $configPath = $configDir . '/database.php';
 $errors = [];
 $success = false;
 $message = '';
+$schemaVersion = '1.0.0';
+$schemaVersionVerified = '';
+$installErrorDetail = '';
+$installChecklist = [
+    'db_connection' => ['label' => 'Conexão com o Banco de Dados', 'ok' => false, 'detail' => ''],
+    'base_tables' => ['label' => 'Criação das Tabelas Base', 'ok' => false, 'detail' => ''],
+    'guest_folio' => ['label' => 'Módulo de Consumo (Guest Folio)', 'ok' => false, 'detail' => ''],
+    'fnrh' => ['label' => 'Módulo Gov.br (FNRH)', 'ok' => false, 'detail' => ''],
+    'evolution' => ['label' => 'Chaves Evolution API', 'ok' => false, 'detail' => ''],
+];
 
 $formData = [
     'db_host' => $_POST['db_host'] ?? '127.0.0.1',
@@ -73,11 +83,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     PDO::ATTR_EMULATE_PREPARES => false,
                 ]
             );
+            $installChecklist['db_connection']['ok'] = true;
+            $installChecklist['db_connection']['detail'] = 'Conexão estabelecida com sucesso.';
 
             // Sincronização de schema (migrator): cria tabelas que faltam e adiciona colunas novas,
             // sem apagar dados existentes. Todas as operações são idempotentes.
             // Sem transação: CREATE/ALTER TABLE no MySQL fazem commit implícito.
             runInitialSchema($pdo);
+
+            $requiredBaseTables = ['admins', 'chalets', 'reservations', 'settings', 'faqs'];
+            $missingBaseTables = [];
+            foreach ($requiredBaseTables as $tbl) {
+                $st = $pdo->query("SHOW TABLES LIKE " . $pdo->quote($tbl));
+                $exists = $st ? $st->fetchColumn() : false;
+                if ($exists === false) $missingBaseTables[] = $tbl;
+            }
+            if ($missingBaseTables !== []) {
+                throw new RuntimeException('Tabelas base ausentes: ' . implode(', ', $missingBaseTables));
+            }
+            $installChecklist['base_tables']['ok'] = true;
+            $installChecklist['base_tables']['detail'] = 'Estruturas principais validadas.';
+
+            // Define versão atual do schema sem sobrescrever instalações já versionadas.
+            $stSchemaVersion = $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('db_schema_version', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value");
+            $stSchemaVersion->execute([$schemaVersion]);
+            $stSchemaVersionRead = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'db_schema_version' LIMIT 1");
+            $stSchemaVersionRead->execute();
+            $schemaVersionReadRaw = $stSchemaVersionRead->fetchColumn();
+            $schemaVersionVerified = trim((string)($schemaVersionReadRaw ?? ''));
+
+            $stConsumption = $pdo->query("SHOW TABLES LIKE 'reservation_consumptions'");
+            $consumptionTableExists = $stConsumption ? $stConsumption->fetchColumn() !== false : false;
+            if (!$consumptionTableExists) {
+                throw new RuntimeException('Tabela reservation_consumptions não foi criada.');
+            }
+            $stConsumptionColumn = $pdo->query("SHOW COLUMNS FROM reservation_consumptions LIKE 'total_price'");
+            $consumptionColumnExists = $stConsumptionColumn ? $stConsumptionColumn->fetchColumn() !== false : false;
+            if (!$consumptionColumnExists) {
+                throw new RuntimeException('Coluna total_price ausente em reservation_consumptions.');
+            }
+            $installChecklist['guest_folio']['ok'] = true;
+            $installChecklist['guest_folio']['detail'] = 'Tabela e colunas críticas de consumos confirmadas.';
+
+            $stGuestCpf = $pdo->query("SHOW COLUMNS FROM reservations LIKE 'guest_cpf'");
+            $hasGuestCpf = $stGuestCpf ? $stGuestCpf->fetchColumn() !== false : false;
+            $stFnrhStatus = $pdo->query("SHOW COLUMNS FROM reservations LIKE 'fnrh_status'");
+            $hasFnrhStatus = $stFnrhStatus ? $stFnrhStatus->fetchColumn() !== false : false;
+            if (!$hasGuestCpf || !$hasFnrhStatus) {
+                throw new RuntimeException('Estrutura FNRH incompleta em reservations (guest_cpf/fnrh_status).');
+            }
+            $installChecklist['fnrh']['ok'] = true;
+            $installChecklist['fnrh']['detail'] = 'Colunas FNRH validadas em reservations.';
+
+            $evolutionKeys = [
+                'evo_url',
+                'evo_instance',
+                'evo_apikey',
+                'evo_notify_reserva',
+                'evo_notify_checkin',
+                'evo_notify_checkout',
+            ];
+            $missingEvolutionKeys = [];
+            $stSettingExists = $pdo->prepare('SELECT 1 FROM settings WHERE setting_key = ? LIMIT 1');
+            foreach ($evolutionKeys as $settingKey) {
+                $stSettingExists->execute([$settingKey]);
+                if ($stSettingExists->fetchColumn() === false) {
+                    $missingEvolutionKeys[] = $settingKey;
+                }
+            }
+            if ($missingEvolutionKeys !== []) {
+                throw new RuntimeException('Chaves Evolution ausentes: ' . implode(', ', $missingEvolutionKeys));
+            }
+            $installChecklist['evolution']['ok'] = true;
+            $installChecklist['evolution']['detail'] = 'Configurações da Evolution API presentes.';
 
             // Decide se precisamos criar o primeiro administrador ou preservar os existentes.
             $existingAdmins = (int) $pdo->query('SELECT COUNT(*) FROM admins')->fetchColumn();
@@ -150,6 +228,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($e instanceof PDOException && isset($e->errorInfo[2]) && (string)$e->errorInfo[2] !== '') {
                 $detail .= ' [' . (string)$e->errorInfo[2] . ']';
             }
+            $installErrorDetail = $detail;
+            if (!$installChecklist['db_connection']['ok']) {
+                $installChecklist['db_connection']['detail'] = $detail;
+            } elseif (!$installChecklist['base_tables']['ok']) {
+                $installChecklist['base_tables']['detail'] = $detail;
+            } elseif (!$installChecklist['guest_folio']['ok']) {
+                $installChecklist['guest_folio']['detail'] = $detail;
+            } elseif (!$installChecklist['fnrh']['ok']) {
+                $installChecklist['fnrh']['detail'] = $detail;
+            } elseif (!$installChecklist['evolution']['ok']) {
+                $installChecklist['evolution']['detail'] = $detail;
+            }
             $errors[] = 'Falha na instalação: ' . $detail;
         }
     }
@@ -172,7 +262,7 @@ function esc(string $value): string
             --card: #fff;
             --text: #1f2430;
             --muted: #667085;
-            --primary: #c96621;
+            --primary: #2563eb;
             --danger: #b42318;
             --success: #067647;
             --border: #e4e7ec;
@@ -245,6 +335,51 @@ function esc(string $value): string
         }
         .error { background: #fef3f2; border: 1px solid #fecdca; color: var(--danger); }
         .ok { background: #ecfdf3; border: 1px solid #abefc6; color: var(--success); }
+        .console {
+            margin: 0 0 1rem;
+            border-radius: 12px;
+            border: 1px solid #2b3445;
+            background: #0b1220;
+            color: #e5e7eb;
+            overflow: hidden;
+            box-shadow: 0 12px 32px rgba(2, 6, 23, .35);
+        }
+        .console-head {
+            padding: .55rem .8rem;
+            border-bottom: 1px solid #1f2937;
+            font-size: .85rem;
+            color: #9ca3af;
+            letter-spacing: .02em;
+        }
+        .console-body { padding: .75rem .85rem; }
+        .check-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: .8rem;
+            padding: .35rem 0;
+            border-bottom: 1px dashed rgba(148, 163, 184, .24);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: .9rem;
+        }
+        .check-row:last-child { border-bottom: 0; }
+        .check-label { color: #d1d5db; }
+        .check-status.ok { color: #22c55e; border: 0; background: transparent; padding: 0; margin: 0; }
+        .check-status.err { color: #f87171; border: 0; background: transparent; padding: 0; margin: 0; }
+        .check-detail {
+            margin: .2rem 0 0 0;
+            color: #94a3b8;
+            font-size: .8rem;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+        .schema-line {
+            margin-top: .7rem;
+            padding-top: .55rem;
+            border-top: 1px solid rgba(148, 163, 184, .24);
+            color: #cbd5e1;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: .9rem;
+        }
         ul { margin: .4rem 0 0 1.2rem; }
     </style>
 </head>
@@ -266,6 +401,33 @@ function esc(string $value): string
                             <li><?= esc($error) ?></li>
                         <?php endforeach; ?>
                     </ul>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($_SERVER['REQUEST_METHOD'] === 'POST'): ?>
+                <div class="console">
+                    <div class="console-head">diagnostics://installer/schema-checklist</div>
+                    <div class="console-body">
+                        <?php foreach ($installChecklist as $row): ?>
+                            <div class="check-row">
+                                <span class="check-label"><?= esc($row['label']) ?></span>
+                                <span class="check-status <?= $row['ok'] ? 'ok' : 'err' ?>">
+                                    <?= $row['ok'] ? '✅' : '❌' ?>
+                                </span>
+                            </div>
+                            <?php if ((string)$row['detail'] !== ''): ?>
+                                <div class="check-detail"><?= esc((string)$row['detail']) ?></div>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                        <?php if ($installErrorDetail !== ''): ?>
+                            <div class="check-detail">Erro PDO/Runtime: <?= esc($installErrorDetail) ?></div>
+                        <?php endif; ?>
+                        <?php if ($schemaVersionVerified !== ''): ?>
+                            <div class="schema-line">Versão do Schema Instalada e Verificada: v<?= esc($schemaVersionVerified) ?></div>
+                        <?php else: ?>
+                            <div class="schema-line" style="color:#f87171;">❌ Erro: Não foi possível ler a versão do schema.</div>
+                        <?php endif; ?>
+                    </div>
                 </div>
             <?php endif; ?>
 

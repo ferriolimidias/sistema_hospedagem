@@ -378,9 +378,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function fetchApiData() {
         try {
+            const ok = await ensureInternalApiKey();
+            if (!ok) {
+                throw new Error('Chave interna indisponível para carregar reservas.');
+            }
             const [resChalets, resReservations, resBookingOptions] = await Promise.all([
                 fetch('../api/chalets.php').then(res => res.json()),
-                fetch('../api/reservations.php').then(res => res.json()),
+                fetch('../api/reservations.php', {
+                    headers: { 'X-Internal-Key': window.internalKey || internalApiKey }
+                }).then(res => res.json()),
                 fetch('../api/booking_options.php').then(res => res.json()).catch(() => ({}))
             ]);
             chaletsData = Array.isArray(resChalets) ? resChalets : [];
@@ -1025,7 +1031,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         <button type="button" class="btn-icon" title="Editar" data-action="edit-reservation" data-index="${index}"><i class="ph ph-pencil-simple"></i></button>
                                         ${r.contract_filename
                                             ? `<button type="button" class="btn-icon" title="Ver Contrato PDF" data-action="pdf-reservation" data-index="${index}"><i class="ph ph-file-pdf"></i></button>`
-                                            : `<button type="button" class="btn-icon" title="Gerar Contrato Manualmente" data-action="generate-contract" data-index="${index}" style="color:#c96621"><i class="ph ph-file-plus"></i></button>`
+                                            : `<button type="button" class="btn-icon" title="Gerar Contrato Manualmente" data-action="generate-contract" data-index="${index}" style="color:var(--primary-color, #2563eb)"><i class="ph ph-file-plus"></i></button>`
                                         }
                                         ${__balancePending
                                             ? `<button type="button" class="btn-icon" title="Receber Saldo" data-action="pay-balance" data-index="${index}" style="color:#198754"><i class="ph ph-currency-circle-dollar"></i></button>`
@@ -1237,7 +1243,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <form id="identitySeoForm">
                         <div class="form-group" style="margin-bottom: 1rem;">
                             <label>Título do Site (SEO)</label>
-                            <input type="text" class="form-control" id="seoSiteTitle" placeholder="Pousada Mirante do Sol">
+                            <input type="text" class="form-control" id="seoSiteTitle" placeholder="Hotel/Pousada">
                         </div>
                         <div class="form-group" style="margin-bottom: 1rem;">
                             <label>Descrição do Site (Meta Description)</label>
@@ -1246,7 +1252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                             <div class="form-group">
                                 <label>Cor Primária</label>
-                                <input type="color" class="form-control" id="seoPrimaryColor" value="#ea580c" style="height: 44px; padding: 0.35rem;">
+                                <input type="color" class="form-control" id="seoPrimaryColor" value="#2563eb" style="height: 44px; padding: 0.35rem;">
                             </div>
                             <div class="form-group">
                                 <label>Cor Secundária</label>
@@ -1343,7 +1349,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
                     <h3 style="margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
-                        <i class="ph ph-wallet" style="color: var(--primary-color, #ea580c); margin-right: 0.5rem; vertical-align: bottom;"></i>
+                        <i class="ph ph-wallet" style="color: var(--primary-color, #2563eb); margin-right: 0.5rem; vertical-align: bottom;"></i>
                         Métodos de Pagamento
                     </h3>
                     <p style="margin: 0 0 1.25rem 0; color: #666; font-size: 0.9rem;">Ative um ou ambos os métodos. Quando os dois estiverem ativos, o hóspede escolhe no modal de reserva.</p>
@@ -1351,7 +1357,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <!-- Toggle: Mercado Pago -->
                     <div class="payment-method-card" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem;">
                         <label style="display:flex; align-items:center; gap:0.75rem; cursor:pointer; font-weight:600; margin-bottom:0.75rem;">
-                            <input type="checkbox" id="paymentMpActive" style="width:18px; height:18px; accent-color: var(--primary-color, #ea580c);">
+                            <input type="checkbox" id="paymentMpActive" style="width:18px; height:18px; accent-color: var(--primary-color, #2563eb);">
                             <i class="ph ph-credit-card" style="color: #009EE3; font-size:1.25rem;"></i>
                             <span>Mercado Pago <small style="color:#666; font-weight:400;">— checkout automático (cartão, PIX, boleto)</small></span>
                         </label>
@@ -1376,7 +1382,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <!-- Toggle: PIX Manual -->
                     <div class="payment-method-card" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem;">
                         <label style="display:flex; align-items:center; gap:0.75rem; cursor:pointer; font-weight:600; margin-bottom:0.75rem;">
-                            <input type="checkbox" id="paymentManualActive" style="width:18px; height:18px; accent-color: var(--primary-color, #ea580c);">
+                            <input type="checkbox" id="paymentManualActive" style="width:18px; height:18px; accent-color: var(--primary-color, #2563eb);">
                             <i class="ph ph-whatsapp-logo" style="color: #25D366; font-size:1.25rem;"></i>
                             <span>PIX Manual via WhatsApp <small style="color:#666; font-weight:400;">— comprovante validado pelo administrador</small></span>
                         </label>
@@ -2164,7 +2170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         try {
                             const res = await fetch(`../api/reservations.php?id=${id}`, {
                                 method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', 'X-Internal-Key': window.internalKey || internalApiKey },
                                 body: JSON.stringify({ status: 'Cancelada' })
                             });
                             if (!res.ok) {
@@ -2721,7 +2727,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const response = await fetch(`../api/reservations.php?id=${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-Internal-Key': window.internalKey || internalApiKey },
                 body: JSON.stringify({ status: newStatus })
             });
             if (response.ok) {
@@ -3024,7 +3030,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function applyAdminTheme(primaryColor, secondaryColor) {
         const root = document.documentElement;
-        const primary = (primaryColor && /^#[0-9a-fA-F]{6}$/.test(primaryColor)) ? primaryColor : '#ea580c';
+        const primary = (primaryColor && /^#[0-9a-fA-F]{6}$/.test(primaryColor)) ? primaryColor : '#2563eb';
         const secondary = (secondaryColor && /^#[0-9a-fA-F]{6}$/.test(secondaryColor)) ? secondaryColor : '#1e293b';
         root.style.setProperty('--primary-color', primary);
         root.style.setProperty('--secondary-color', secondary);
@@ -3044,7 +3050,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const settings = {
             site_title: siteTitleEl ? siteTitleEl.value : '',
             meta_description: metaEl ? metaEl.value : '',
-            primary_color: primaryEl ? primaryEl.value : '#ea580c',
+            primary_color: primaryEl ? primaryEl.value : '#2563eb',
             secondary_color: secondaryEl ? secondaryEl.value : '#1e293b'
         };
         applyAdminTheme(settings.primary_color, settings.secondary_color);
@@ -3255,14 +3261,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             const seoSiteTitle = document.getElementById('seoSiteTitle');
-            if (seoSiteTitle) seoSiteTitle.value = data.site_title || 'Pousada Mirante do Sol';
+            if (seoSiteTitle) seoSiteTitle.value = data.site_title || 'Sistema de Hospedagem';
             const seoMetaDescription = document.getElementById('seoMetaDescription');
             if (seoMetaDescription) seoMetaDescription.value = data.meta_description || 'O seu refúgio com vista para o mar em Governador Celso Ramos.';
             const seoPrimaryColor = document.getElementById('seoPrimaryColor');
-            if (seoPrimaryColor) seoPrimaryColor.value = data.primary_color || '#ea580c';
+            if (seoPrimaryColor) seoPrimaryColor.value = data.primary_color || '#2563eb';
             const seoSecondaryColor = document.getElementById('seoSecondaryColor');
             if (seoSecondaryColor) seoSecondaryColor.value = data.secondary_color || '#1e293b';
-            applyAdminTheme(data.primary_color || '#ea580c', data.secondary_color || '#1e293b');
+            applyAdminTheme(data.primary_color || '#2563eb', data.secondary_color || '#1e293b');
 
             const brandName = (data.company_name && String(data.company_name).trim()) ||
                 (data.site_title && String(data.site_title).trim()) ||
@@ -3569,7 +3575,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (!confirm('Tem certeza que deseja excluir esta reserva permanentemente?')) return;
         try {
-            const res = await fetch(`../api/reservations.php?id=${id}`, { method: 'DELETE' });
+            const res = await fetch(`../api/reservations.php?id=${id}`, {
+                method: 'DELETE',
+                headers: { 'X-Internal-Key': window.internalKey || internalApiKey }
+            });
             if (res.ok) {
                 alert('Reserva excluída com sucesso!');
                 window.location.reload();
@@ -3727,7 +3736,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Busca reserva fresca (com campos FNRH).
         let reservation = null;
         try {
-            const r = await fetch(`../api/reservations.php?id=${encodeURIComponent(reservationId)}`);
+            const r = await fetch(`../api/reservations.php?id=${encodeURIComponent(reservationId)}`, {
+                headers: { 'X-Internal-Key': window.internalKey || internalApiKey }
+            });
             reservation = await r.json();
             if (!r.ok || !reservation || reservation.error) {
                 alert('Não foi possível carregar a reserva.');
@@ -3935,7 +3946,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const upPayload = Object.assign({}, payload, { status: 'Hospedado' });
                 const up = await fetch(`../api/reservations.php?id=${encodeURIComponent(r.id)}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-Internal-Key': window.internalKey || internalApiKey },
                     body: JSON.stringify(upPayload)
                 });
                 if (!up.ok) {
@@ -4738,7 +4749,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const payload = { status: 'Finalizada' };
                         const req = await fetch(`../api/reservations.php?id=${encodeURIComponent(res.id)}`, {
                             method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': window.internalKey || internalApiKey },
                             body: JSON.stringify(payload)
                         });
                         const data = await req.json().catch(() => ({}));
@@ -4846,7 +4857,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const res = await fetch(url, {
                 method: method,
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-Internal-Key': window.internalKey || internalApiKey },
                 body: JSON.stringify(payload)
             });
 
@@ -5293,7 +5304,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Captura a chave interna no arranque (ver bloco CHAVE INTERNA no topo do ficheiro).
             persistInternalApiKeyFromPayload(data);
 
-            applyAdminTheme(data.primary_color || '#ea580c', data.secondary_color || '#1e293b');
+            applyAdminTheme(data.primary_color || '#2563eb', data.secondary_color || '#1e293b');
             const brandName = (data.company_name && String(data.company_name).trim()) ||
                 (data.site_title && String(data.site_title).trim()) ||
                 'Admin';

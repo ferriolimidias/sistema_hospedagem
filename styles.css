@@ -3,21 +3,21 @@
    ========================================= */
 :root {
     /* Color Palette */
-    --primary-color: #c96621;
+    --primary-color: #2563eb;
     --secondary-color: #1A1A1A;
     --clr-primary: var(--primary-color);
     /* Deep Forest Green */
-    --clr-primary-light: #df782f;
-    --clr-secondary: #C89B5F;
+    --clr-primary-light: #3b82f6;
+    --clr-secondary: #94a3b8;
     /* Accent Gold/Wood */
-    --clr-secondary-hover: #B5884F;
+    --clr-secondary-hover: #64748b;
     --clr-dark: var(--secondary-color);
-    --clr-light: #F9F6F0;
+    --clr-light: #f8fafc;
     /* Off-White/Beige for BG */
     --clr-white: #FFFFFF;
     --clr-text: #333333;
     --clr-text-light: #666666;
-    --clr-border: #E5E0D8;
+    --clr-border: #e2e8f0;
 
     /* Typography */
     --font-sans: 'Inter', sans-serif;
@@ -917,17 +917,17 @@ img {
     background: rgba(255, 255, 255, 0.04);
 }
 .payment-method-card:hover {
-    border-color: var(--primary-color, #ea580c);
+    border-color: var(--primary-color, #2563eb);
 }
 .payment-method-card input[type="radio"] {
     flex-shrink: 0;
     margin-top: 0.25rem;
     width: 1.05rem;
     height: 1.05rem;
-    accent-color: var(--primary-color, #ea580c);
+    accent-color: var(--primary-color, #2563eb);
 }
 .payment-method-card.selected {
-    border-color: var(--primary-color, #ea580c);
+    border-color: var(--primary-color, #2563eb);
     background: rgba(234, 88, 12, 0.08);
 }
 .payment-method-card .pm-content {

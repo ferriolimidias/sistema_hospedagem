@@ -62,23 +62,32 @@ function evo_send_text(PDO $pdo, string $number, string $text): array
     }
     $endpoint = $url . '/message/sendText/' . rawurlencode($instance);
     $payload = json_encode(['number' => $number, 'text' => $text], JSON_UNESCAPED_UNICODE);
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $endpoint,
-        CURLOPT_POST => true,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 15,
-        CURLOPT_CONNECTTIMEOUT => 8,
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'apikey: ' . $apikey,
-        ],
-        CURLOPT_POSTFIELDS => $payload,
-    ]);
-    $body = curl_exec($ch);
-    $err = curl_error($ch);
-    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    try {
+        $ch = curl_init();
+        if ($ch === false) {
+            throw new RuntimeException('Falha ao inicializar cURL.');
+        }
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $endpoint,
+            CURLOPT_POST => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 2,
+            CURLOPT_CONNECTTIMEOUT => 2,
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'apikey: ' . $apikey,
+            ],
+            CURLOPT_POSTFIELDS => $payload,
+        ]);
+        $body = curl_exec($ch);
+        $err = curl_error($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+    } catch (Throwable $e) {
+        error_log('[evolution_service] fail-fast exception: ' . $e->getMessage());
+        // Nunca interromper o fluxo principal (reserva/check-in/check-out).
+        return ['ok' => true, 'skipped' => true, 'reason' => 'fail_fast_exception'];
+    }
     $ok = ($err === '' && $code >= 200 && $code < 300);
     if (!$ok) {
         error_log('[evolution_service] fail http=' . $code . ' err=' . $err . ' body=' . (is_string($body) ? mb_substr($body, 0, 300) : ''));

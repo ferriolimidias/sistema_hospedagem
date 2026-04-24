@@ -78,9 +78,9 @@ try {
 
 // Settings (logo, social)
 $companyLogo = ''; $companyLogoLight = ''; $social = ['instagram'=>'','facebook'=>'','tripadvisor'=>''];
-$siteTitle = 'Pousada Mirante do Sol';
+$siteTitle = 'Sistema de Hospedagem';
 $metaDescription = 'O seu refúgio com vista para o mar em Governador Celso Ramos.';
-$primaryColor = '#ea580c';
+$primaryColor = '#2563eb';
 $secondaryColor = '#1e293b';
 try {
     $stmt = $pdo->query("SELECT setting_key, setting_value FROM settings");
@@ -120,7 +120,7 @@ if (empty($c['heroImages']) && $defaultHero !== '') {
 }
 $heroFirstImg = firstUsableImagePath($c['heroImages'], '');
 $aboutImageSrc = isPublicImagePathUsable((string)$c['aboutImage']) ? (string)$c['aboutImage'] : '';
-$faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect fill='%23c96621' width='32' height='32' rx='4'/></svg>";
+$faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect fill='%232563eb' width='32' height='32' rx='4'/></svg>";
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">

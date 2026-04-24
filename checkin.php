@@ -11,7 +11,7 @@ function setting_val(PDO $pdo, string $k, string $d = ''): string {
 }
 $token = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' ? trim((string) ($_POST['token'] ?? '')) : trim((string) ($_GET['id'] ?? ''));
 $brandName = trim(setting_val($pdo, 'site_title', 'Hospedagem')) ?: 'Hospedagem';
-$primaryColor = trim(setting_val($pdo, 'primary_color', '#c96621')) ?: '#c96621';
+$primaryColor = trim(setting_val($pdo, 'primary_color', '#2563eb')) ?: '#2563eb';
 $secondaryColor = trim(setting_val($pdo, 'secondary_color', '#1e293b')) ?: '#1e293b';
 if ($token === '' || strlen($token) > 64) { http_response_code(400); echo 'Link inválido.'; exit; }
 

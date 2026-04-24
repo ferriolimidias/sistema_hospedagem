@@ -288,19 +288,19 @@ try {
 }
 
 try {
-    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('site_title', 'Pousada Mirante do Sol') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('site_title', 'Meu Estabelecimento') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
 } catch (PDOException $e) {
     // Chave já existe.
 }
 
 try {
-    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('meta_description', 'O seu refúgio com vista para o mar em Governador Celso Ramos.') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('meta_description', 'Plataforma completa para gestão de reservas, check-in online e controle de hospedagem.') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
 } catch (PDOException $e) {
     // Chave já existe.
 }
 
 try {
-    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('primary_color', '#ea580c') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('primary_color', '#2563eb') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
 } catch (PDOException $e) {
     // Chave já existe.
 }
@@ -325,7 +325,7 @@ try {
 } catch (PDOException $e) { /* chave já existe */ }
 
 try {
-    $defaultInstructions = 'Olá! Acabei de pré-reservar pelo site. Segue o comprovante do PIX para confirmação.';
+    $defaultInstructions = 'Olá! Realizei uma pré-reserva em {pousada}. Segue o comprovante do PIX para validação do pagamento. Obrigado(a).';
     $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_instructions', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute([$defaultInstructions]);
 } catch (PDOException $e) { /* chave já existe */ }
 
@@ -337,7 +337,7 @@ try {
     $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('fnrh_api_key', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
 } catch (PDOException $e) { /* chave já existe */ }
 try {
-    $defaultPreCheckinMsg = "Olá, {nome}! Sua reserva na {pousada} está confirmada para {checkin} — {checkout}.\n\nPara agilizar sua chegada, preencha o pré-check-in online (FNRH) neste link seguro:\n{link}\n\nNos vemos em breve!";
+    $defaultPreCheckinMsg = "Olá, {nome}! Sua reserva em {pousada} está confirmada para {checkin} — {checkout}.\n\nPara agilizar seu atendimento, finalize o pré-check-in online neste link seguro:\n{link}\n\nSe precisar de suporte, estamos à disposição.";
     $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pre_checkin_message', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute([$defaultPreCheckinMsg]);
 } catch (PDOException $e) { /* chave já existe */ }
 

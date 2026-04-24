@@ -99,7 +99,7 @@ function runInitialDataSeed(PDO $pdo): void
     $stmt = $pdo->query('SELECT COUNT(*) FROM personalizacao');
     $pc = $stmt ? (int) $stmt->fetchColumn() : 0;
     if ($pc === 0) {
-        $aboutText = "Nascido do desejo de integrar conforto absoluto à natureza intocada, a Pousada Mirante do Sol oferece uma hospedagem ímpar. Nossas acomodações foram projetadas para se fundirem com a paisagem, garantindo privacidade, luxo e uma vista de tirar o fôlego.\n\nAcorde com o canto dos pássaros, desfrute de um café da manhã artesanal e relaxe com vista para o vale.";
+        $aboutText = "Bem-vindo ao seu estabelecimento. Este sistema foi preparado para apresentar acomodações, diferenciais e experiências com total flexibilidade de marca.\n\nPersonalize este texto com a identidade do seu hotel ou pousada.";
         $ins = $pdo->prepare(
             'INSERT INTO personalizacao (
                 hero_titulo, hero_subtitulo, hero_imagens, about_titulo, about_texto, about_imagem,
@@ -122,15 +122,15 @@ function runInitialDataSeed(PDO $pdo): void
             )'
         );
         $ins->execute([
-            'Seu Refúgio de Luxo na Natureza',
-            'Desconecte-se da rotina e viva momentos inesquecíveis em nossos chalés exclusivos na serra.',
+            'Bem-vindo ao Sistema Modelo',
+            'Personalize textos, imagens e conteúdos para refletir a identidade do seu estabelecimento.',
             $heroJson,
             'Uma experiência imersiva',
             $aboutText,
             $aboutImg,
             'Nossas Acomodações',
-            'Escolha seu Refúgio',
-            'Designs únicos pensados para proporcionar o máximo de conforto em meio às montanhas.',
+            'Conheça Nossas Acomodações',
+            'Estruturas confortáveis e funcionais para diferentes perfis de hóspedes.',
             'Wi-Fi rápido 📶',
             'Internet de alta velocidade para você ficar conectado.',
             'Cozinha completa 🍳',
@@ -141,28 +141,28 @@ function runInitialDataSeed(PDO $pdo): void
             'Espaço aconchegante para relaxar e descansar.',
             'Pet friendly 🐾',
             'Seu amigo de quatro patas é muito bem-vindo aqui.',
-            'Mariana Costa',
-            'São Paulo, SP',
-            'Simplesmente perfeito! O chalé panorâmico nos proporcionou uma vista maravilhosa ao amanhecer. O atendimento e o café da manhã artesanal são impecáveis. Voltaremos com certeza!',
+            'Hóspede Exemplo',
+            'Avaliação verificada',
+            'Excelente estadia, ambiente limpo e atendimento impecável.',
             $testi1,
-            'Pedro Henrique',
-            'Belo Horizonte, MG',
-            'O Ninho de Inverno é o lugar mais aconchegante que já fiquei. A lareira, a adega e o silêncio da montanha criam um ambiente super romântico. Vale cada centavo.',
+            'Hóspede Exemplo',
+            'Avaliação verificada',
+            'Processo de reserva simples, quarto confortável e ótima organização.',
             $testi2,
-            'Juliana A. & Thor',
-            'Campinas, SP',
-            'Muito bom poder viajar com nossa cachorrinha e ser tão bem recebidos. A estrutura A-Frame é linda e tudo estava extremamente limpo e organizado. Nota 10!',
+            'Hóspede Exemplo',
+            'Avaliação verificada',
+            'Ótima experiência geral, check-in rápido e suporte atencioso durante toda a hospedagem.',
             $testi3,
-            'Endereço completo da pousada',
-            'Apenas 2h30 da capital. Estrada 100% asfaltada até a entrada.',
-            'https://www.google.com/maps/search/?api=1&query=Pousada+Mirante+do+Sol',
+            'Endereço do estabelecimento',
+            'Informações de acesso e deslocamento podem ser personalizadas pelo estabelecimento.',
+            'https://www.google.com/maps',
             '5500000000000',
-            'Olá, gostaria de mais informações sobre as acomodações!',
-            'Luxo, conforto e natureza em perfeita harmonia.',
-            'Governador Celso Ramos, SC',
-            'contato@pousadamirantedosol.com',
+            'Olá! Gostaria de mais informações sobre disponibilidade e valores em {pousada}.',
+            'Estrutura completa para uma experiência de hospedagem confortável e segura.',
+            'Cidade/UF',
+            'contato@meuestabelecimento.com',
             '(00) 00000-0000',
-            '© ' . date('Y') . ' Pousada Mirante do Sol. Todos os direitos reservados.',
+            '© ' . date('Y') . ' Todos os direitos reservados.',
             $favicon,
         ]);
     }
@@ -203,14 +203,44 @@ function runInitialDataSeed(PDO $pdo): void
                 10,
             ],
             [
-                'A pousada aceita animais de estimação (pets)?',
-                'Sim! Somos pet friendly. Aceitamos animais de pequeno e médio porte mediante aviso prévio no momento da reserva. Pode haver uma taxa de limpeza adicional — consulte a nossa equipa.',
+                'Aceitam animais de estimação (pets)?',
+                'A política para pets pode variar conforme a acomodação. Consulte a nossa equipa antes de concluir a reserva.',
                 20,
             ],
             [
                 'Qual a política de cancelamento?',
                 'Cancelamentos feitos com mais de 7 dias de antecedência têm reembolso integral do sinal. Entre 7 e 3 dias, devolvemos 50%. Em cima da data, o sinal não é reembolsado, mas pode ser usado como crédito para uma nova estadia dentro de 90 dias.',
                 30,
+            ],
+            [
+                'O café da manhã está incluso?',
+                'A inclusão de café da manhã depende do plano contratado. Essa informação aparece nos detalhes da reserva.',
+                40,
+            ],
+            [
+                'Possuem estacionamento?',
+                'Sim, oferecemos estacionamento sujeito à disponibilidade no período da hospedagem.',
+                50,
+            ],
+            [
+                'Como funciona o cancelamento?',
+                'As condições de cancelamento são informadas no momento da reserva e no comprovante enviado ao hóspede.',
+                60,
+            ],
+            [
+                'Há Wi-Fi nas acomodações?',
+                'Sim, disponibilizamos acesso Wi-Fi nas áreas comuns e acomodações.',
+                70,
+            ],
+            [
+                'Quais formas de pagamento são aceitas?',
+                'Trabalhamos com pagamento online e opções manuais configuradas pelo estabelecimento.',
+                80,
+            ],
+            [
+                'É possível solicitar check-in antecipado ou check-out tardio?',
+                'Sim, mediante disponibilidade e eventual cobrança adicional. Consulte a equipa com antecedência.',
+                90,
             ],
         ];
         $insF = $pdo->prepare('INSERT INTO faqs (question, answer, sort_order, is_active) VALUES (?, ?, ?, 1)');
@@ -223,9 +253,9 @@ function runInitialDataSeed(PDO $pdo): void
     $cc = $stmt ? (int) $stmt->fetchColumn() : 0;
     if ($cc === 0) {
         $demos = [
-            ['Chalé Panorâmico', 'Luxo', 'Refúgio com vista panorâmica e todo o conforto para a sua estadia.', 'images/chalet1.png', ['chalet1.jpg']],
-            ['Ninho de Inverno', 'Romântico', 'Ambiente aconchegante com lareira e privacidade.', 'images/chalet2.png', ['chalet2.jpg']],
-            ['Chalé A-Frame', 'Família', 'Estrutura em A-Frame ideal para família e pets.', 'images/chalet3.png', ['chalet3.jpg']],
+            ['Quarto Standard', 'Standard', 'Acomodação confortável com ar-condicionado, TV e Wi-Fi.', 'images/chalet1.png', ['chalet1.jpg']],
+            ['Suíte Premium', 'Premium', 'Suíte com ambiente amplo, cama queen, frigobar e amenities selecionados.', 'images/chalet2.png', ['chalet2.jpg']],
+            ['Acomodação Familiar', 'Família', 'Espaço ideal para famílias com cozinha compacta, boa circulação e conforto.', 'images/chalet3.png', ['chalet3.jpg']],
         ];
         $insC = $pdo->prepare(
             'INSERT INTO chalets (name, type, badge, price, description, full_description, status, main_image, images, base_guests, max_guests, extra_guest_fee)
@@ -283,6 +313,10 @@ function runInitialSchema(PDO $pdo): void
             guest_name VARCHAR(255) NOT NULL,
             guest_email VARCHAR(255) NULL,
             guest_phone VARCHAR(50) NULL,
+            guest_cpf VARCHAR(14) NULL,
+            guest_address TEXT NULL,
+            guest_car_plate VARCHAR(16) NULL,
+            guest_companion_names TEXT NULL,
             guests_adults INT NOT NULL DEFAULT 2,
             guests_children INT NOT NULL DEFAULT 0,
             chalet_id INT NOT NULL,
@@ -298,7 +332,13 @@ function runInitialSchema(PDO $pdo): void
             contract_filename VARCHAR(255) NULL,
             balance_paid TINYINT(1) NOT NULL DEFAULT 0,
             balance_paid_at DATETIME NULL,
+            fnrh_access_token VARCHAR(64) NULL,
+            fnrh_data TEXT NULL,
+            fnrh_status VARCHAR(32) NOT NULL DEFAULT 'pendente',
+            fnrh_submitted_at DATETIME NULL,
+            fnrh_last_response TEXT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_reservations_fnrh_token (fnrh_access_token),
             CONSTRAINT fk_reservations_chalet FOREIGN KEY (chalet_id)
                 REFERENCES chalets(id) ON DELETE RESTRICT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
@@ -559,19 +599,19 @@ function runInitialSchema(PDO $pdo): void
     }
 
     try {
-        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('site_title', 'Pousada Mirante do Sol') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('site_title', 'Meu Estabelecimento') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
     } catch (PDOException $e) {
         // Chave já existe.
     }
 
     try {
-        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('meta_description', 'O seu refúgio com vista para o mar em Governador Celso Ramos.') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('meta_description', 'Plataforma completa para gestão de reservas, check-in online e controle de hospedagem.') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
     } catch (PDOException $e) {
         // Chave já existe.
     }
 
     try {
-        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('primary_color', '#ea580c') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('primary_color', '#2563eb') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
     } catch (PDOException $e) {
         // Chave já existe.
     }
@@ -593,7 +633,7 @@ function runInitialSchema(PDO $pdo): void
         $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_key', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
     } catch (PDOException $e) { /* existe */ }
     try {
-        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_instructions', 'Olá! Acabei de pré-reservar pelo site. Segue o comprovante do PIX para confirmação.') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_instructions', 'Olá! Realizei uma pré-reserva em {pousada}. Segue o comprovante do PIX para validação do pagamento. Obrigado(a).') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
     } catch (PDOException $e) { /* existe */ }
 
     // Integração FNRH (Check-in 360º).
@@ -604,7 +644,7 @@ function runInitialSchema(PDO $pdo): void
         $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('fnrh_api_key', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
     } catch (PDOException $e) { /* existe */ }
     try {
-        $__defaultPreCheckin = "Olá, {nome}! Sua reserva na {pousada} está confirmada para {checkin} — {checkout}.\n\nPara agilizar sua chegada, preencha o pré-check-in online (FNRH) neste link seguro:\n{link}\n\nNos vemos em breve!";
+        $__defaultPreCheckin = "Olá, {nome}! Sua reserva em {pousada} está confirmada para {checkin} — {checkout}.\n\nPara agilizar seu atendimento, finalize o pré-check-in online neste link seguro:\n{link}\n\nSe precisar de suporte, estamos à disposição.";
         $st = $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pre_checkin_message', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value");
         $st->execute([$__defaultPreCheckin]);
     } catch (PDOException $e) { /* existe */ }
