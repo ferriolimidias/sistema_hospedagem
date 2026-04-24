@@ -2480,7 +2480,35 @@ document.addEventListener('DOMContentLoaded', async () => {
        ========================================= */
     async function initFaqsView() {
         const warn = document.getElementById('faqKeyWarn');
-        const ok = await ensureInternalApiKey();
+
+        // Inicialização autônoma das FAQs para evitar race condition no arranque.
+        let resolvedInternalKey = (typeof internalApiKey === 'string' && internalApiKey.trim() !== '')
+            ? internalApiKey.trim()
+            : '';
+        if (!resolvedInternalKey) {
+            try {
+                if (typeof window !== 'undefined' && typeof window.internalKey === 'string' && window.internalKey.trim() !== '') {
+                    resolvedInternalKey = window.internalKey.trim();
+                }
+            } catch (_) { /* noop */ }
+        }
+        if (!window.internalKey && !internalApiKey) {
+            try {
+                const res = await fetch('../api/settings.php');
+                const data = await res.json();
+                const keyFromSettings = (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '')
+                    ? data.internalApiKey.trim()
+                    : ((typeof data.internal_key === 'string' && data.internal_key.trim() !== '') ? data.internal_key.trim() : '');
+                if (keyFromSettings) resolvedInternalKey = keyFromSettings;
+            } catch (_) { /* noop */ }
+        }
+
+        if (resolvedInternalKey) {
+            internalApiKey = resolvedInternalKey;
+            try { window.internalKey = resolvedInternalKey; } catch (_) { /* noop */ }
+        }
+
+        const ok = typeof internalApiKey === 'string' && internalApiKey.trim() !== '';
         if (warn) warn.style.display = ok ? 'none' : 'block';
         if (!ok) return;
 
