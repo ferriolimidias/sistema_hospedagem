@@ -80,6 +80,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
+    // Garante envio do cookie de sessão PHP em todas as chamadas do painel.
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+        const opts = (init && typeof init === 'object') ? init : {};
+        return nativeFetch(input, { ...opts, credentials: opts.credentials || 'same-origin' });
+    };
+
     // Controle de menus por permissões
     const adminPermissions = (() => {
         try {
@@ -173,7 +180,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!key) return false;
         internalApiKey = key;
         try { window.internalKey = key; } catch (_) { /* noop */ }
+        try { sessionStorage.setItem('internalKey', key); } catch (_) { /* noop */ }
         return true;
+    }
+
+    function getStoredInternalApiKey() {
+        if (typeof internalApiKey === 'string' && internalApiKey.trim() !== '') {
+            return internalApiKey.trim();
+        }
+        try {
+            if (typeof window !== 'undefined' && typeof window.internalKey === 'string' && window.internalKey.trim() !== '') {
+                internalApiKey = window.internalKey.trim();
+                return internalApiKey;
+            }
+        } catch (_) { /* noop */ }
+        try {
+            const stored = sessionStorage.getItem('internalKey');
+            if (typeof stored === 'string' && stored.trim() !== '') {
+                internalApiKey = stored.trim();
+                try { window.internalKey = internalApiKey; } catch (_) { /* noop */ }
+                return internalApiKey;
+            }
+        } catch (_) { /* noop */ }
+        return '';
     }
 
     let paymentPolicies = [
@@ -380,12 +409,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const ok = await ensureInternalApiKey();
             if (!ok) {
-                throw new Error('Chave interna indisponível para carregar reservas.');
+                throw new Error('Chave interna indisponível para a requisição.');
             }
+            const requestKey = getStoredInternalApiKey();
             const [resChalets, resReservations, resBookingOptions] = await Promise.all([
                 fetch('../api/chalets.php').then(res => res.json()),
                 fetch('../api/reservations.php', {
-                    headers: { 'X-Internal-Key': window.internalKey || internalApiKey }
+                    headers: { 'X-Internal-Key': requestKey }
                 }).then(res => res.json()),
                 fetch('../api/booking_options.php').then(res => res.json()).catch(() => ({}))
             ]);
@@ -399,16 +429,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function ensureInternalApiKey() {
-        if (internalApiKey) return true;
-        // Se outra parte do app já guardou a chave globalmente, reaproveita.
+        if (getStoredInternalApiKey()) return true;
         try {
-            if (typeof window !== 'undefined' && typeof window.internalKey === 'string' && window.internalKey.trim() !== '') {
-                internalApiKey = window.internalKey.trim();
-                return true;
-            }
-        } catch (_) { /* noop */ }
-        try {
-            const res = await fetch('../api/settings.php');
+            const res = await fetch('../api/settings.php', { cache: 'no-store', credentials: 'same-origin' });
             const data = await res.json();
             if (persistInternalApiKeyFromPayload(data)) return true;
         } catch (e) { /* ignore */ }
@@ -2487,36 +2510,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function initFaqsView() {
         const warn = document.getElementById('faqKeyWarn');
 
-        // Inicialização autônoma das FAQs para evitar race condition no arranque.
-        let resolvedInternalKey = (typeof internalApiKey === 'string' && internalApiKey.trim() !== '')
-            ? internalApiKey.trim()
-            : '';
-        if (!resolvedInternalKey) {
-            try {
-                if (typeof window !== 'undefined' && typeof window.internalKey === 'string' && window.internalKey.trim() !== '') {
-                    resolvedInternalKey = window.internalKey.trim();
-                }
-            } catch (_) { /* noop */ }
-        }
-        if (!window.internalKey && !internalApiKey) {
-            try {
-                const res = await fetch('../api/settings.php');
-                const data = await res.json();
-                const keyFromSettings = (typeof data.internalApiKey === 'string' && data.internalApiKey.trim() !== '')
-                    ? data.internalApiKey.trim()
-                    : ((typeof data.internal_key === 'string' && data.internal_key.trim() !== '') ? data.internal_key.trim() : '');
-                if (keyFromSettings) resolvedInternalKey = keyFromSettings;
-            } catch (_) { /* noop */ }
-        }
-
-        if (resolvedInternalKey) {
-            internalApiKey = resolvedInternalKey;
-            try { window.internalKey = resolvedInternalKey; } catch (_) { /* noop */ }
-        }
-
-        const ok = typeof internalApiKey === 'string' && internalApiKey.trim() !== '';
+        const ok = getStoredInternalApiKey() !== '' || await ensureInternalApiKey();
         if (warn) warn.style.display = ok ? 'none' : 'block';
         if (!ok) return;
+        const faqInternalKey = getStoredInternalApiKey();
 
         const formCard = document.getElementById('faqFormCard');
         const formTitle = document.getElementById('faqFormTitle');
@@ -2566,7 +2563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         async function loadFaqs() {
             if (!tbody) return;
             try {
-                const res = await fetch('../api/faqs.php', { headers: { 'X-Internal-Key': internalApiKey } });
+                const res = await fetch('../api/faqs.php', { headers: { 'X-Internal-Key': faqInternalKey } });
                 const rows = await res.json();
                 if (!Array.isArray(rows)) throw new Error('Resposta inválida');
                 faqsCache = rows;
@@ -3062,6 +3059,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             await fetch('../api/settings.php', {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(dataObj)
             });
@@ -3185,7 +3183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadAllSettings() {
         try {
-            const res = await fetch('../api/settings.php');
+            const res = await fetch('../api/settings.php', { credentials: 'same-origin' });
             const data = await res.json();
 
             // Popula Comunicação e Integrações (Evolution API nativa).
@@ -3406,6 +3404,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const res = await fetch('../api/settings.php', {
                 method: 'POST',
+                credentials: 'same-origin',
                 body: formData // No Content-Type header so browser sets multipart/form-data with boundary
             });
 
@@ -3703,9 +3702,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Busca template e branding das settings já carregadas (ou fetch rápido).
         let template = '';
-        let brand = 'Pousada';
+        let brand = 'Estabelecimento';
         try {
-            const res = await fetch('../api/settings.php');
+            const res = await fetch('../api/settings.php', { credentials: 'same-origin' });
             const data = await res.json();
             if (typeof data.pre_checkin_message === 'string' && data.pre_checkin_message.trim() !== '') {
                 template = data.pre_checkin_message;
@@ -3752,7 +3751,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Descobre se integração FNRH está ativa (para rótulo do botão).
         let fnrhActive = false;
         try {
-            const sr = await fetch('../api/settings.php');
+            const sr = await fetch('../api/settings.php', { credentials: 'same-origin' });
             const sd = await sr.json();
             fnrhActive = String(sd.fnrh_active || '0') === '1';
         } catch (_) { /* assume false */ }
@@ -5297,8 +5296,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadAdminThemeFromSettings() {
         try {
-            const res = await fetch('../api/settings.php');
-            if (!res.ok) return;
+            const res = await fetch('../api/settings.php', { cache: 'no-store', credentials: 'same-origin' });
+            if (!res.ok) return false;
             const data = await res.json();
 
             // Captura a chave interna no arranque (ver bloco CHAVE INTERNA no topo do ficheiro).
@@ -5313,14 +5312,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             const titleEl = document.getElementById('adminPageTitle');
             if (titleEl) titleEl.textContent = 'Admin · ' + brandName;
             try { document.title = 'Admin · ' + brandName; } catch (_) { /* noop */ }
+            return getStoredInternalApiKey() !== '';
         } catch (e) {
             // Usa tema padrão quando não conseguir carregar.
+            return false;
         }
     }
 
-    // Initialize the admin app (aguarda settings para popular a chave interna antes do primeiro clique)
-    await loadAdminThemeFromSettings();
-    renderView('dashboard');
+    // Initialize the admin app: só monta a interface depois de obter a chave interna.
+    const hasInternalKey = await loadAdminThemeFromSettings();
+    if (!hasInternalKey) {
+        appContainer.innerHTML = `
+            <div class="card">
+                <h2 style="color:var(--danger)">Sessão administrativa inválida</h2>
+                <p>Chave interna indisponível para a requisição. Faça login novamente para sincronizar a sessão.</p>
+            </div>
+        `;
+        return;
+    }
+    const hashView = String(window.location.hash || '').replace(/^#/, '').trim();
+    const allowedViews = ['dashboard', 'reservations', 'chalets', 'financeiro', 'coupons', 'faqs', 'settings', 'customization', 'users'];
+    const initialView = allowedViews.includes(hashView) ? hashView : 'dashboard';
+    await renderView(initialView);
     removeAddChaletButtonsForSecretary(document);
 
     // Guarda global para remover o CTA caso algum trecho re-renderize botão de cadastro

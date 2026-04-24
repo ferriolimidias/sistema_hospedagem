@@ -1,5 +1,8 @@
 <?php
 require_once 'db.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -18,6 +21,10 @@ $stmt->execute([$data['email']]);
 $admin = $stmt->fetch();
 
 if ($admin && password_verify($data['password'], $admin['password'])) {
+    session_regenerate_id(true);
+    $_SESSION['admin_id'] = (int) $admin['id'];
+    $_SESSION['admin_email'] = (string) $admin['email'];
+    $_SESSION['admin_role'] = (string) ($admin['role'] ?? 'admin');
     $token = hash('sha256', $admin['email'] . time());
     $permissions = !empty($admin['permissions']) ? json_decode($admin['permissions'], true) : null;
     jsonResponse([

@@ -86,7 +86,7 @@
         // Busca o nome dinâmico da marca em settings para personalizar a tela de login.
         (async function loadBrandName() {
             try {
-                const res = await fetch('../api/settings.php', { cache: 'no-store' });
+                const res = await fetch('../api/settings.php', { cache: 'no-store', credentials: 'same-origin' });
                 if (!res.ok) return;
                 const data = await res.json();
                 const brand = (data && (data.site_title || data.company_name) || '').toString().trim();
@@ -113,6 +113,7 @@
 
                 const res = await fetch('../api/auth.php', {
                     method: 'POST',
+                    credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password })
                 });
