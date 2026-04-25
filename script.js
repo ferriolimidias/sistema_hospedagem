@@ -126,12 +126,35 @@ document.addEventListener('DOMContentLoaded', () => {
         return v !== '' && v.toLowerCase() !== 'null' && v.toLowerCase() !== 'undefined';
     }
 
-    function buildSlideMarkup(src, alt, isActive) {
+    const chaletGalleryRegistry = {};
+
+    function parseChaletImages(rawImages, mainImg) {
+        let parsed = [];
+        if (Array.isArray(rawImages)) {
+            parsed = rawImages;
+        } else if (typeof rawImages === 'string' && rawImages.trim() !== '') {
+            try {
+                const decoded = JSON.parse(rawImages);
+                if (Array.isArray(decoded)) {
+                    parsed = decoded;
+                }
+            } catch (_) {
+                parsed = [];
+            }
+        }
+
+        const unique = [...new Set([mainImg, ...parsed].filter(isUsableImageSrc))];
+        return unique.length > 0 ? unique : [mainImg];
+    }
+
+    function buildSlideMarkup(src, alt, isActive, galleryGroup, slideIndex) {
         const cls = `slide ${isActive ? 'active' : ''}`;
         if (!isUsableImageSrc(src)) {
             return `<div class="${cls} image-fallback"></div>`;
         }
-        return `<img src="${src}" class="${cls}" alt="${alt}" onclick="openLightbox('${src}')" onerror="this.outerHTML='<div class=&quot;${cls} image-fallback&quot;></div>'">`;
+        return `<a href="${src}" class="${cls}" data-fancybox="${galleryGroup}" onclick="openChaletGallery('${galleryGroup}', ${slideIndex}); return false;">
+            <img src="${src}" alt="${alt}" onerror="this.closest('a').outerHTML='<div class=&quot;${cls} image-fallback&quot;></div>'">
+        </a>`;
     }
 
     /* =========================================
@@ -956,10 +979,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const fallbackImg = `images/chalet${imgIndex}.png`;
                     let mainImg = isUsableImageSrc(chalet.main_image) ? chalet.main_image : fallbackImg;
 
-                    let galleryImgs = [mainImg];
-                    if (chalet.images && Array.isArray(chalet.images)) {
-                        galleryImgs = [...new Set([mainImg, ...chalet.images.filter(isUsableImageSrc)])];
-                    }
+                    const galleryGroup = `chalet-${chalet.id}`;
+                    const galleryImgs = parseChaletImages(chalet.images, mainImg);
+                    chaletGalleryRegistry[galleryGroup] = galleryImgs;
 
                     // Determina a badge baseado na etiqueta configurada
                     let badgeHtml = '';
@@ -982,7 +1004,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Monta HTML do Slider 
                     let sliderHtml = `<div class="chalet-slider" id="modal-slider-${chalet.id}" style="aspect-ratio: 16/9;">`;
                     galleryImgs.forEach((src, i) => {
-                        sliderHtml += buildSlideMarkup(src, chalet.name, i === 0);
+                        sliderHtml += buildSlideMarkup(src, chalet.name, i === 0, galleryGroup, i);
                     });
                     if (galleryImgs.length > 1) {
                         sliderHtml += `
@@ -1008,10 +1030,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </div>
                                 <div style="display: flex; gap: 0.5rem;">
                                     <button class="btn btn-outline btn-sm" onclick="
-                                        document.getElementById('availabilityModal').classList.remove('active');
-                                        document.body.style.overflow = '';
-                                        openChaletDetails(${idx});
-                                    ">Saber mais</button>
+                                        openChaletGallery('${galleryGroup}', 0);
+                                    ">Ver mais fotos</button>
                                     <button class="btn btn-primary btn-sm" onclick="
                                         document.getElementById('availabilityModal').classList.remove('active');
                                         document.getElementById('checkin').value = '${filterCheckin}';
@@ -1273,10 +1293,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const fallbackImg = `images/chalet${imgIndex}.png`;
                     let mainImg = isUsableImageSrc(chalet.main_image) ? chalet.main_image : fallbackImg;
 
-                    let galleryImgs = [mainImg];
-                    if (chalet.images && Array.isArray(chalet.images)) {
-                        galleryImgs = [...new Set([mainImg, ...chalet.images.filter(isUsableImageSrc)])];
-                    }
+                    const galleryGroup = `chalet-${chalet.id}`;
+                    const galleryImgs = parseChaletImages(chalet.images, mainImg);
+                    chaletGalleryRegistry[galleryGroup] = galleryImgs;
 
                     // Determina a badge baseado na etiqueta configurada
                     let badgeHtml = '';
@@ -1290,7 +1309,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Monta HTML do Slider
                     let sliderHtml = `<div class="chalet-slider" id="slider-${chalet.id}">`;
                     galleryImgs.forEach((src, i) => {
-                        sliderHtml += buildSlideMarkup(src, chalet.name, i === 0);
+                        sliderHtml += buildSlideMarkup(src, chalet.name, i === 0, galleryGroup, i);
                     });
                     if (galleryImgs.length > 1) {
                         sliderHtml += `
@@ -1316,7 +1335,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <strong>R$ ${displayPrice}<small>/noite</small></strong>
                                 </div>
                                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                                    <button class="btn btn-outline btn-sm" onclick="openChaletDetails(${idx})" style="flex: 1;">Saber Mais</button>
+                                    <button class="btn btn-outline btn-sm" onclick="openChaletGallery('${galleryGroup}', 0)" style="flex: 1;">Ver mais fotos</button>
                                     <button class="btn btn-primary btn-sm" onclick="openBooking('${chalet.name.replace(/'/g, "\\'")}')" style="flex: 1;">Reservar</button>
                                 </div>
                             </div>
@@ -1456,7 +1475,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if ($('clientHeroTitle') && custom.heroTitle) $('clientHeroTitle').innerHTML = custom.heroTitle;
                 if ($('clientHeroSubtitle') && custom.heroSubtitle) $('clientHeroSubtitle').innerHTML = custom.heroSubtitle;
                 const heroImages = custom.heroImages || (custom.heroImage ? [custom.heroImage] : ['images/hero.png']);
-                initHeroSlideshow(heroImages);
+                initHeroCarousel(heroImages);
 
                 // About
                 if ($('clientAboutTitle') && custom.aboutTitle) $('clientAboutTitle').innerHTML = custom.aboutTitle;
@@ -1535,71 +1554,54 @@ document.addEventListener('DOMContentLoaded', () => {
                 if ($('footerPhone') && custom.footerPhone) $('footerPhone').innerHTML = custom.footerPhone;
                 if ($('footerCopyright') && custom.footerCopyright) $('footerCopyright').innerHTML = custom.footerCopyright;
             } else {
-                initHeroSlideshow(['images/hero.png']);
+                initHeroCarousel(['images/hero.png']);
             }
 
         } catch (e) {
             console.warn("Failed to load settings logo", e);
-            initHeroSlideshow(['images/hero.png']);
+            initHeroCarousel(['images/hero.png']);
         }
     }
 
-    let heroSlideshowInterval = null;
-    let heroCurrentIndex = 0;
+    let heroCarouselInstance = null;
 
-    function initHeroSlideshow(images) {
-        const container = document.getElementById('heroSlideshow');
-        const btnPrev = document.getElementById('heroNavPrev');
-        const btnNext = document.getElementById('heroNavNext');
-        if (!container || !Array.isArray(images) || images.length === 0) return;
-
-        if (heroSlideshowInterval) clearInterval(heroSlideshowInterval);
+    function initHeroCarousel(images) {
+        const container = document.getElementById('heroCarousel');
+        if (!container || !Array.isArray(images)) return;
 
         const usableImages = images.filter(isUsableImageSrc);
-        if (usableImages.length === 0) {
-            container.innerHTML = `<div class="hero-slide active image-fallback" data-index="0" style="background: var(--secondary-color);"></div>`;
-            if (btnPrev) btnPrev.classList.add('hidden');
-            if (btnNext) btnNext.classList.add('hidden');
-            return;
-        }
-        container.innerHTML = usableImages.map((src, i) =>
-            `<div class="hero-slide ${i === 0 ? 'active' : ''}" style="background-image: url('${src}');" data-index="${i}"></div>`
-        ).join('');
+        const slides = usableImages.length ? usableImages : [''];
+        container.innerHTML = slides.map((src) => (
+            src
+                ? `<div class="f-carousel__slide hero-slide" style="background-image: url('${src}');"></div>`
+                : `<div class="f-carousel__slide hero-slide image-fallback" style="background: var(--secondary-color);"></div>`
+        )).join('');
 
-        heroCurrentIndex = 0;
-
-        if (usableImages.length < 2) {
-            if (btnPrev) btnPrev.classList.add('hidden');
-            if (btnNext) btnNext.classList.add('hidden');
-            return;
+        if (heroCarouselInstance && typeof heroCarouselInstance.destroy === 'function') {
+            heroCarouselInstance.destroy();
+            heroCarouselInstance = null;
         }
 
-        if (btnPrev) btnPrev.classList.remove('hidden');
-        if (btnNext) btnNext.classList.remove('hidden');
-
-        function goToSlide(index) {
-            const slides = container.querySelectorAll('.hero-slide');
-            slides[heroCurrentIndex].classList.remove('active');
-            heroCurrentIndex = (index + slides.length) % slides.length;
-            slides[heroCurrentIndex].classList.add('active');
+        if (window.Carousel && typeof window.Carousel === 'function') {
+            heroCarouselInstance = new window.Carousel(container, {
+                infinite: slides.length > 1,
+                center: false,
+                Dots: false,
+                Navigation: slides.length > 1,
+                transition: "slide",
+                Autoplay: slides.length > 1 ? {
+                    timeout: 5000,
+                    pauseOnHover: false
+                } : false
+            });
         }
-
-        if (btnPrev) btnPrev.onclick = () => { goToSlide(heroCurrentIndex - 1); resetHeroInterval(); };
-        if (btnNext) btnNext.onclick = () => { goToSlide(heroCurrentIndex + 1); resetHeroInterval(); };
-
-        function resetHeroInterval() {
-            if (heroSlideshowInterval) clearInterval(heroSlideshowInterval);
-            heroSlideshowInterval = setInterval(() => goToSlide(heroCurrentIndex + 1), 5000);
-        }
-
-        heroSlideshowInterval = setInterval(() => goToSlide(heroCurrentIndex + 1), 5000);
     }
 
     // Initialize - usar dados iniciais do PHP se disponível, depois carregar settings (logo/social) e chalés
     (async function init() {
         const initial = window.__INITIAL_CUSTOMIZATION;
         if (initial && initial.heroImages && initial.heroImages.length) {
-            initHeroSlideshow(initial.heroImages);
+            initHeroCarousel(initial.heroImages);
         }
         await loadSettings();
         loadBookingOptions();
@@ -1627,20 +1629,78 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.openLightbox = function (src) {
+        window.openChaletGallery('__single', 0, [src]);
+    };
+
+    window.openChaletGallery = function (group, startIndex = 0, directImages = null) {
+        const images = Array.isArray(directImages) ? directImages.filter(isUsableImageSrc) : (chaletGalleryRegistry[group] || []);
+        if (!images.length) return;
+
+        if (window.Fancybox && typeof window.Fancybox.show === 'function') {
+            const items = images.map((src) => ({
+                src,
+                type: 'image'
+            }));
+            window.Fancybox.show(items, {
+                startIndex: Math.max(0, Math.min(startIndex, images.length - 1)),
+                Toolbar: { display: { left: ["infobar"], middle: [], right: ["iterateZoom", "close"] } }
+            });
+            return;
+        }
+
+        let currentIndex = Math.max(0, Math.min(startIndex, images.length - 1));
+
         let overlay = document.getElementById('globalLightbox');
         if (!overlay) {
             overlay = document.createElement('div');
             overlay.id = 'globalLightbox';
             overlay.className = 'lightbox-overlay';
             overlay.innerHTML = `
-                <span class="lightbox-close" onclick="this.parentElement.style.display='none'"><i class="ph ph-x"></i></span>
+                <span class="lightbox-close" id="lightboxCloseBtn"><i class="ph ph-x"></i></span>
+                <button class="slider-btn prev" id="lightboxPrevBtn" style="position:absolute;left:1rem;top:50%;transform:translateY(-50%);z-index:3;"><i class="ph ph-caret-left"></i></button>
+                <button class="slider-btn next" id="lightboxNextBtn" style="position:absolute;right:1rem;top:50%;transform:translateY(-50%);z-index:3;"><i class="ph ph-caret-right"></i></button>
                 <img src="" class="lightbox-img" id="lightboxImage">
             `;
             document.body.appendChild(overlay);
         }
-        document.getElementById('lightboxImage').src = src;
+
+        const imgEl = document.getElementById('lightboxImage');
+        const prevBtn = document.getElementById('lightboxPrevBtn');
+        const nextBtn = document.getElementById('lightboxNextBtn');
+        const closeBtn = document.getElementById('lightboxCloseBtn');
+        if (!imgEl || !prevBtn || !nextBtn || !closeBtn) return;
+
+        const render = () => {
+            imgEl.src = images[currentIndex];
+            const showNav = images.length > 1;
+            prevBtn.style.display = showNav ? 'flex' : 'none';
+            nextBtn.style.display = showNav ? 'flex' : 'none';
+        };
+
+        prevBtn.onclick = (event) => {
+            event.stopPropagation();
+            currentIndex = (currentIndex - 1 + images.length) % images.length;
+            render();
+        };
+        nextBtn.onclick = (event) => {
+            event.stopPropagation();
+            currentIndex = (currentIndex + 1) % images.length;
+            render();
+        };
+        closeBtn.onclick = () => { overlay.style.display = 'none'; };
+        overlay.onclick = (event) => {
+            if (event.target === overlay) overlay.style.display = 'none';
+        };
+
+        render();
         overlay.style.display = 'flex';
     };
+
+    if (window.Fancybox && typeof window.Fancybox.bind === 'function') {
+        window.Fancybox.bind('[data-fancybox^="chalet-"]', {
+            Toolbar: { display: { left: ["infobar"], middle: [], right: ["iterateZoom", "close"] } }
+        });
+    }
 
     window.openChaletDetails = function (idx) {
         const chalet = allChalets[idx];

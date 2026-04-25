@@ -144,6 +144,8 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
             --secondary: var(--secondary-color);
         }
     </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css">
     <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -170,16 +172,18 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     </header>
 
     <section class="hero" id="home">
-        <div class="hero-slideshow" id="heroSlideshow" data-hero-images="<?= $h(json_encode($c['heroImages'])) ?>">
-            <?php if ($heroFirstImg !== ''): ?>
-            <div class="hero-slide active" style="background-image: url('<?= $h($heroFirstImg) ?>');"></div>
+        <div class="f-carousel hero-carousel" id="heroCarousel" data-hero-images="<?= $h(json_encode($c['heroImages'])) ?>">
+            <?php if (!empty($c['heroImages'])): ?>
+                <?php foreach ($c['heroImages'] as $heroImg): ?>
+                    <div class="f-carousel__slide hero-slide" style="background-image: url('<?= $h($heroImg) ?>');"></div>
+                <?php endforeach; ?>
+            <?php elseif ($heroFirstImg !== ''): ?>
+            <div class="f-carousel__slide hero-slide" style="background-image: url('<?= $h($heroFirstImg) ?>');"></div>
             <?php else: ?>
-            <div class="hero-slide active image-fallback" style="background: var(--secondary-color);"></div>
+            <div class="f-carousel__slide hero-slide image-fallback" style="background: var(--secondary-color);"></div>
             <?php endif; ?>
         </div>
         <div class="hero-overlay"></div>
-        <button type="button" class="hero-nav hero-nav-prev hidden" id="heroNavPrev" aria-label="Imagem anterior"><i class="ph ph-caret-left"></i></button>
-        <button type="button" class="hero-nav hero-nav-next hidden" id="heroNavNext" aria-label="Próxima imagem"><i class="ph ph-caret-right"></i></button>
         <div class="container hero-content">
             <h1 class="fade-up" id="clientHeroTitle"><?= $h($c['heroTitle']) ?></h1>
             <p class="fade-up delay-1" id="clientHeroSubtitle"><?= $h($c['heroSubtitle']) ?></p>
@@ -536,7 +540,9 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
         'favicon' => $c['favicon']
     ]) ?>;
     </script>
-    <script src="script.js?v=3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
+    <script src="script.js?v=4"></script>
 </body>
 
 </html>

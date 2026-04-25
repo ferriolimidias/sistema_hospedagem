@@ -293,39 +293,49 @@ img {
    HERO SECTION
    ========================================= */
 .hero {
-    height: 100vh;
-    min-height: 600px;
+    height: 80vh;
+    min-height: 500px;
     display: flex;
     align-items: center;
     position: relative;
     overflow: hidden;
 }
 
-.hero-slideshow {
+#heroCarousel,
+.hero-carousel {
     position: absolute;
     inset: 0;
     z-index: 0;
+    width: 100%;
+    height: 100%;
 }
 
 .hero-slide {
-    position: absolute;
-    inset: 0;
+    width: 100%;
+    height: 100%;
     background-size: cover;
     background-position: center;
-    background-attachment: fixed;
-    opacity: 0;
-    transition: opacity 1.2s ease-in-out;
+    background-repeat: no-repeat;
 }
 
-.hero-slide.active {
-    opacity: 1;
-    z-index: 1;
+#heroCarousel .f-carousel__viewport,
+#heroCarousel .f-carousel__track,
+#heroCarousel .f-carousel__slide {
+    width: 100%;
+    height: 100%;
+}
+
+#heroCarousel .f-carousel__slide img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
 
 .hero-overlay {
     position: absolute;
     inset: 0;
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0%, rgba(26, 26, 26, 0.7) 100%);
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5) 0%, rgba(17, 24, 39, 0.78) 100%);
     z-index: 2;
 }
 
@@ -366,6 +376,17 @@ img {
 }
 
 @media (max-width: 768px) {
+    .hero {
+        height: 85svh;
+        min-height: 420px;
+    }
+
+    #heroCarousel,
+    .hero-carousel {
+        height: 85svh;
+        min-height: 420px;
+    }
+
     .hero-nav {
         width: 32px;
         height: 32px;
