@@ -234,6 +234,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function buildThumbAssetUrl(src) {
         const raw = String(src || '').trim();
         if (!raw) return '';
+        if (raw.includes('_thumb.webp')) {
+            if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
+            return '../' + raw.replace(/^\/+/, '');
+        }
         if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
         const normalized = raw.replace(/^\/+/, '');
         const thumbCandidate = normalized.replace(/\.webp$/i, '_thumb.webp');
@@ -1171,7 +1175,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </thead>
                         <tbody>
                             ${chaletsData.map((c, index) => {
-                                const thumbCandidate = c.main_image_thumb ? buildThumbAssetUrl(c.main_image_thumb) : '';
+                                const thumbCandidate = c.main_image_thumb ? toAssetUrl(c.main_image_thumb) : '';
                                 const fullCandidate = c.main_image ? toAssetUrl(c.main_image) : '';
                                 const imgSrc = thumbCandidate || (c.main_image ? buildThumbAssetUrl(c.main_image) : '');
                                 const fallbackSrcAttr = String(fullCandidate || '').replace(/'/g, "\\'");

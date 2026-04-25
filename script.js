@@ -126,6 +126,31 @@ document.addEventListener('DOMContentLoaded', () => {
         return v !== '' && v.toLowerCase() !== 'null' && v.toLowerCase() !== 'undefined';
     }
 
+    function normalizeImagePath(path) {
+        const raw = String(path || '').trim();
+        if (!raw) return '';
+        if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('data:image/')) return raw;
+        return raw.replace(/^(\.\.\/)+/, '').replace(/^(\.\/)+/, '').replace(/^\/+/, '');
+    }
+
+    function buildThumbPath(path) {
+        const raw = String(path || '').trim();
+        if (!raw) return '';
+        if (raw.includes('_thumb.webp')) return raw;
+        return raw.replace(/\.webp$/i, '_thumb.webp');
+    }
+
+    function resolveChaletCoverImage(chalet) {
+        let coverImg = chalet.main_image_thumb || buildThumbPath(chalet.main_image) || chalet.main_image || '';
+        if (!coverImg && chalet.images) {
+            try {
+                const imgs = typeof chalet.images === 'string' ? JSON.parse(chalet.images) : chalet.images;
+                if (Array.isArray(imgs) && imgs.length > 0) coverImg = imgs[0];
+            } catch (e) { /* noop */ }
+        }
+        return normalizeImagePath(coverImg);
+    }
+
     const chaletGalleryRegistry = {};
 
     function parseChaletImages(rawImages, mainImg) {
@@ -143,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        const unique = [...new Set([mainImg, ...parsed].filter(isUsableImageSrc))];
+        const unique = [...new Set([mainImg, ...parsed].map(normalizeImagePath).filter(isUsableImageSrc))];
         return unique;
     }
 
@@ -152,8 +177,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isUsableImageSrc(src)) {
             return `<div class="${cls} image-fallback"></div>`;
         }
-        return `<a href="${src}" class="${cls}" data-fancybox="${galleryGroup}" onclick="openChaletGallery('${galleryGroup}', ${slideIndex}); return false;">
-            <img src="${src}" alt="${alt}" onerror="this.closest('a').outerHTML='<div class=&quot;${cls} image-fallback&quot;></div>'">
+        const normalizedSrc = normalizeImagePath(src);
+        return `<a href="${normalizedSrc}" class="${cls}" data-fancybox="${galleryGroup}" onclick="openChaletGallery('${galleryGroup}', ${slideIndex}); return false;">
+            <img src="${normalizedSrc}" alt="${alt}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.closest('a').outerHTML='<div class=&quot;${cls} image-fallback&quot;></div>'">
         </a>`;
     }
 
@@ -975,7 +1001,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     countDisp++;
 
                     // Resolve imagens (Main + Galeria)
-                    const mainImg = isUsableImageSrc(chalet.main_image) ? chalet.main_image : '';
+                    const coverImg = resolveChaletCoverImage(chalet);
+                    const mainImg = coverImg || '';
 
                     const galleryGroup = `chalet-${chalet.id}`;
                     const galleryImgs = parseChaletImages(chalet.images, mainImg);
@@ -1291,7 +1318,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     countDisp++;
 
                     // Resolve imagens (Main + Galeria)
-                    const mainImg = isUsableImageSrc(chalet.main_image) ? chalet.main_image : '';
+                    const coverImg = resolveChaletCoverImage(chalet);
+                    const mainImg = coverImg || '';
 
                     const galleryGroup = `chalet-${chalet.id}`;
                     const galleryImgs = parseChaletImages(chalet.images, mainImg);
@@ -1755,11 +1783,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('chaletDetailsFullDescription').innerHTML = descHtml;
 
         // Set Hero Background
-        const modalHeroSrc = isUsableImageSrc(chalet.main_image) ? chalet.main_image : '';
+        const modalHeroSrc = resolveChaletCoverImage(chalet);
         const heroEl = document.getElementById('chaletDetailsHero');
         if (heroEl) {
             if (isUsableImageSrc(modalHeroSrc)) {
-                heroEl.style.backgroundImage = `url('${modalHeroSrc}')`;
+                heroEl.style.backgroundImage = `url('${normalizeImagePath(modalHeroSrc)}')`;
                 heroEl.style.backgroundColor = '';
             } else {
                 heroEl.style.backgroundImage = 'none';
