@@ -88,7 +88,7 @@ switch ($method) {
                 // Tabela personalizacao pode não existir ainda
             }
 
-            $hasAdminSession = isset($_SESSION['admin_id']) || isset($_SESSION['admin_email']);
+            $hasAdminSession = isset($_SESSION['admin_id']);
             if (!$hasAdminSession) {
                 unset($parsedSettings['internalApiKey']);
             }

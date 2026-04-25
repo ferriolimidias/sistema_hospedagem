@@ -125,10 +125,6 @@
                     localStorage.setItem('adminRole', data.role);
                     localStorage.setItem('adminName', data.name || '');
                     localStorage.setItem('adminPermissions', data.permissions ? JSON.stringify(data.permissions) : '');
-                    if (data.internalKey) {
-                        localStorage.setItem('internalKey', data.internalKey);
-                        sessionStorage.setItem('internalKey', data.internalKey);
-                    }
                     window.location.href = 'index.html';
                 } else {
                     errorDiv.textContent = data.error || 'Erro ao fazer login';
