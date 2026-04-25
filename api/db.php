@@ -62,7 +62,9 @@ function validateAndSaveImageUpload(array $file, string $prefix, string $uploadD
         return ['path' => null, 'thumb_path' => null, 'error' => 'Extensão GD não disponível no servidor'];
     }
     if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
+        if (!mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
+            return ['path' => null, 'thumb_path' => null, 'error' => 'Falha ao criar diretório de upload'];
+        }
     }
     $safeBase = preg_replace('/[^a-zA-Z0-9_-]/', '', pathinfo((string)$file['name'], PATHINFO_FILENAME));
     if ($safeBase === '') {
@@ -89,7 +91,9 @@ function validateAndSaveImageUpload(array $file, string $prefix, string $uploadD
     }
 
     // Preserva transparência ao converter para WebP.
-    imagepalettetotruecolor($src);
+    if (function_exists('imagepalettetotruecolor')) {
+        @imagepalettetotruecolor($src);
+    }
     imagealphablending($src, true);
     imagesavealpha($src, true);
 
@@ -113,6 +117,10 @@ function validateAndSaveImageUpload(array $file, string $prefix, string $uploadD
         $tw = max(1, (int) round($w * $ratio));
         $th = max(1, (int) round($h * $ratio));
         $thumb = imagecreatetruecolor($tw, $th);
+        if (!$thumb) {
+            imagedestroy($src);
+            return ['path' => null, 'thumb_path' => null, 'error' => 'Falha ao criar miniatura da imagem'];
+        }
         imagealphablending($thumb, true);
         imagesavealpha($thumb, true);
         imagecopyresampled($thumb, $src, 0, 0, 0, 0, $tw, $th, $w, $h);

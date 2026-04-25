@@ -1,4 +1,6 @@
 <?php
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 require_once 'db.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -293,10 +295,12 @@ switch ($method) {
             jsonResponse(['status' => 'success', 'id' => $chalet_id], $id ? 200 : 201);
 
         }
-        catch (Exception $e) {
-            $pdo->rollBack();
+        catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             error_log('Chalets API save error: ' . $e->getMessage());
-            jsonResponse(['error' => 'Falha ao salvar chalé'], 500);
+            jsonResponse(['error' => 'Falha ao salvar chalé', 'details' => $e->getMessage()], 500);
         }
         break;
 
@@ -326,10 +330,12 @@ switch ($method) {
             $pdo->commit();
             jsonResponse(['status' => 'success']);
         }
-        catch (Exception $e) {
-            $pdo->rollBack();
+        catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             error_log('Chalets API delete error: ' . $e->getMessage());
-            jsonResponse(['error' => 'Falha ao excluir chalé'], 500);
+            jsonResponse(['error' => 'Falha ao excluir chalé', 'details' => $e->getMessage()], 500);
         }
         break;
 
