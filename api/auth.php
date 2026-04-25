@@ -20,20 +20,11 @@ $stmt->execute([$data['email']]);
 $admin = $stmt->fetch();
 
 if ($admin && password_verify($data['password'], $admin['password'])) {
-    session_regenerate_id(true);
-    $_SESSION['admin_id'] = (int) $admin['id'];
-    $_SESSION['admin_email'] = (string) $admin['email'];
-    $_SESSION['admin_role'] = (string) ($admin['role'] ?? 'admin');
-    $token = hash('sha256', $admin['email'] . time());
-    $permissions = !empty($admin['permissions']) ? json_decode($admin['permissions'], true) : null;
-    jsonResponse([
-        'status' => 'success',
-        'token' => $token,
-        'email' => $admin['email'],
-        'name' => $admin['name'] ?? '',
-        'role' => $admin['role'] ?? 'admin',
-        'permissions' => $permissions
-    ]);
+    $token = bin2hex(random_bytes(32));
+    $stUpdate = $pdo->prepare('UPDATE admins SET auth_token = ? WHERE id = ?');
+    $stUpdate->execute([$token, (int) $admin['id']]);
+    setcookie('admin_token', $token, time() + (86400 * 30), '/', '', isset($_SERVER['HTTPS']), true);
+    jsonResponse(['status' => 'success']);
 }
 else {
     jsonResponse(['error' => 'Credenciais inválidas'], 401);

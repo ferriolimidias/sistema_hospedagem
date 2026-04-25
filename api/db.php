@@ -2,7 +2,6 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../bootstrap.php';
-require_once __DIR__ . '/session_init.php';
 
 // Produção: não exibir erros ao usuário; desenvolvimento: exibir
 $requestHost = $_SERVER['HTTP_HOST'] ?? '';
@@ -151,6 +150,33 @@ try {
     ]);
 } catch (PDOException $e) {
     jsonResponse(['status' => 'error', 'message' => 'Erro na conexão com o banco de dados.'], 500);
+}
+
+function be_get_admin_from_cookie(PDO $pdo): ?array
+{
+    $token = trim((string) ($_COOKIE['admin_token'] ?? ''));
+    if ($token === '') {
+        return null;
+    }
+    $stmt = $pdo->prepare('SELECT id, name, email, role, permissions FROM admins WHERE auth_token = ? LIMIT 1');
+    $stmt->execute([$token]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+
+function be_require_admin_auth(PDO $pdo): array
+{
+    $admin = be_get_admin_from_cookie($pdo);
+    if (!$admin) {
+        jsonResponse(['error' => 'Sessão administrativa inválida'], 401);
+    }
+    return $admin;
+}
+
+try {
+    $pdo->exec("ALTER TABLE admins ADD COLUMN auth_token VARCHAR(255) NULL AFTER password");
+} catch (PDOException $e) {
+    // Coluna já existe.
 }
 
 // Compatibilidade: garante colunas novas de hold/idempotência em bases já criadas.

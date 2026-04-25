@@ -1,6 +1,5 @@
 <?php
 require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/contract_access.php';
 
 function loadPaymentPolicies(PDO $pdo): array
 {
@@ -43,19 +42,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     jsonResponse(['error' => 'Método não permitido'], 405);
 }
 
-$headers = [];
-foreach ($_SERVER as $k => $v) {
-    if (strpos($k, 'HTTP_') === 0) {
-        $name = strtolower(str_replace('_', '-', substr($k, 5)));
-        $headers[$name] = (string)$v;
-    }
-}
-
-$providedKey = trim((string)($headers['x-internal-key'] ?? ''));
-$internalApiKey = getOrCreateInternalApiKey($pdo);
-if ($providedKey === '' || !hash_equals($internalApiKey, $providedKey)) {
-    jsonResponse(['error' => 'Não autorizado'], 403);
-}
+be_require_admin_auth($pdo);
 
 $data = json_decode(file_get_contents('php://input'), true);
 $reservationId = isset($data['reservation_id']) ? (int)$data['reservation_id'] : 0;

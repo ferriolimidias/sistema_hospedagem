@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $dbUser = trim((string)$formData['db_user']);
     $dbPass = (string)$formData['db_pass'];
     $adminName = trim((string)$formData['admin_name']);
-    $adminEmail = trim((string)$formData['admin_email']);
+    $adminEmail = strtolower(trim((string)$formData['admin_email']));
     $adminPass = (string)$formData['admin_pass'];
 
     if ($dbHost === '') $errors[] = 'Host do banco é obrigatório.';
@@ -194,20 +194,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ], JSON_UNESCAPED_UNICODE);
             $upsertAdmin = $pdo->prepare(
                 'INSERT INTO admins (name, email, password, role, permissions)
-                 VALUES (?, ?, ?, ?, ?)
+                 VALUES (:name, :email, :password, :role, :permissions)
                  ON DUPLICATE KEY UPDATE
                     name = VALUES(name),
                     password = VALUES(password),
                     role = VALUES(role),
                     permissions = VALUES(permissions)'
             );
-            $upsertAdmin->execute([
-                $adminName,
-                $adminEmail,
-                $adminPasswordHash,
-                'admin',
-                $adminPermissions,
-            ]);
+            $upsertAdmin->bindValue(':name', $adminName, PDO::PARAM_STR);
+            $upsertAdmin->bindValue(':email', $adminEmail, PDO::PARAM_STR);
+            $upsertAdmin->bindValue(':password', $adminPasswordHash, PDO::PARAM_STR);
+            $upsertAdmin->bindValue(':role', 'admin', PDO::PARAM_STR);
+            $upsertAdmin->bindValue(':permissions', $adminPermissions, PDO::PARAM_STR);
+            $upsertAdmin->execute();
             $adminMsg = 'Administrador criado com sucesso! Use o e-mail ' . $adminEmail . ' para fazer login.';
 
             // Bloqueia reutilização direta do instalador após sucesso.

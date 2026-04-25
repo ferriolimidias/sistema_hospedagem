@@ -13,13 +13,7 @@ if ($reservationId <= 0) {
 
 $disposition = (isset($_GET['download']) && $_GET['download'] === '1') ? 'attachment' : 'inline';
 
-$headers = [];
-foreach ($_SERVER as $k => $v) {
-    if (strpos($k, 'HTTP_') === 0) {
-        $name = strtolower(str_replace('_', '-', substr($k, 5)));
-        $headers[$name] = (string)$v;
-    }
-}
+$isAdmin = be_get_admin_from_cookie($pdo) !== null;
 
 try {
     $stmt = $pdo->prepare("
@@ -50,9 +44,7 @@ try {
         jsonResponse(['error' => 'Arquivo de contrato não encontrado'], 404);
     }
 
-    $internalKeyProvided = trim((string)($headers['x-internal-key'] ?? ''));
     $internalKeyStored = getOrCreateInternalApiKey($pdo);
-    $isAdmin = ($internalKeyProvided !== '' && hash_equals($internalKeyStored, $internalKeyProvided));
 
     $token = trim((string)($_GET['token'] ?? ''));
     $email = trim((string)($_GET['email'] ?? ''));

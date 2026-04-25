@@ -121,10 +121,6 @@
                 const data = await res.json();
 
                 if (res.ok && data.status === 'success') {
-                    localStorage.setItem('adminToken', data.token);
-                    localStorage.setItem('adminRole', data.role);
-                    localStorage.setItem('adminName', data.name || '');
-                    localStorage.setItem('adminPermissions', data.permissions ? JSON.stringify(data.permissions) : '');
                     window.location.href = 'index.html';
                 } else {
                     errorDiv.textContent = data.error || 'Erro ao fazer login';

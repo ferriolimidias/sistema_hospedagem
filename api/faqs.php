@@ -14,17 +14,7 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
  */
 function faqs_has_valid_internal_key(PDO $pdo): bool
 {
-    require_once __DIR__ . '/contract_access.php';
-    $headers = [];
-    foreach ($_SERVER as $k => $v) {
-        if (strpos($k, 'HTTP_') === 0) {
-            $headers[strtolower(str_replace('_', '-', substr($k, 5)))] = (string) $v;
-        }
-    }
-    $provided = trim((string) ($headers['x-internal-key'] ?? ''));
-    if ($provided === '') return false;
-    $expected = getOrCreateInternalApiKey($pdo);
-    return hash_equals($expected, $provided);
+    return be_get_admin_from_cookie($pdo) !== null;
 }
 
 function faqs_sanitize_question(string $s): string

@@ -4,6 +4,7 @@ header('Pragma: no-cache');
 require_once 'db.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
+$isAdminAuthenticated = be_get_admin_from_cookie($pdo) !== null;
 
 switch ($method) {
     case 'GET':
@@ -88,16 +89,14 @@ switch ($method) {
                 // Tabela personalizacao pode não existir ainda
             }
 
-            $hasAdminSession = isset($_SESSION['admin_id']);
-            if (!$hasAdminSession) {
-                unset($parsedSettings['internalApiKey']);
-            }
-
             jsonResponse((object) $parsedSettings);
         }
         break;
 
     case 'POST':
+        if (!$isAdminAuthenticated) {
+            jsonResponse(['error' => 'Sessão administrativa inválida'], 401);
+        }
         $uploadDir = __DIR__ . '/../images/uploads/';
         if (isset($_FILES['logo']) && $_FILES['logo']['error'] === UPLOAD_ERR_OK) {
             $r = validateAndSaveImageUpload($_FILES['logo'], 'logo', $uploadDir);

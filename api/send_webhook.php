@@ -14,6 +14,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+be_require_admin_auth($pdo);
+
 $input = json_decode(file_get_contents('php://input'), true);
 if (!$input || empty($input['clientName']) || empty($input['clientPhone'])) {
     http_response_code(400);

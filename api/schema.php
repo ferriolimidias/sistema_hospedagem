@@ -279,6 +279,7 @@ function runInitialSchema(PDO $pdo): void
             name VARCHAR(100) NULL,
             email VARCHAR(255) NOT NULL UNIQUE,
             password VARCHAR(255) NOT NULL,
+            auth_token VARCHAR(255) NULL,
             role VARCHAR(50) NOT NULL DEFAULT 'admin',
             permissions TEXT NULL COMMENT 'JSON array de menus permitidos',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -455,6 +456,12 @@ function runInitialSchema(PDO $pdo): void
 
     foreach ($queries as $query) {
         $pdo->exec($query);
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE admins ADD COLUMN auth_token VARCHAR(255) NULL AFTER password");
+    } catch (PDOException $e) {
+        // Coluna já existe.
     }
 
     // Compatibilidade para bases já existentes.

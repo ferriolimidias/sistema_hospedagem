@@ -70,21 +70,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     /* =========================================
        AUTHENTICATION GUARD
        ========================================= */
-    const adminToken = localStorage.getItem('adminToken');
     const adminRoleRaw = localStorage.getItem('adminRole') || 'admin';
     const adminRole = normalizeRole(adminRoleRaw);
 
-    if (!adminToken) {
-        // Redireciona para login se não estiver autenticado
-        window.location.href = 'login.html';
-        return;
-    }
-
     // Garante envio do cookie de sessão PHP em todas as chamadas do painel.
     const nativeFetch = window.fetch.bind(window);
-    window.fetch = (input, init) => {
+    window.fetch = async (input, init) => {
         const opts = (init && typeof init === 'object') ? init : {};
-        return nativeFetch(input, { ...opts, credentials: opts.credentials || 'same-origin' });
+        const res = await nativeFetch(input, { ...opts, credentials: opts.credentials || 'same-origin' });
+        if (res.status === 401) {
+            try {
+                localStorage.removeItem('adminRole');
+                localStorage.removeItem('adminName');
+                localStorage.removeItem('adminPermissions');
+            } catch (_) { /* noop */ }
+            window.location.href = 'login.html';
+        }
+        return res;
     };
 
     // Controle de menus por permissões
@@ -429,13 +431,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function ensureInternalApiKey() {
-        if (getStoredInternalApiKey()) return true;
-        try {
-            const res = await fetch('../api/settings.php?_t=' + new Date().getTime(), { credentials: 'same-origin', cache: 'no-store' });
-            const data = await res.json();
-            if (persistInternalApiKeyFromPayload(data)) return true;
-        } catch (e) { /* ignore */ }
-        return false;
+        return true;
     }
 
     async function initFinanceiroView() {
@@ -5297,9 +5293,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadAdminThemeFromSettings() {
         try {
             const res = await fetch('../api/settings.php?_t=' + new Date().getTime(), { credentials: 'same-origin', cache: 'no-store' });
-            if (!res.ok) return false;
+            if (!res.ok) return true;
             const data = await res.json();
-            persistInternalApiKeyFromPayload(data);
 
             applyAdminTheme(data.primary_color || '#2563eb', data.secondary_color || '#1e293b');
             const brandName = (data.company_name && String(data.company_name).trim()) ||
@@ -5310,24 +5305,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             const titleEl = document.getElementById('adminPageTitle');
             if (titleEl) titleEl.textContent = 'Admin · ' + brandName;
             try { document.title = 'Admin · ' + brandName; } catch (_) { /* noop */ }
-            return getStoredInternalApiKey() !== '';
+            return true;
         } catch (e) {
             // Usa tema padrão quando não conseguir carregar.
-            return false;
+            return true;
         }
     }
 
-    // Initialize the admin app: só monta a interface depois de obter a chave interna.
-    const hasInternalKey = await loadAdminThemeFromSettings();
-    if (!hasInternalKey) {
-        appContainer.innerHTML = `
-            <div class="card">
-                <h2 style="color:var(--danger)">Sessão administrativa inválida</h2>
-                <p>Chave interna indisponível para a requisição. Faça login novamente para sincronizar a sessão.</p>
-            </div>
-        `;
-        return;
-    }
+    // Initialize the admin app
+    await loadAdminThemeFromSettings();
     const hashView = String(window.location.hash || '').replace(/^#/, '').trim();
     const allowedViews = ['dashboard', 'reservations', 'chalets', 'financeiro', 'coupons', 'faqs', 'settings', 'customization', 'users'];
     const initialView = allowedViews.includes(hashView) ? hashView : 'dashboard';

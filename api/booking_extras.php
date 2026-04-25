@@ -95,16 +95,5 @@ function be_parse_extra_service_ids_from_payload(array $raw): array
 
 function be_require_internal_key(PDO $pdo): void
 {
-    require_once __DIR__ . '/contract_access.php';
-    $headers = [];
-    foreach ($_SERVER as $k => $v) {
-        if (strpos($k, 'HTTP_') === 0) {
-            $headers[strtolower(str_replace('_', '-', substr($k, 5)))] = (string) $v;
-        }
-    }
-    $provided = trim((string) ($headers['x-internal-key'] ?? ''));
-    $expected = getOrCreateInternalApiKey($pdo);
-    if ($provided === '' || !hash_equals($expected, $provided)) {
-        jsonResponse(['error' => 'Não autorizado'], 403);
-    }
+    be_require_admin_auth($pdo);
 }
