@@ -23,7 +23,14 @@ if ($admin && password_verify($data['password'], $admin['password'])) {
     $token = bin2hex(random_bytes(32));
     $stUpdate = $pdo->prepare('UPDATE admins SET auth_token = ? WHERE id = ?');
     $stUpdate->execute([$token, (int) $admin['id']]);
-    setcookie('admin_token', $token, time() + (86400 * 30), '/', '', isset($_SERVER['HTTPS']), true);
+    setcookie('admin_token', $token, [
+        'expires' => time() + (86400 * 30),
+        'path' => '/',
+        'domain' => '',
+        'secure' => true,
+        'httponly' => true,
+        'samesite' => 'Strict'
+    ]);
     jsonResponse(['status' => 'success']);
 }
 else {

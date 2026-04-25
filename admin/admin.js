@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const nativeFetch = window.fetch.bind(window);
     window.fetch = async (input, init) => {
         const opts = (init && typeof init === 'object') ? init : {};
-        const res = await nativeFetch(input, { ...opts, credentials: opts.credentials || 'same-origin' });
+        const res = await nativeFetch(input, { ...opts, credentials: opts.credentials || 'include' });
         if (res.status === 401) {
             try {
                 localStorage.removeItem('adminRole');
