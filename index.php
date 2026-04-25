@@ -172,17 +172,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     </header>
 
     <section class="hero" id="home">
-        <div class="f-carousel hero-carousel" id="heroCarousel" data-hero-images="<?= $h(json_encode($c['heroImages'])) ?>">
-            <?php if (!empty($c['heroImages'])): ?>
-                <?php foreach ($c['heroImages'] as $heroImg): ?>
-                    <div class="f-carousel__slide hero-slide" style="background-image: url('<?= $h($heroImg) ?>');"></div>
-                <?php endforeach; ?>
-            <?php elseif ($heroFirstImg !== ''): ?>
-            <div class="f-carousel__slide hero-slide" style="background-image: url('<?= $h($heroFirstImg) ?>');"></div>
-            <?php else: ?>
-            <div class="f-carousel__slide hero-slide image-fallback" style="background: var(--secondary-color);"></div>
-            <?php endif; ?>
-        </div>
+        <div id="heroCarousel" class="f-carousel"></div>
         <div class="hero-overlay"></div>
         <div class="container hero-content">
             <h1 class="fade-up" id="clientHeroTitle"><?= $h($c['heroTitle']) ?></h1>
@@ -539,10 +529,13 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
         'waMessage' => $c['waMessage'],
         'favicon' => $c['favicon']
     ]) ?>;
+    const heroImagesData = <?= json_encode($c['heroImages'] ?? []) ?>;
+    window.heroImagesData = heroImagesData;
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.autoplay.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
-    <script src="script.js?v=4"></script>
+    <script src="script.js?v=8"></script>
 </body>
 
 </html>
