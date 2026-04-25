@@ -127,10 +127,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function normalizeImagePath(path) {
+        if (!path) return '';
         const raw = String(path || '').trim();
         if (!raw) return '';
         if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('data:image/')) return raw;
-        return raw.replace(/^(\.\.\/)+/, '').replace(/^(\.\/)+/, '').replace(/^\/+/, '');
+        let clean = raw.replace(/^(\.\.\/|\.\/|\/)+/, '');
+        if (clean.startsWith('images/')) return clean;
+        if (clean.startsWith('uploads/')) return 'images/' + clean;
+        return clean;
     }
 
     function buildThumbPath(path) {
@@ -149,6 +153,51 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { /* noop */ }
         }
         return normalizeImagePath(coverImg);
+    }
+
+    function parseImageArray(raw) {
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'string' && raw.trim() !== '') {
+            try {
+                const decoded = JSON.parse(raw);
+                return Array.isArray(decoded) ? decoded : [];
+            } catch (_) {
+                return [];
+            }
+        }
+        return [];
+    }
+
+    function buildChaletMedia(chalet) {
+        let coverThumb = normalizeImagePath(chalet.main_image_thumb || chalet.main_image);
+        let coverFull = normalizeImagePath(chalet.main_image || chalet.main_image_thumb);
+        const images = parseImageArray(chalet.images).map(normalizeImagePath).filter(isUsableImageSrc);
+        const imagesThumb = parseImageArray(chalet.images_thumb).map(normalizeImagePath);
+
+        if (!coverThumb && images.length > 0) {
+            coverThumb = normalizeImagePath(imagesThumb[0] || images[0]);
+            coverFull = normalizeImagePath(images[0] || coverThumb);
+        }
+        if (!coverFull) coverFull = coverThumb;
+
+        const items = [];
+        const seenFull = new Set();
+        if (isUsableImageSrc(coverFull || coverThumb)) {
+            const full = normalizeImagePath(coverFull || coverThumb);
+            const thumb = normalizeImagePath(coverThumb || coverFull);
+            if (isUsableImageSrc(full)) {
+                items.push({ thumb: thumb || full, full });
+                seenFull.add(full);
+            }
+        }
+        images.forEach((full, idx) => {
+            if (!isUsableImageSrc(full) || seenFull.has(full)) return;
+            const thumb = normalizeImagePath(imagesThumb[idx] || full);
+            items.push({ thumb: thumb || full, full });
+            seenFull.add(full);
+        });
+
+        return { coverThumb, coverFull, items };
     }
 
     const chaletGalleryRegistry = {};
@@ -172,14 +221,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return unique;
     }
 
-    function buildSlideMarkup(src, alt, isActive, galleryGroup, slideIndex) {
+    function buildSlideMarkup(thumbSrc, fullSrc, alt, isActive, galleryGroup, slideIndex) {
         const cls = `slide ${isActive ? 'active' : ''}`;
-        if (!isUsableImageSrc(src)) {
+        const thumb = normalizeImagePath(thumbSrc);
+        const full = normalizeImagePath(fullSrc || thumbSrc);
+        if (!isUsableImageSrc(thumb) && !isUsableImageSrc(full)) {
             return `<div class="${cls} image-fallback"></div>`;
         }
-        const normalizedSrc = normalizeImagePath(src);
-        return `<a href="${normalizedSrc}" class="${cls}" data-fancybox="${galleryGroup}" onclick="openChaletGallery('${galleryGroup}', ${slideIndex}); return false;">
-            <img src="${normalizedSrc}" alt="${alt}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.closest('a').outerHTML='<div class=&quot;${cls} image-fallback&quot;></div>'">
+        const hrefSrc = isUsableImageSrc(full) ? full : thumb;
+        const imgSrc = isUsableImageSrc(thumb) ? thumb : full;
+        return `<a href="${hrefSrc}" class="${cls}" data-fancybox="${galleryGroup}" onclick="openChaletGallery('${galleryGroup}', ${slideIndex}); return false;" style="display: block; width: 100%; height: 100%; background-color: #1e293b; overflow: hidden; border-radius: 8px 8px 0 0;">
+            <img src="${imgSrc}" alt="${alt}" style="width: 100%; height: 100%; object-fit: cover; display: block;" onerror="this.style.display='none';">
         </a>`;
     }
 
@@ -1001,12 +1053,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     countDisp++;
 
                     // Resolve imagens (Main + Galeria)
-                    const coverImg = resolveChaletCoverImage(chalet);
-                    const mainImg = coverImg || '';
+                    const media = buildChaletMedia(chalet);
+                    const mainImg = media.coverFull || media.coverThumb || '';
 
                     const galleryGroup = `chalet-${chalet.id}`;
-                    const galleryImgs = parseChaletImages(chalet.images, mainImg);
-                    chaletGalleryRegistry[galleryGroup] = galleryImgs;
+                    const galleryItems = media.items;
+                    chaletGalleryRegistry[galleryGroup] = galleryItems.map((it) => it.full);
 
                     // Determina a badge baseado na etiqueta configurada
                     let badgeHtml = '';
@@ -1028,14 +1080,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Monta HTML do Slider 
                     let sliderHtml = `<div class="chalet-slider" id="modal-slider-${chalet.id}" style="aspect-ratio: 16/9;">`;
-                    if (galleryImgs.length > 0) {
-                        galleryImgs.forEach((src, i) => {
-                            sliderHtml += buildSlideMarkup(src, chalet.name, i === 0, galleryGroup, i);
+                    if (galleryItems.length > 0) {
+                        galleryItems.forEach((item, i) => {
+                            sliderHtml += buildSlideMarkup(item.thumb, item.full, chalet.name, i === 0, galleryGroup, i);
                         });
                     } else {
                         sliderHtml += `<div class="slide active image-fallback"></div>`;
                     }
-                    if (galleryImgs.length > 1) {
+                    if (galleryItems.length > 1) {
                         sliderHtml += `
                             <button class="slider-btn prev" onclick="nextSlide(${chalet.id}, -1, event)"><i class="ph ph-caret-left"></i></button>
                             <button class="slider-btn next" onclick="nextSlide(${chalet.id}, 1, event)"><i class="ph ph-caret-right"></i></button>
@@ -1060,7 +1112,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div style="display: flex; gap: 0.5rem;">
                                     <button class="btn btn-outline btn-sm" onclick="
                                         openChaletGallery('${galleryGroup}', 0);
-                                    " ${galleryImgs.length > 0 ? '' : 'disabled'}>Ver mais fotos</button>
+                                    " ${galleryItems.length > 0 ? '' : 'disabled'}>Ver mais fotos</button>
                                     <button class="btn btn-primary btn-sm" onclick="
                                         document.getElementById('availabilityModal').classList.remove('active');
                                         document.getElementById('checkin').value = '${filterCheckin}';
@@ -1318,12 +1370,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     countDisp++;
 
                     // Resolve imagens (Main + Galeria)
-                    const coverImg = resolveChaletCoverImage(chalet);
-                    const mainImg = coverImg || '';
+                    const media = buildChaletMedia(chalet);
+                    const mainImg = media.coverFull || media.coverThumb || '';
 
                     const galleryGroup = `chalet-${chalet.id}`;
-                    const galleryImgs = parseChaletImages(chalet.images, mainImg);
-                    chaletGalleryRegistry[galleryGroup] = galleryImgs;
+                    const galleryItems = media.items;
+                    chaletGalleryRegistry[galleryGroup] = galleryItems.map((it) => it.full);
 
                     // Determina a badge baseado na etiqueta configurada
                     let badgeHtml = '';
@@ -1336,14 +1388,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Monta HTML do Slider
                     let sliderHtml = `<div class="chalet-slider" id="slider-${chalet.id}">`;
-                    if (galleryImgs.length > 0) {
-                        galleryImgs.forEach((src, i) => {
-                            sliderHtml += buildSlideMarkup(src, chalet.name, i === 0, galleryGroup, i);
+                    if (galleryItems.length > 0) {
+                        galleryItems.forEach((item, i) => {
+                            sliderHtml += buildSlideMarkup(item.thumb, item.full, chalet.name, i === 0, galleryGroup, i);
                         });
                     } else {
                         sliderHtml += `<div class="slide active image-fallback"></div>`;
                     }
-                    if (galleryImgs.length > 1) {
+                    if (galleryItems.length > 1) {
                         sliderHtml += `
                             <button class="slider-btn prev" onclick="nextSlide(${chalet.id}, -1, event)"><i class="ph ph-caret-left"></i></button>
                             <button class="slider-btn next" onclick="nextSlide(${chalet.id}, 1, event)"><i class="ph ph-caret-right"></i></button>
@@ -1367,7 +1419,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <strong>R$ ${displayPrice}<small>/noite</small></strong>
                                 </div>
                                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                                    <button class="btn btn-outline btn-sm" onclick="openChaletGallery('${galleryGroup}', 0)" style="flex: 1;" ${galleryImgs.length > 0 ? '' : 'disabled'}>Ver mais fotos</button>
+                                    <button class="btn btn-outline btn-sm" onclick="openChaletGallery('${galleryGroup}', 0)" style="flex: 1;" ${galleryItems.length > 0 ? '' : 'disabled'}>Ver mais fotos</button>
                                     <button class="btn btn-primary btn-sm" onclick="openBooking('${chalet.name.replace(/'/g, "\\'")}')" style="flex: 1;">Reservar</button>
                                 </div>
                             </div>
