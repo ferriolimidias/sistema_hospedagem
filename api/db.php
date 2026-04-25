@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../bootstrap.php';
+require_once __DIR__ . '/session_init.php';
 
 // Produção: não exibir erros ao usuário; desenvolvimento: exibir
 $requestHost = $_SERVER['HTTP_HOST'] ?? '';
@@ -15,10 +16,12 @@ if ($isProd) {
     ini_set('display_errors', '1');
 }
 
-// Permitir requisições CORS básicas (no mesmo host)
-header('Access-Control-Allow-Origin: *');
+// CORS com credenciais e origem dinâmica
+$origin = $_SERVER['HTTP_ORIGIN'] ?? $_SERVER['HTTP_HOST'] ?? '*';
+header("Access-Control-Allow-Origin: $origin");
+header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Internal-Key');
 
 // Tratamento de preflight request
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
