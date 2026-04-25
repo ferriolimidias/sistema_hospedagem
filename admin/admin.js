@@ -84,7 +84,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 localStorage.removeItem('adminName');
                 localStorage.removeItem('adminPermissions');
             } catch (_) { /* noop */ }
-            window.location.href = 'login.html';
+            console.error('Redirecionamento bloqueado pelo debug. Status 401 recebido da URL: ', input);
+            console.trace('Redirecionamento bloqueado aqui');
+            // window.location.href = 'login.html';
         }
         return res;
     };
@@ -3576,7 +3578,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             if (res.ok) {
                 alert('Reserva excluída com sucesso!');
-                window.location.reload();
+                console.trace('Redirecionamento bloqueado aqui');
+                // window.location.reload();
             } else {
                 const errData = await res.json().catch(() => ({}));
                 alert('Erro ao excluir reserva: ' + (errData.error || res.statusText || 'Erro desconhecido'));
@@ -3981,7 +3984,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (item.classList.contains('logout')) {
                 e.preventDefault();
                 localStorage.removeItem('adminToken');
-                window.location.href = 'login.html';
+                console.trace('Redirecionamento bloqueado aqui');
+                // window.location.href = 'login.html';
                 return;
             }
 
