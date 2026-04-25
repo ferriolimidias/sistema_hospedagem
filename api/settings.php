@@ -89,6 +89,9 @@ switch ($method) {
                 // Tabela personalizacao pode não existir ainda
             }
 
+            if (!$isAdminAuthenticated) {
+                $parsedSettings['internalApiKey'] = null;
+            }
             jsonResponse((object) $parsedSettings);
         }
         break;

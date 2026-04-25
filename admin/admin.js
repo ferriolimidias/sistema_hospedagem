@@ -84,9 +84,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 localStorage.removeItem('adminName');
                 localStorage.removeItem('adminPermissions');
             } catch (_) { /* noop */ }
-            console.error('Redirecionamento bloqueado pelo debug. Status 401 recebido da URL: ', input);
-            console.trace('Redirecionamento bloqueado aqui');
-            // window.location.href = 'login.html';
+            window.location.href = 'login.html';
         }
         return res;
     };
@@ -3578,8 +3576,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             if (res.ok) {
                 alert('Reserva excluída com sucesso!');
-                console.trace('Redirecionamento bloqueado aqui');
-                // window.location.reload();
+                window.location.reload();
             } else {
                 const errData = await res.json().catch(() => ({}));
                 alert('Erro ao excluir reserva: ' + (errData.error || res.statusText || 'Erro desconhecido'));
@@ -3984,8 +3981,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (item.classList.contains('logout')) {
                 e.preventDefault();
                 localStorage.removeItem('adminToken');
-                console.trace('Redirecionamento bloqueado aqui');
-                // window.location.href = 'login.html';
+                window.location.href = 'login.html';
                 return;
             }
 
