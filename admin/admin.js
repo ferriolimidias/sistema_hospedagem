@@ -231,6 +231,63 @@ document.addEventListener('DOMContentLoaded', async () => {
         return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
+    function buildThumbAssetUrl(src) {
+        const raw = String(src || '').trim();
+        if (!raw) return '';
+        if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
+        const normalized = raw.replace(/^\/+/, '');
+        const thumbCandidate = normalized.replace(/\.webp$/i, '_thumb.webp');
+        return '../' + thumbCandidate;
+    }
+
+    async function compressImageFile(file, opts = {}) {
+        if (!(file instanceof File) || !String(file.type || '').startsWith('image/')) return file;
+        const maxWidth = Number(opts.maxWidth || 1920);
+        const quality = Number(opts.quality || 0.8);
+        const outputType = (file.type === 'image/png' && !opts.forceLossy) ? 'image/png' : 'image/webp';
+
+        const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('Falha ao ler imagem para compressão.'));
+            reader.readAsDataURL(file);
+        });
+
+        const img = await new Promise((resolve, reject) => {
+            const i = new Image();
+            i.onload = () => resolve(i);
+            i.onerror = () => reject(new Error('Formato de imagem não suportado para compressão.'));
+            i.src = dataUrl;
+        });
+
+        const srcW = Math.max(1, img.width || 1);
+        const srcH = Math.max(1, img.height || 1);
+        const ratio = srcW > maxWidth ? (maxWidth / srcW) : 1;
+        const targetW = Math.max(1, Math.round(srcW * ratio));
+        const targetH = Math.max(1, Math.round(srcH * ratio));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas indisponível para compressão.');
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, outputType, quality));
+        if (!blob) throw new Error('Falha ao gerar imagem comprimida.');
+
+        const outName = String(file.name || 'upload')
+            .replace(/\.[a-z0-9]+$/i, '')
+            .replace(/[^a-z0-9._-]/gi, '_') + (outputType === 'image/png' ? '.png' : '.webp');
+        return new File([blob], outName, { type: outputType, lastModified: Date.now() });
+    }
+
+    async function appendCompressedImage(formData, fieldName, file, opts = {}) {
+        if (!file) return;
+        const compressed = await compressImageFile(file, opts);
+        formData.append(fieldName, compressed);
+    }
+
     function renderGalleryManager(scope, containerEl, opts) {
         if (!containerEl) return;
         const state = galleryState[scope];
@@ -248,7 +305,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const pending = toDelete.includes(src);
             const classes = ['gallery-thumb', 'thumb-saved'];
             if (pending) classes.push('thumb-pending-delete');
-            const safeSrc = escapeAttr(toAssetUrl(src));
+            const safeSrc = escapeAttr(buildThumbAssetUrl(src));
+            const fallbackSrc = escapeAttr(toAssetUrl(src));
             const pathAttr = escapeAttr(src);
             const badge = pending ? 'Marcada p/ remover' : (idx === 0 ? 'Capa' : 'Guardada');
             const btn = pending
@@ -256,7 +314,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 : `<button type="button" class="thumb-remove" title="Remover imagem" data-gallery-delete="${pathAttr}" data-gallery-scope="${scope}"><i class="ph ph-trash"></i></button>`;
             return `
                 <div class="${classes.join(' ')}" draggable="true" data-gallery-path="${pathAttr}" data-gallery-scope="${scope}" title="Arraste para reordenar">
-                    <img src="${safeSrc}" alt="Imagem da galeria" loading="lazy" draggable="false">
+                    <img src="${safeSrc}" alt="Imagem da galeria" loading="lazy" draggable="false" onerror="this.onerror=null;this.src='${fallbackSrc}'">
                     <span class="thumb-order">${idx + 1}</span>
                     <span class="thumb-badge">${badge}</span>
                     ${btn}
@@ -1103,6 +1161,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <thead>
                             <tr>
                                 <th>#</th>
+                                <th>Imagem</th>
                                 <th>Nome</th>
                                 <th>Tipo</th>
                                 <th>Preço Base (Noite)</th>
@@ -1111,9 +1170,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </tr>
                         </thead>
                         <tbody>
-                            ${chaletsData.map((c, index) => `
+                            ${chaletsData.map((c, index) => {
+                                const thumbCandidate = c.main_image_thumb ? buildThumbAssetUrl(c.main_image_thumb) : '';
+                                const fullCandidate = c.main_image ? toAssetUrl(c.main_image) : '';
+                                const imgSrc = thumbCandidate || (c.main_image ? buildThumbAssetUrl(c.main_image) : '');
+                                const fallbackSrcAttr = String(fullCandidate || '').replace(/'/g, "\\'");
+                                const coverHtml = imgSrc
+                                    ? `<img src="${imgSrc}" alt="Capa ${escapeAttr(c.name || '')}" loading="lazy" onerror="this.onerror=null; this.src='${fallbackSrcAttr}'" style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb; background: #f3f4f6;">`
+                                    : `<div style="width: 50px; height: 50px; border-radius: 6px; border: 1px solid #e5e7eb; background: #f3f4f6; display: flex; align-items: center; justify-content: center; color: #9ca3af;"><i class="ph ph-image"></i></div>`;
+                                return `
                                 <tr>
                                     <td>${c.id}</td>
+                                    <td>${coverHtml}</td>
                                     <td><strong>${c.name}</strong></td>
                                     <td>${c.type}</td>
                                     <td>R$ ${parseFloat(c.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
@@ -1123,7 +1191,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         <button class="btn-icon" style="color: var(--danger)" title="Excluir" onclick="deleteChalet(${c.id}, '${(c.name || '').replace(/'/g, "\\'")}')"><i class="ph ph-trash"></i></button>
                                     </td>
                                 </tr>
-                            `).join('')}
+                            `;
+                            }).join('')}
                         </tbody>
                     </table>
                 </div>
@@ -3162,15 +3231,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             const aboutPreview = document.getElementById('currentAboutPreview');
-            if (aboutPreview && custom.aboutImage) aboutPreview.innerHTML = `<img src="${imgSrc(custom.aboutImage)}" alt="About" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
+            if (aboutPreview && custom.aboutImage) aboutPreview.innerHTML = `<img src="${buildThumbAssetUrl(custom.aboutImage)}" alt="About" loading="lazy" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
 
             const faviconPreview = document.getElementById('currentFaviconPreview');
-            if (faviconPreview && custom.favicon) faviconPreview.innerHTML = `<img src="${imgSrc(custom.favicon)}" alt="Favicon" style="width: 32px; height: 32px; object-fit: contain; border-radius: 4px;">`;
+            if (faviconPreview && custom.favicon) faviconPreview.innerHTML = `<img src="${buildThumbAssetUrl(custom.favicon)}" alt="Favicon" loading="lazy" style="width: 32px; height: 32px; object-fit: contain; border-radius: 4px;">`;
 
             [1, 2, 3].forEach((i) => {
                 const img = custom[`testi${i}Image`];
                 const el = document.getElementById(`currentTesti${i}Preview`);
-                if (el && img) el.innerHTML = `<img src="${imgSrc(img)}" alt="Depoimento ${i}" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
+                if (el && img) el.innerHTML = `<img src="${buildThumbAssetUrl(img)}" alt="Depoimento ${i}" loading="lazy" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
             });
         } catch (e) {
             console.warn('Erro ao carregar personalização:', e);
@@ -3275,10 +3344,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Popula Logo Preview
             if (data.company_logo) {
-                document.getElementById('currentLogoPreview').innerHTML = `<img src="../${data.company_logo}" alt="Company Logo" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
+                document.getElementById('currentLogoPreview').innerHTML = `<img src="${buildThumbAssetUrl(data.company_logo)}" alt="Company Logo" loading="lazy" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
             }
             if (data.company_logo_light) {
-                document.getElementById('currentLogoLightPreview').innerHTML = `<img src="../${data.company_logo_light}" alt="Company Logo Light" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
+                document.getElementById('currentLogoLightPreview').innerHTML = `<img src="${buildThumbAssetUrl(data.company_logo_light)}" alt="Company Logo Light" loading="lazy" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
             }
 
             // Popula Customization
@@ -3305,12 +3374,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
                 if (custom.aboutImage) {
-                    document.getElementById('currentAboutPreview').innerHTML = `<img src="../${custom.aboutImage}" alt="About Image" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
+                    document.getElementById('currentAboutPreview').innerHTML = `<img src="${buildThumbAssetUrl(custom.aboutImage)}" alt="About Image" loading="lazy" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
                 }
                 const faviconPreview = document.getElementById('currentFaviconPreview');
                 if (faviconPreview) {
                     faviconPreview.innerHTML = custom.favicon 
-                        ? `<img src="../${custom.favicon}" alt="Favicon" style="width: 32px; height: 32px; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">` 
+                        ? `<img src="${buildThumbAssetUrl(custom.favicon)}" alt="Favicon" loading="lazy" style="width: 32px; height: 32px; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`
                         : '';
                 }
 
@@ -3336,21 +3405,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('customTesti1Location').value = custom.testi1Location || '';
                 document.getElementById('customTesti1Text').value = custom.testi1Text || '';
                 if (custom.testi1Image) {
-                    document.getElementById('currentTesti1Preview').innerHTML = `<img src="../${custom.testi1Image}" alt="Testimonial 1" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
+                    document.getElementById('currentTesti1Preview').innerHTML = `<img src="${buildThumbAssetUrl(custom.testi1Image)}" alt="Testimonial 1" loading="lazy" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
                 }
 
                 document.getElementById('customTesti2Name').value = custom.testi2Name || '';
                 document.getElementById('customTesti2Location').value = custom.testi2Location || '';
                 document.getElementById('customTesti2Text').value = custom.testi2Text || '';
                 if (custom.testi2Image) {
-                    document.getElementById('currentTesti2Preview').innerHTML = `<img src="../${custom.testi2Image}" alt="Testimonial 2" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
+                    document.getElementById('currentTesti2Preview').innerHTML = `<img src="${buildThumbAssetUrl(custom.testi2Image)}" alt="Testimonial 2" loading="lazy" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
                 }
 
                 document.getElementById('customTesti3Name').value = custom.testi3Name || '';
                 document.getElementById('customTesti3Location').value = custom.testi3Location || '';
                 document.getElementById('customTesti3Text').value = custom.testi3Text || '';
                 if (custom.testi3Image) {
-                    document.getElementById('currentTesti3Preview').innerHTML = `<img src="../${custom.testi3Image}" alt="Testimonial 3" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
+                    document.getElementById('currentTesti3Preview').innerHTML = `<img src="${buildThumbAssetUrl(custom.testi3Image)}" alt="Testimonial 3" loading="lazy" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
                 }
 
                 // Location
@@ -3388,8 +3457,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const formData = new FormData();
-        if (file) formData.append('logo', file);
-        if (fileLight) formData.append('logo_light', fileLight);
+        if (file) await appendCompressedImage(formData, 'logo', file, { maxWidth: 1920, quality: 0.8, forceLossy: true });
+        if (fileLight) await appendCompressedImage(formData, 'logo_light', fileLight, { maxWidth: 1920, quality: 0.8, forceLossy: true });
 
         // Required dummy field to trigger API processing since we bypass standard JSON parsing
         formData.append('dummy', 'true');
@@ -3443,7 +3512,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (fileHeroInput.files.length > 0) {
             for (let i = 0; i < fileHeroInput.files.length; i++) {
-                formData.append('hero_images[]', fileHeroInput.files[i]);
+                await appendCompressedImage(formData, 'hero_images[]', fileHeroInput.files[i], { maxWidth: 1920, quality: 0.8, forceLossy: true });
             }
         }
         const heroToDelete = Array.isArray(galleryState.hero.toDelete) ? galleryState.hero.toDelete : [];
@@ -3452,12 +3521,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (heroCurrent.length > 0) {
             formData.append('hero_images_order', JSON.stringify(heroCurrent));
         }
-        if (fileAboutInput.files[0]) formData.append('about_image', fileAboutInput.files[0]);
+        if (fileAboutInput.files[0]) await appendCompressedImage(formData, 'about_image', fileAboutInput.files[0], { maxWidth: 1920, quality: 0.8, forceLossy: true });
         const fileFaviconInput = document.getElementById('customFaviconImage');
-        if (fileFaviconInput && fileFaviconInput.files[0]) formData.append('favicon_image', fileFaviconInput.files[0]);
-        if (fileTesti1Input.files[0]) formData.append('testi1_image', fileTesti1Input.files[0]);
-        if (fileTesti2Input.files[0]) formData.append('testi2_image', fileTesti2Input.files[0]);
-        if (fileTesti3Input.files[0]) formData.append('testi3_image', fileTesti3Input.files[0]);
+        if (fileFaviconInput && fileFaviconInput.files[0]) await appendCompressedImage(formData, 'favicon_image', fileFaviconInput.files[0], { maxWidth: 512, quality: 0.9, forceLossy: false });
+        if (fileTesti1Input.files[0]) await appendCompressedImage(formData, 'testi1_image', fileTesti1Input.files[0], { maxWidth: 1200, quality: 0.82, forceLossy: true });
+        if (fileTesti2Input.files[0]) await appendCompressedImage(formData, 'testi2_image', fileTesti2Input.files[0], { maxWidth: 1200, quality: 0.82, forceLossy: true });
+        if (fileTesti3Input.files[0]) await appendCompressedImage(formData, 'testi3_image', fileTesti3Input.files[0], { maxWidth: 1200, quality: 0.82, forceLossy: true });
 
         const customizationSettings = {
             heroTitle: document.getElementById('customHeroTitle').value,
@@ -5069,14 +5138,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Image file (Main)
         const imageFile = document.getElementById('addMainImage').files[0];
         if (imageFile) {
-            formData.append('main_image', imageFile);
+            await appendCompressedImage(formData, 'main_image', imageFile, { maxWidth: 1920, quality: 0.8, forceLossy: true });
         }
 
         // Gallery Images (Multiple) - PHP espera $_FILES['images']
         const galleryFiles = document.getElementById('addGalleryImages').files;
         if (galleryFiles.length > 0) {
             for (let i = 0; i < galleryFiles.length; i++) {
-                formData.append('images[]', galleryFiles[i]);
+                await appendCompressedImage(formData, 'images[]', galleryFiles[i], { maxWidth: 1920, quality: 0.8, forceLossy: true });
             }
         }
         // Imagens da galeria marcadas para remoção pelo gestor visual.

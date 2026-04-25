@@ -18,6 +18,14 @@ function chaletNormalizeImagePath($path): string
     return chaletImagePathUsable($path) ? trim((string)$path) : '';
 }
 
+function chaletThumbPathFrom($path): string
+{
+    $p = chaletNormalizeImagePath($path);
+    if ($p === '' || !preg_match('/\.webp$/i', $p)) return '';
+    $thumb = preg_replace('/\.webp$/i', '_thumb.webp', $p);
+    return chaletImagePathUsable($thumb) ? (string)$thumb : '';
+}
+
 switch ($method) {
     case 'GET':
         // Busca chalés
@@ -32,6 +40,11 @@ switch ($method) {
                 $chalet['images'] = array_values(array_filter(array_map(
                     static fn($img) => chaletNormalizeImagePath($img),
                     is_array($chalet['images']) ? $chalet['images'] : []
+                )));
+                $chalet['main_image_thumb'] = chaletThumbPathFrom($chalet['main_image'] ?? '');
+                $chalet['images_thumb'] = array_values(array_filter(array_map(
+                    static fn($img) => chaletThumbPathFrom($img),
+                    $chalet['images']
                 )));
                 // Busca feriados relacionados
                 $stmtHol = $pdo->prepare("SELECT custom_date as date, price, description as descr FROM chalet_custom_prices WHERE chalet_id = ?");
@@ -61,6 +74,11 @@ switch ($method) {
                 $c['images'] = array_values(array_filter(array_map(
                     static fn($img) => chaletNormalizeImagePath($img),
                     is_array($c['images']) ? $c['images'] : []
+                )));
+                $c['main_image_thumb'] = chaletThumbPathFrom($c['main_image'] ?? '');
+                $c['images_thumb'] = array_values(array_filter(array_map(
+                    static fn($img) => chaletThumbPathFrom($img),
+                    $c['images']
                 )));
             }
 

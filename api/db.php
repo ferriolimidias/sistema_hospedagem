@@ -29,46 +29,103 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 }
 
 /**
- * Valida e processa upload de imagem. Retorna caminho relativo ou null.
+ * Valida e processa upload de imagem.
+ * Converte para WebP e gera miniatura "_thumb.webp".
+ *
  * @param array $file elemento de $_FILES
  * @param string $prefix prefixo do nome do arquivo
  * @param string $uploadDir diretório absoluto para salvar
  * @param int $maxBytes tamanho máximo em bytes (default 5MB)
- * @return array{path: string|null, error: string|null}
+ * @return array{path: string|null, thumb_path: string|null, error: string|null}
  */
 function validateAndSaveImageUpload(array $file, string $prefix, string $uploadDir, int $maxBytes = 5242880): array
 {
-    $allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'];
-    $allowedExt = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'ico'];
+    $allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    $allowedExt = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
     if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
-        return ['path' => null, 'error' => 'Upload inválido'];
+        return ['path' => null, 'thumb_path' => null, 'error' => 'Upload inválido'];
     }
     if (($file['size'] ?? 0) > $maxBytes) {
-        return ['path' => null, 'error' => 'Arquivo muito grande (máx. ' . round($maxBytes / 1048576) . 'MB)'];
+        return ['path' => null, 'thumb_path' => null, 'error' => 'Arquivo muito grande (máx. ' . round($maxBytes / 1048576) . 'MB)'];
     }
     $ext = strtolower(pathinfo((string)($file['name'] ?? ''), PATHINFO_EXTENSION));
     if (!in_array($ext, $allowedExt, true)) {
-        return ['path' => null, 'error' => 'Tipo de arquivo não permitido'];
+        return ['path' => null, 'thumb_path' => null, 'error' => 'Tipo de arquivo não permitido'];
     }
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     $mime = finfo_file($finfo, $file['tmp_name']);
     finfo_close($finfo);
     if (!in_array($mime, $allowedMimes, true)) {
-        return ['path' => null, 'error' => 'Tipo MIME não permitido'];
+        return ['path' => null, 'thumb_path' => null, 'error' => 'Tipo MIME não permitido'];
+    }
+    if (!extension_loaded('gd')) {
+        return ['path' => null, 'thumb_path' => null, 'error' => 'Extensão GD não disponível no servidor'];
     }
     if (!is_dir($uploadDir)) {
         mkdir($uploadDir, 0755, true);
     }
-    $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '', basename((string)$file['name']));
-    $fileName = time() . '_' . $prefix . '_' . $safeName;
-    if (empty(pathinfo($fileName, PATHINFO_EXTENSION))) {
-        $fileName .= '.' . $ext;
+    $safeBase = preg_replace('/[^a-zA-Z0-9_-]/', '', pathinfo((string)$file['name'], PATHINFO_FILENAME));
+    if ($safeBase === '') {
+        $safeBase = 'img';
     }
-    $targetPath = rtrim($uploadDir, '/\\') . DIRECTORY_SEPARATOR . $fileName;
-    if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-        return ['path' => 'images/uploads/' . $fileName, 'error' => null];
+
+    $src = null;
+    switch ($mime) {
+        case 'image/jpeg':
+            $src = @imagecreatefromjpeg($file['tmp_name']);
+            break;
+        case 'image/png':
+            $src = @imagecreatefrompng($file['tmp_name']);
+            break;
+        case 'image/gif':
+            $src = @imagecreatefromgif($file['tmp_name']);
+            break;
+        case 'image/webp':
+            $src = function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($file['tmp_name']) : null;
+            break;
     }
-    return ['path' => null, 'error' => 'Falha ao salvar arquivo'];
+    if (!$src) {
+        return ['path' => null, 'thumb_path' => null, 'error' => 'Formato de imagem não suportado para otimização'];
+    }
+
+    // Preserva transparência ao converter para WebP.
+    imagepalettetotruecolor($src);
+    imagealphablending($src, true);
+    imagesavealpha($src, true);
+
+    $nameBase = time() . '_' . $prefix . '_' . substr(md5($safeBase . microtime(true)), 0, 10);
+    $mainName = $nameBase . '.webp';
+    $thumbName = $nameBase . '_thumb.webp';
+    $targetPath = rtrim($uploadDir, '/\\') . DIRECTORY_SEPARATOR . $mainName;
+    $thumbPath = rtrim($uploadDir, '/\\') . DIRECTORY_SEPARATOR . $thumbName;
+
+    $ok = function_exists('imagewebp') ? @imagewebp($src, $targetPath, 82) : false;
+    if (!$ok) {
+        imagedestroy($src);
+        return ['path' => null, 'thumb_path' => null, 'error' => 'Falha ao converter imagem para WebP'];
+    }
+
+    $w = imagesx($src);
+    $h = imagesy($src);
+    if ($w > 0 && $h > 0) {
+        $maxThumb = 300;
+        $ratio = min($maxThumb / $w, $maxThumb / $h, 1);
+        $tw = max(1, (int) round($w * $ratio));
+        $th = max(1, (int) round($h * $ratio));
+        $thumb = imagecreatetruecolor($tw, $th);
+        imagealphablending($thumb, true);
+        imagesavealpha($thumb, true);
+        imagecopyresampled($thumb, $src, 0, 0, 0, 0, $tw, $th, $w, $h);
+        @imagewebp($thumb, $thumbPath, 78);
+        imagedestroy($thumb);
+    }
+    imagedestroy($src);
+
+    return [
+        'path' => 'images/uploads/' . $mainName,
+        'thumb_path' => file_exists($thumbPath) ? 'images/uploads/' . $thumbName : null,
+        'error' => null
+    ];
 }
 
 /**
@@ -107,7 +164,14 @@ function safeDeleteUploadedImage(?string $path): bool
     }
     if (!is_file($absReal)) return false;
 
-    return @unlink($absReal);
+    $removed = @unlink($absReal);
+    // Remove miniatura derivada automaticamente (mesmo basename + _thumb.webp).
+    $pi = pathinfo($absReal);
+    $thumbCandidate = ($pi['dirname'] ?? '') . DIRECTORY_SEPARATOR . ($pi['filename'] ?? '') . '_thumb.webp';
+    if (is_file($thumbCandidate)) {
+        @unlink($thumbCandidate);
+    }
+    return $removed;
 }
 
 function jsonResponse($data, int $statusCode = 200): void
