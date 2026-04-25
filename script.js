@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function resolveChaletCoverImage(chalet) {
-        let coverImg = chalet.main_image_thumb || buildThumbPath(chalet.main_image) || chalet.main_image || '';
+        let coverImg = chalet.main_image || chalet.main_image_thumb || buildThumbPath(chalet.main_image) || '';
         if (!coverImg && chalet.images) {
             try {
                 const imgs = typeof chalet.images === 'string' ? JSON.parse(chalet.images) : chalet.images;
@@ -230,8 +230,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const hrefSrc = isUsableImageSrc(full) ? full : thumb;
         const imgSrc = isUsableImageSrc(thumb) ? thumb : full;
+        const fullFallback = (isUsableImageSrc(full) ? full : '').replace(/'/g, "\\'");
         return `<a href="${hrefSrc}" class="${cls}" data-fancybox="${galleryGroup}" onclick="openChaletGallery('${galleryGroup}', ${slideIndex}); return false;" style="display: block; width: 100%; height: 100%; background-color: #1e293b; overflow: hidden; border-radius: 8px 8px 0 0;">
-            <img src="${imgSrc}" alt="${alt}" style="width: 100%; height: 100%; object-fit: cover; display: block;" onerror="this.style.display='none';">
+            <img src="${imgSrc}" alt="${alt}" style="width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity 0.3s ease;" onload="this.style.opacity='1'" onerror="if('${fullFallback}' && this.src.indexOf('${fullFallback}')===-1){this.onerror=null;this.src='${fullFallback}';}else{this.style.display='none';}">
         </a>`;
     }
 

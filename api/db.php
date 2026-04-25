@@ -112,7 +112,7 @@ function validateAndSaveImageUpload(array $file, string $prefix, string $uploadD
     $w = imagesx($src);
     $h = imagesy($src);
     if ($w > 0 && $h > 0) {
-        $maxThumb = 300;
+        $maxThumb = 800;
         $ratio = min($maxThumb / $w, $maxThumb / $h, 1);
         $tw = max(1, (int) round($w * $ratio));
         $th = max(1, (int) round($h * $ratio));
