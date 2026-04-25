@@ -29,7 +29,7 @@ if ($admin && password_verify($data['password'], $admin['password'])) {
         'domain' => '',
         'secure' => true,
         'httponly' => true,
-        'samesite' => 'Strict'
+        'samesite' => 'Lax'
     ]);
     jsonResponse(['status' => 'success']);
 }

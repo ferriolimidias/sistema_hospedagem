@@ -166,6 +166,11 @@ function be_get_admin_from_cookie(PDO $pdo): ?array
 
 function be_require_admin_auth(PDO $pdo): array
 {
+    // Ignorar CORS preflight.
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+        http_response_code(200);
+        exit;
+    }
     $admin = be_get_admin_from_cookie($pdo);
     if (!$admin) {
         jsonResponse(['error' => 'Sessão administrativa inválida'], 401);
