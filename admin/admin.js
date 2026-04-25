@@ -159,6 +159,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     let chaletsData = [];
     let reservationsData = [];
     let internalApiKey = '';
+    try {
+        window.internalKey = localStorage.getItem('internalKey') || sessionStorage.getItem('internalKey') || '';
+        if (window.internalKey) internalApiKey = window.internalKey;
+    } catch (_) { /* noop */ }
 
     /* ------------------------------------------------------------------
      * CHAVE INTERNA (X-Internal-Key) — NÃO duplicar fora deste bloco.
@@ -188,6 +192,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (typeof internalApiKey === 'string' && internalApiKey.trim() !== '') {
             return internalApiKey.trim();
         }
+        try {
+            const storedLocal = localStorage.getItem('internalKey');
+            if (typeof storedLocal === 'string' && storedLocal.trim() !== '') {
+                internalApiKey = storedLocal.trim();
+                try { window.internalKey = internalApiKey; } catch (_) { /* noop */ }
+                return internalApiKey;
+            }
+        } catch (_) { /* noop */ }
         try {
             if (typeof window !== 'undefined' && typeof window.internalKey === 'string' && window.internalKey.trim() !== '') {
                 internalApiKey = window.internalKey.trim();
@@ -430,11 +442,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function ensureInternalApiKey() {
         if (getStoredInternalApiKey()) return true;
-        try {
-            const res = await fetch('../api/settings.php?_t=' + new Date().getTime(), { credentials: 'same-origin', cache: 'no-store' });
-            const data = await res.json();
-            if (persistInternalApiKeyFromPayload(data)) return true;
-        } catch (e) { /* ignore */ }
         return false;
     }
 
@@ -5297,11 +5304,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadAdminThemeFromSettings() {
         try {
             const res = await fetch('../api/settings.php?_t=' + new Date().getTime(), { credentials: 'same-origin', cache: 'no-store' });
-            if (!res.ok) return false;
+            if (!res.ok) return getStoredInternalApiKey() !== '';
             const data = await res.json();
-
-            // Captura a chave interna no arranque (ver bloco CHAVE INTERNA no topo do ficheiro).
-            persistInternalApiKeyFromPayload(data);
 
             applyAdminTheme(data.primary_color || '#2563eb', data.secondary_color || '#1e293b');
             const brandName = (data.company_name && String(data.company_name).trim()) ||
@@ -5315,7 +5319,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return getStoredInternalApiKey() !== '';
         } catch (e) {
             // Usa tema padrão quando não conseguir carregar.
-            return false;
+            return getStoredInternalApiKey() !== '';
         }
     }
 
