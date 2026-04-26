@@ -1611,6 +1611,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <h1 class="page-title">Personalização do Site</h1>
                 <button class="btn" id="saveCustomizationBtn"><i class="ph ph-floppy-disk"></i> Salvar Alterações</button>
             </div>
+            <div id="save-progress-container" class="mt-3" style="display: none; margin-bottom: 1rem;">
+                <div class="d-flex justify-content-between mb-1" style="display:flex; justify-content:space-between; margin-bottom:0.35rem;">
+                    <span id="save-progress-text" class="small text-muted" style="font-size:0.85rem; color:#6b7280;">Enviando dados...</span>
+                    <span id="save-progress-percent" class="small fw-bold" style="font-size:0.85rem; font-weight:700;">0%</span>
+                </div>
+                <div class="progress" style="height: 8px; background:#e5e7eb; border-radius:999px; overflow:hidden;">
+                    <div id="save-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%; height:100%; background: var(--primary); transition: width 0.2s ease;"></div>
+                </div>
+            </div>
 
             <div class="grid-cards" style="grid-template-columns: 1fr;">
                 <!-- Favicon -->
@@ -3651,28 +3660,72 @@ document.addEventListener('DOMContentLoaded', async () => {
         formData.append('dummy', 'true');
         formData.append('customization', JSON.stringify(customizationSettings));
 
-        try {
-            document.getElementById('saveCustomizationBtn').disabled = true;
-            document.getElementById('saveCustomizationBtn').textContent = 'Salvando...';
+        const saveBtn = document.getElementById('saveCustomizationBtn');
+        const progressContainer = document.getElementById('save-progress-container');
+        const progressBar = document.getElementById('save-progress-bar');
+        const progressPercent = document.getElementById('save-progress-percent');
+        const progressText = document.getElementById('save-progress-text');
 
-            const res = await fetch('../api/customization.php', {
-                method: 'POST',
-                body: formData
+        const resetProgressUI = () => {
+            if (progressContainer) progressContainer.style.display = 'none';
+            if (progressBar) progressBar.style.width = '0%';
+            if (progressPercent) progressPercent.textContent = '0%';
+            if (progressText) progressText.textContent = 'Enviando dados...';
+        };
+
+        try {
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Salvando...';
+            }
+            if (progressContainer) progressContainer.style.display = 'block';
+
+            const result = await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '../api/customization.php', true);
+
+                xhr.upload.onprogress = function (e) {
+                    if (!e.lengthComputable) return;
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    if (progressBar) progressBar.style.width = percent + '%';
+                    if (progressPercent) progressPercent.textContent = percent + '%';
+                    if (percent >= 100 && progressText) {
+                        progressText.textContent = 'Processando no servidor...';
+                    }
+                };
+
+                xhr.onload = function () {
+                    let response = {};
+                    try {
+                        response = JSON.parse(xhr.responseText || '{}');
+                    } catch (_) {
+                        response = {};
+                    }
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve(response);
+                    } else {
+                        reject(new Error(response.error || response.details || xhr.statusText || 'Erro desconhecido'));
+                    }
+                };
+
+                xhr.onerror = function () {
+                    reject(new Error('Falha de conexão durante o upload.'));
+                };
+
+                xhr.send(formData);
             });
 
-            const result = await res.json().catch(() => ({}));
-            if (res.ok) {
-                alert('Personalizações salvas no banco de dados com sucesso!');
-                await loadCustomizationForm(); // Atualiza os campos com o que foi salvo
-            } else {
-                alert('Erro ao salvar: ' + (result.error || result.details || res.statusText || 'Erro desconhecido'));
-            }
+            alert('Personalizações salvas no banco de dados com sucesso!');
+            await loadCustomizationForm(); // Atualiza os campos com o que foi salvo
         } catch (e) {
             console.error("Erro no upload das imagens de personalização", e);
             alert("Erro de conexão: " + (e.message || "Verifique o console"));
         } finally {
-            document.getElementById('saveCustomizationBtn').disabled = false;
-            document.getElementById('saveCustomizationBtn').innerHTML = '<i class="ph ph-floppy-disk"></i> Salvar Alterações';
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="ph ph-floppy-disk"></i> Salvar Alterações';
+            }
+            resetProgressUI();
         }
     }
 
