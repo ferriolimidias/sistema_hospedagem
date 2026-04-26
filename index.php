@@ -144,6 +144,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
             --primary: var(--primary-color);
             --secondary: var(--secondary-color);
         }
+        #map-container iframe { width: 100% !important; height: 100% !important; min-height: 400px !important; border: 0; }
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css">
@@ -308,7 +309,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                     <a id="locMapLink" href="<?= $h($c['locMapLink']) ?>" target="_blank" class="btn btn-outline" style="margin-top: 1.5rem;"><i class="ph ph-share"></i> Ver no Google Maps</a>
                 </div>
                 <div class="location-map glass-card">
-                    <div id="map-container"><?= $c['locMapEmbed'] ?></div>
+                    <div id="map-container" style="width: 100%; height: 100%; min-height: 400px; border-radius: 12px; overflow: hidden;"><?= $c['locMapEmbed'] ?></div>
                 </div>
             </div>
         </div>
@@ -536,7 +537,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.autoplay.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
-    <script src="script.js?v=14"></script>
+    <script src="script.js?v=15"></script>
 </body>
 
 </html>
