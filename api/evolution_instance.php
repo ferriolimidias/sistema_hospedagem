@@ -281,6 +281,7 @@ try {
                 'instanceName' => $instance,
                 'token' => $token !== '' ? $token : substr(hash('sha1', $instance . microtime(true)), 0, 32),
                 'qrcode' => true,
+                'integration' => 'WHATSAPP-BAILEYS',
             ];
             $createResp = evoi_call('POST', $baseUrl . '/instance/create', $globalKey, $createPayload);
             if (!$createResp['ok']) {
