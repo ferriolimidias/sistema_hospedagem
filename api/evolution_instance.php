@@ -199,6 +199,29 @@ function evoi_extract_status(array $decoded): string
     return 'close';
 }
 
+function evoi_compose_error_message(string $prefix, array $resp): string
+{
+    $http = (int) ($resp['http_code'] ?? 0);
+    $curlErr = trim((string) ($resp['error'] ?? ''));
+    $body = trim((string) ($resp['body'] ?? ''));
+    $remoteErr = '';
+    if ($body !== '') {
+        $decoded = json_decode($body, true);
+        if (is_array($decoded)) {
+            $candidate = $decoded['error'] ?? $decoded['message'] ?? ($decoded['response']['message'] ?? '');
+            if (is_string($candidate) && trim($candidate) !== '') {
+                $remoteErr = trim($candidate);
+            }
+        }
+    }
+    $parts = [];
+    $parts[] = $prefix;
+    $parts[] = '(HTTP ' . $http . ')';
+    if ($curlErr !== '') $parts[] = 'cURL: ' . $curlErr;
+    if ($remoteErr !== '') $parts[] = 'Evolution: ' . $remoteErr;
+    return implode(' ', $parts);
+}
+
 try {
     $global = be_evolution_global_config();
     if (empty($global['env_found'])) {
@@ -261,9 +284,12 @@ try {
             ];
             $createResp = evoi_call('POST', $baseUrl . '/instance/create', $globalKey, $createPayload);
             if (!$createResp['ok']) {
-                $payload = ['ok' => false, 'error' => 'Falha ao criar instância na Evolution'];
+                $payload = [
+                    'ok' => false,
+                    'error' => evoi_compose_error_message('Falha na Evolution', $createResp)
+                ];
                 if ($debug) $payload['details'] = $createResp;
-                jsonResponse($payload, 502);
+                jsonResponse($payload, 400);
             }
             $createDecoded = json_decode($createResp['body'], true);
             if (!is_array($createDecoded)) {
@@ -293,9 +319,12 @@ try {
             );
         }
         if (!$connectResp['ok']) {
-            $payload = ['ok' => false, 'error' => 'Falha ao obter QR Code da instância'];
+            $payload = [
+                'ok' => false,
+                'error' => evoi_compose_error_message('Falha na Evolution ao obter QR', $connectResp)
+            ];
             if ($debug) $payload['details'] = $connectResp;
-            jsonResponse($payload, 502);
+            jsonResponse($payload, 400);
         }
 
         $connectDecoded = json_decode($connectResp['body'], true);
@@ -320,9 +349,12 @@ try {
         }
         $stateResp = evoi_call('GET', $baseUrl . '/instance/connectionState/' . rawurlencode($instance), $globalKey);
         if (!$stateResp['ok']) {
-            $payload = ['ok' => false, 'error' => 'Falha ao consultar status da instância'];
+            $payload = [
+                'ok' => false,
+                'error' => evoi_compose_error_message('Falha na Evolution ao consultar status', $stateResp)
+            ];
             if ($debug) $payload['details'] = $stateResp;
-            jsonResponse($payload, 502);
+            jsonResponse($payload, 400);
         }
         $decoded = json_decode($stateResp['body'], true);
         if (!is_array($decoded)) {
