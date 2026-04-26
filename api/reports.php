@@ -3,7 +3,15 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 
-be_require_internal_key($pdo);
+function reportsJsonError(string $message, int $status = 500): void
+{
+    if (!headers_sent()) {
+        jsonResponse(['ok' => false, 'error' => $message], $status);
+    }
+    error_log('[reports] ' . $message);
+    http_response_code($status);
+    exit;
+}
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
     jsonResponse(['error' => 'Método não permitido'], 405);
@@ -67,10 +75,22 @@ function buildDateFilterSql(?string $startDate, ?string $endDate, array &$params
     return count($where) ? (' AND ' . implode(' AND ', $where)) : '';
 }
 
-function fetchReportRows(PDO $pdo, ?string $startDate, ?string $endDate): array
+function reportsHasColumn(PDO $pdo, string $table, string $column): bool
+{
+    try {
+        $st = $pdo->prepare("SHOW COLUMNS FROM `{$table}` LIKE ?");
+        $st->execute([$column]);
+        return (bool)$st->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function fetchReportRows(PDO $pdo, ?string $startDate, ?string $endDate, bool $hasAdditionalValue): array
 {
     $params = [];
     $dateSql = buildDateFilterSql($startDate, $endDate, $params);
+    $additionalExpr = $hasAdditionalValue ? 'COALESCE(r.additional_value, 0)' : '0';
     $sql = "
         SELECT
             r.id,
@@ -78,8 +98,8 @@ function fetchReportRows(PDO $pdo, ?string $startDate, ?string $endDate): array
             r.checkin_date,
             r.checkout_date,
             r.total_amount,
-            r.additional_value,
-            (COALESCE(r.total_amount, 0) + COALESCE(r.additional_value, 0)) AS stay_total,
+            {$additionalExpr} AS additional_value,
+            (COALESCE(r.total_amount, 0) + {$additionalExpr}) AS stay_total,
             COALESCE(SUM(rc.total_price), 0) AS consumption_total
         FROM reservations r
         LEFT JOIN reservation_consumptions rc ON rc.reservation_id = r.id
@@ -95,7 +115,8 @@ function fetchReportRows(PDO $pdo, ?string $startDate, ?string $endDate): array
 
 function computeSummaryPayload(PDO $pdo, ?string $startDate, ?string $endDate): array
 {
-    $rows = fetchReportRows($pdo, $startDate, $endDate);
+    $hasAdditionalValue = reportsHasColumn($pdo, 'reservations', 'additional_value');
+    $rows = fetchReportRows($pdo, $startDate, $endDate, $hasAdditionalValue);
     $stayTotal = 0.0;
     $consumptionTotal = 0.0;
     $monthly = [];
@@ -145,11 +166,17 @@ function computeSummaryPayload(PDO $pdo, ?string $startDate, ?string $endDate): 
 }
 
 $action = strtolower(trim((string)($_GET['action'] ?? 'summary')));
-$startDate = parseDateOrNull($_GET['start_date'] ?? null);
-$endDate = parseDateOrNull($_GET['end_date'] ?? null);
+try {
+    be_require_internal_key($pdo);
 
-if ($action === 'summary') {
-    try {
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
+        jsonResponse(['error' => 'Método não permitido'], 405);
+    }
+
+    $startDate = parseDateOrNull(isset($_GET['start_date']) && is_scalar($_GET['start_date']) ? (string)$_GET['start_date'] : null);
+    $endDate = parseDateOrNull(isset($_GET['end_date']) && is_scalar($_GET['end_date']) ? (string)$_GET['end_date'] : null);
+
+    if ($action === 'summary') {
         $summary = computeSummaryPayload($pdo, $startDate, $endDate);
         jsonResponse([
             'ok' => true,
@@ -157,14 +184,11 @@ if ($action === 'summary') {
             'end_date' => $endDate,
             'company_name' => reportCompanyName($pdo),
         ] + $summary);
-    } catch (Throwable $e) {
-        jsonResponse(['ok' => false, 'error' => $e->getMessage()], 500);
     }
-}
 
-if ($action === 'export') {
-    try {
-        $rows = fetchReportRows($pdo, $startDate, $endDate);
+    if ($action === 'export') {
+        $hasAdditionalValue = reportsHasColumn($pdo, 'reservations', 'additional_value');
+        $rows = fetchReportRows($pdo, $startDate, $endDate, $hasAdditionalValue);
         $company = reportCompanyName($pdo);
         $filename = 'relatorio_' . preg_replace('/[^a-z0-9]+/i', '_', strtolower($company)) . '.csv';
 
@@ -201,10 +225,12 @@ if ($action === 'export') {
 
         fclose($out);
         exit;
-    } catch (Throwable $e) {
-        jsonResponse(['ok' => false, 'error' => $e->getMessage()], 500);
     }
-}
 
-jsonResponse(['error' => 'Ação inválida'], 400);
+    jsonResponse(['error' => 'Ação inválida'], 400);
+} catch (PDOException $e) {
+    reportsJsonError('Erro de banco de dados: ' . $e->getMessage(), 500);
+} catch (Throwable $e) {
+    reportsJsonError($e->getMessage(), 500);
+}
 
