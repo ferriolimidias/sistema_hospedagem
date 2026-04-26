@@ -436,6 +436,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    function renderVideoLinksManager(urls = []) {
+        const listEl = document.getElementById('customVideosList');
+        if (!listEl) return;
+        const safeUrls = Array.isArray(urls) ? urls : [];
+        listEl.innerHTML = safeUrls.map((url, idx) => `
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+                <input type="url" class="form-control custom-video-url" data-video-index="${idx}" value="${escapeAttr(url)}" placeholder="https://www.youtube.com/watch?v=...">
+                <button type="button" class="btn btn-danger btn-sm remove-video-btn" data-video-index="${idx}"><i class="ph ph-trash"></i></button>
+            </div>
+        `).join('');
+
+        listEl.querySelectorAll('.remove-video-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const index = parseInt(btn.getAttribute('data-video-index') || '-1', 10);
+                if (index < 0) return;
+                const current = getVideoLinksFromManager();
+                current.splice(index, 1);
+                renderVideoLinksManager(current);
+            });
+        });
+    }
+
+    function getVideoLinksFromManager() {
+        const inputs = Array.from(document.querySelectorAll('#customVideosList .custom-video-url'));
+        return inputs
+            .map((el) => String(el.value || '').trim())
+            .filter((url) => /^https?:\/\//i.test(url));
+    }
+
     function wireGalleryFileInput(scope, inputEl, containerEl, nameEl) {
         if (!inputEl || !containerEl) return;
         inputEl.addEventListener('change', () => {
@@ -1875,6 +1904,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                 </div>
 
+                <!-- Vídeos -->
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
+                        <h3><i class="ph ph-video-camera" style="color: var(--primary);"></i> Seção de Vídeos</h3>
+                        <i class="ph ph-caret-down accordion-icon"></i>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-body-inner">
+                            <form id="videosForm">
+                                <div class="form-group" style="display:flex; align-items:center; gap:0.5rem;">
+                                    <input type="checkbox" id="customVideosEnabled">
+                                    <label for="customVideosEnabled" style="margin:0;">Ativar seção de vídeos no site</label>
+                                </div>
+                                <div id="customVideosList" style="display:flex; flex-direction:column; gap:0.75rem; margin-top:0.75rem;"></div>
+                                <button type="button" class="btn btn-outline btn-sm" id="addVideoBtn"><i class="ph ph-plus"></i> Adicionar</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- WhatsApp Flutuante -->
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
@@ -2238,6 +2287,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await loadAllSettings();
                 await loadCustomizationForm(); // Carrega dados da tabela personalizacao nos campos
                 document.getElementById('saveCustomizationBtn').addEventListener('click', saveCustomizationSettings);
+                const addVideoBtn = document.getElementById('addVideoBtn');
+                if (addVideoBtn) {
+                    addVideoBtn.addEventListener('click', () => {
+                        const current = getVideoLinksFromManager();
+                        current.push('');
+                        renderVideoLinksManager(current);
+                    });
+                }
             }
             if (viewName === 'dashboard') {
                 renderDashboardCalendar();
@@ -3216,6 +3273,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             set('customLocCar', custom.locCar);
             set('customLocMapLink', custom.locMapLink);
             set('customLocMapEmbed', custom.locMapEmbed);
+            const videosEnabledEl = document.getElementById('customVideosEnabled');
+            if (videosEnabledEl) videosEnabledEl.checked = Number(custom.videosEnabled || 0) === 1;
+            renderVideoLinksManager(Array.isArray(custom.videosJson)
+                ? custom.videosJson.map((v) => String((v && v.url) ? v.url : v || '').trim())
+                    .filter(Boolean)
+                : []);
             set('customWaNumber', custom.waNumber);
             set('customWaMessage', custom.waMessage);
             set('customFooterDesc', custom.footerDesc);
@@ -3436,6 +3499,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('customLocCar').value = custom.locCar || '';
                 document.getElementById('customLocMapLink').value = custom.locMapLink || '';
                 document.getElementById('customLocMapEmbed').value = custom.locMapEmbed || '';
+                const videosEnabledEl = document.getElementById('customVideosEnabled');
+                if (videosEnabledEl) videosEnabledEl.checked = Number(custom.videosEnabled || 0) === 1;
+                renderVideoLinksManager(Array.isArray(custom.videosJson)
+                    ? custom.videosJson.map((v) => String((v && v.url) ? v.url : v || '').trim()).filter(Boolean)
+                    : []);
 
                 // WhatsApp Flutuante
                 document.getElementById('customWaNumber').value = custom.waNumber || '';
@@ -3569,6 +3637,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             locCar: document.getElementById('customLocCar').value,
             locMapLink: document.getElementById('customLocMapLink').value,
             locMapEmbed: document.getElementById('customLocMapEmbed').value,
+            videosEnabled: !!(document.getElementById('customVideosEnabled') && document.getElementById('customVideosEnabled').checked),
+            videosJson: getVideoLinksFromManager().map((url) => ({ url })),
             waNumber: document.getElementById('customWaNumber').value,
             waMessage: document.getElementById('customWaMessage').value,
             footerDesc: document.getElementById('customFooterDesc').value,

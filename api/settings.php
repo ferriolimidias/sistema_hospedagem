@@ -76,6 +76,8 @@ switch ($method) {
                             'locCar' => $row['loc_carro'] ?? '',
                             'locMapLink' => $row['loc_map_link'] ?? '',
                             'locMapEmbed' => $row['loc_map_embed'] ?? '',
+                            'videosEnabled' => (int)($row['videos_enabled'] ?? 0),
+                            'videosJson' => !empty($row['videos_json']) ? (json_decode($row['videos_json'], true) ?: []) : [],
                             'waNumber' => $row['wa_numero'] ?? '',
                             'waMessage' => $row['wa_mensagem'] ?? '',
                             'footerDesc' => $row['footer_desc'] ?? '',

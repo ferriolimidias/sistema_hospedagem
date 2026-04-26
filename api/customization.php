@@ -48,6 +48,8 @@ function rowToCustomization($row) {
         'locCar' => $row['loc_carro'] ?? '',
         'locMapLink' => $row['loc_map_link'] ?? '',
         'locMapEmbed' => $row['loc_map_embed'] ?? '',
+        'videosEnabled' => (int)($row['videos_enabled'] ?? 0),
+        'videosJson' => !empty($row['videos_json']) ? (json_decode($row['videos_json'], true) ?: []) : [],
         'waNumber' => $row['wa_numero'] ?? '',
         'waMessage' => $row['wa_mensagem'] ?? '',
         'footerDesc' => $row['footer_desc'] ?? '',
@@ -193,6 +195,23 @@ switch ($method) {
 
         // Sanitização estrita do embed do mapa (permite apenas a tag iframe).
         $locMapEmbed = strip_tags($customization['locMapEmbed'] ?? '', '<iframe>');
+        $videosEnabled = !empty($customization['videosEnabled']) ? 1 : 0;
+        $videosJsonInput = $customization['videosJson'] ?? [];
+        if (is_string($videosJsonInput)) {
+            $decodedVideos = json_decode($videosJsonInput, true);
+            $videosJsonInput = is_array($decodedVideos) ? $decodedVideos : [];
+        }
+        if (!is_array($videosJsonInput)) {
+            $videosJsonInput = [];
+        }
+        $videosJsonClean = [];
+        foreach ($videosJsonInput as $v) {
+            $url = trim((string) ($v['url'] ?? $v ?? ''));
+            if ($url === '') continue;
+            if (!preg_match('/^https?:\/\//i', $url)) continue;
+            $videosJsonClean[] = ['url' => $url];
+        }
+        $videosJson = json_encode($videosJsonClean, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         $params = [
             $customization['heroTitle'] ?? '',
@@ -230,6 +249,8 @@ switch ($method) {
             $customization['locCar'] ?? '',
             $customization['locMapLink'] ?? '',
             $locMapEmbed,
+            $videosEnabled,
+            $videosJson,
             $customization['waNumber'] ?? '',
             $customization['waMessage'] ?? '',
             $customization['footerDesc'] ?? '',
@@ -241,11 +262,11 @@ switch ($method) {
         ];
 
         if ($existing) {
-            $stmt = $pdo->prepare("UPDATE personalizacao SET hero_titulo=?, hero_subtitulo=?, hero_imagens=?, about_titulo=?, about_texto=?, about_imagem=?, chalets_subtitulo=?, chalets_titulo=?, chalets_desc=?, feat1_titulo=?, feat1_desc=?, feat2_titulo=?, feat2_desc=?, feat3_titulo=?, feat3_desc=?, feat4_titulo=?, feat4_desc=?, feat5_titulo=?, feat5_desc=?, testi1_nome=?, testi1_local=?, testi1_texto=?, testi1_imagem=?, testi2_nome=?, testi2_local=?, testi2_texto=?, testi2_imagem=?, testi3_nome=?, testi3_local=?, testi3_texto=?, testi3_imagem=?, loc_endereco=?, loc_carro=?, loc_map_link=?, loc_map_embed=?, wa_numero=?, wa_mensagem=?, footer_desc=?, footer_endereco=?, footer_email=?, footer_telefone=?, footer_copyright=?, favicon=? WHERE id=?");
+            $stmt = $pdo->prepare("UPDATE personalizacao SET hero_titulo=?, hero_subtitulo=?, hero_imagens=?, about_titulo=?, about_texto=?, about_imagem=?, chalets_subtitulo=?, chalets_titulo=?, chalets_desc=?, feat1_titulo=?, feat1_desc=?, feat2_titulo=?, feat2_desc=?, feat3_titulo=?, feat3_desc=?, feat4_titulo=?, feat4_desc=?, feat5_titulo=?, feat5_desc=?, testi1_nome=?, testi1_local=?, testi1_texto=?, testi1_imagem=?, testi2_nome=?, testi2_local=?, testi2_texto=?, testi2_imagem=?, testi3_nome=?, testi3_local=?, testi3_texto=?, testi3_imagem=?, loc_endereco=?, loc_carro=?, loc_map_link=?, loc_map_embed=?, videos_enabled=?, videos_json=?, wa_numero=?, wa_mensagem=?, footer_desc=?, footer_endereco=?, footer_email=?, footer_telefone=?, footer_copyright=?, favicon=? WHERE id=?");
             $params[] = $existing['id'];
             $stmt->execute($params);
         } else {
-            $stmt = $pdo->prepare("INSERT INTO personalizacao (hero_titulo, hero_subtitulo, hero_imagens, about_titulo, about_texto, about_imagem, chalets_subtitulo, chalets_titulo, chalets_desc, feat1_titulo, feat1_desc, feat2_titulo, feat2_desc, feat3_titulo, feat3_desc, feat4_titulo, feat4_desc, feat5_titulo, feat5_desc, testi1_nome, testi1_local, testi1_texto, testi1_imagem, testi2_nome, testi2_local, testi2_texto, testi2_imagem, testi3_nome, testi3_local, testi3_texto, testi3_imagem, loc_endereco, loc_carro, loc_map_link, loc_map_embed, wa_numero, wa_mensagem, footer_desc, footer_endereco, footer_email, footer_telefone, footer_copyright, favicon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt = $pdo->prepare("INSERT INTO personalizacao (hero_titulo, hero_subtitulo, hero_imagens, about_titulo, about_texto, about_imagem, chalets_subtitulo, chalets_titulo, chalets_desc, feat1_titulo, feat1_desc, feat2_titulo, feat2_desc, feat3_titulo, feat3_desc, feat4_titulo, feat4_desc, feat5_titulo, feat5_desc, testi1_nome, testi1_local, testi1_texto, testi1_imagem, testi2_nome, testi2_local, testi2_texto, testi2_imagem, testi3_nome, testi3_local, testi3_texto, testi3_imagem, loc_endereco, loc_carro, loc_map_link, loc_map_embed, videos_enabled, videos_json, wa_numero, wa_mensagem, footer_desc, footer_endereco, footer_email, footer_telefone, footer_copyright, favicon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute($params);
         }
 

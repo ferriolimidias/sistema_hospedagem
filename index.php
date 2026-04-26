@@ -33,6 +33,7 @@ $c = [
     'feat1Title' => '', 'feat1Desc' => '', 'feat2Title' => '', 'feat2Desc' => '',
     'feat3Title' => '', 'feat3Desc' => '', 'feat4Title' => '', 'feat4Desc' => '',
     'feat5Title' => '', 'feat5Desc' => '',
+    'videosEnabled' => 0, 'videosJson' => [],
     'testi1Name' => '', 'testi1Location' => '', 'testi1Text' => '', 'testi1Image' => '',
     'testi2Name' => '', 'testi2Location' => '', 'testi2Text' => '', 'testi2Image' => '',
     'testi3Name' => '', 'testi3Location' => '', 'testi3Text' => '', 'testi3Image' => '',
@@ -60,6 +61,9 @@ try {
         $c['feat3Title'] = $row['feat3_titulo'] ?? ''; $c['feat3Desc'] = $row['feat3_desc'] ?? '';
         $c['feat4Title'] = $row['feat4_titulo'] ?? ''; $c['feat4Desc'] = $row['feat4_desc'] ?? '';
         $c['feat5Title'] = $row['feat5_titulo'] ?? ''; $c['feat5Desc'] = $row['feat5_desc'] ?? '';
+        $c['videosEnabled'] = (int)($row['videos_enabled'] ?? 0);
+        $videos = !empty($row['videos_json']) ? json_decode($row['videos_json'], true) : [];
+        $c['videosJson'] = is_array($videos) ? $videos : [];
         $c['testi1Name'] = $row['testi1_nome'] ?? ''; $c['testi1Location'] = $row['testi1_local'] ?? '';
         $c['testi1Text'] = $row['testi1_texto'] ?? ''; $c['testi1Image'] = $row['testi1_imagem'] ?? '';
         $c['testi2Name'] = $row['testi2_nome'] ?? ''; $c['testi2Location'] = $row['testi2_local'] ?? '';
@@ -257,6 +261,16 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                     <p id="clientFeat5Desc"><?= $h($c['feat5Desc']) ?></p>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <section class="section bg-light" id="videos-section" style="display: <?= (int)$c['videosEnabled'] === 1 ? 'block' : 'none' ?>;">
+        <div class="container">
+            <div class="section-header text-center">
+                <span class="subtitle">Mídia</span>
+                <h2 class="section-title">Vídeos</h2>
+            </div>
+            <div class="chalets-grid" id="videos-grid"></div>
         </div>
     </section>
 
@@ -527,6 +541,8 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     <script>
     window.__INITIAL_CUSTOMIZATION = <?= json_encode([
         'heroImages' => $c['heroImages'],
+        'videosEnabled' => $c['videosEnabled'],
+        'videosJson' => $c['videosJson'],
         'waNumber' => $c['waNumber'],
         'waMessage' => $c['waMessage'],
         'favicon' => $c['favicon']
@@ -537,7 +553,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.autoplay.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
-    <script src="script.js?v=15"></script>
+    <script src="script.js?v=18"></script>
 </body>
 
 </html>

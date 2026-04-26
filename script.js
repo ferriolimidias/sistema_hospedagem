@@ -236,6 +236,46 @@ document.addEventListener('DOMContentLoaded', () => {
         </a>`;
     }
 
+    function extractYoutubeId(url) {
+        const raw = String(url || '').trim();
+        if (!raw) return '';
+        const match = raw.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})/i);
+        return match ? match[1] : '';
+    }
+
+    function renderVideosSection(videosEnabled, videosJson) {
+        const section = document.getElementById('videos-section');
+        const grid = document.getElementById('videos-grid');
+        if (!section || !grid) return;
+
+        const enabled = Number(videosEnabled || 0) === 1;
+        const list = Array.isArray(videosJson) ? videosJson : [];
+        const valid = list
+            .map((item) => String((item && item.url) ? item.url : item || '').trim())
+            .filter((url) => /^https?:\/\//i.test(url))
+            .map((url) => ({ url, id: extractYoutubeId(url) }))
+            .filter((item) => item.id);
+
+        if (!enabled || valid.length === 0) {
+            section.style.display = 'none';
+            grid.innerHTML = '';
+            return;
+        }
+
+        section.style.display = 'block';
+        grid.innerHTML = valid.map((video, idx) => `
+            <a href="${video.url}" data-fancybox="videos" class="video-card chalet-card glass-card">
+                <div class="video-thumb">
+                    <img src="https://img.youtube.com/vi/${video.id}/maxresdefault.jpg" alt="Vídeo ${idx + 1}" loading="lazy" onerror="this.onerror=null;this.src='https://img.youtube.com/vi/${video.id}/hqdefault.jpg';">
+                    <div class="video-overlay"></div>
+                    <div class="video-play-icon" aria-hidden="true">
+                        <i class="ph-fill ph-play-circle"></i>
+                    </div>
+                </div>
+            </a>
+        `).join('');
+    }
+
     /* =========================================
        NAVBAR SCROLL EFFECT
        ========================================= */
@@ -1621,6 +1661,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if ($('locCar') && custom.locCar) $('locCar').innerHTML = custom.locCar;
                 if ($('locMapLink') && custom.locMapLink) $('locMapLink').href = custom.locMapLink;
                 if ($('map-container')) $('map-container').innerHTML = custom.locMapEmbed || '';
+                renderVideosSection(custom.videosEnabled, custom.videosJson);
 
                 // Floating WhatsApp
                 if (custom.waNumber) {
@@ -1649,7 +1690,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    let heroCarouselInstance = null;
+    let heroSlideshowTimer = null;
 
     function normalizeHeroImagePath(src) {
         const raw = String(src || '').trim();
@@ -1681,6 +1722,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function initHeroCarousel(images) {
         const container = document.getElementById('heroCarousel');
         if (!container) return;
+        const heroSection = document.getElementById('home');
+        const heroOverlay = document.querySelector('.hero-overlay');
+        const heroContent = document.querySelector('.hero-content');
+
+        if (heroSection) {
+            heroSection.style.position = 'relative';
+            heroSection.style.overflow = 'hidden';
+        }
+        if (heroOverlay) {
+            heroOverlay.style.zIndex = '2';
+        }
+        if (heroContent) {
+            heroContent.style.position = 'relative';
+            heroContent.style.zIndex = '3';
+        }
 
         const runtimeImages = Array.isArray(images)
             ? images.map(normalizeHeroImagePath).filter(isUsableImageSrc)
@@ -1688,43 +1744,62 @@ document.addEventListener('DOMContentLoaded', () => {
         const bridgeImages = getHeroImagesFromBridge();
         const slides = runtimeImages.length ? runtimeImages : bridgeImages;
 
+        if (heroSlideshowTimer) {
+            clearInterval(heroSlideshowTimer);
+            heroSlideshowTimer = null;
+        }
+
         container.innerHTML = '';
+        container.style.position = 'absolute';
+        container.style.top = '0';
+        container.style.left = '0';
+        container.style.width = '100%';
+        container.style.height = '100%';
+        container.style.overflow = 'hidden';
+        container.style.zIndex = '1';
+
         if (slides.length > 0) {
             slides.forEach((src) => {
-                container.insertAdjacentHTML('beforeend', `<div class="f-carousel__slide hero-slide"><img src="${src}" alt="Imagem de destaque"></div>`);
+                const img = document.createElement('img');
+                img.src = src;
+                img.alt = 'Imagem de destaque';
+                img.style.position = 'absolute';
+                img.style.top = '0';
+                img.style.left = '0';
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'cover';
+                img.style.opacity = '0';
+                img.style.transition = 'opacity 1.5s ease-in-out';
+                img.style.zIndex = '1';
+                container.appendChild(img);
             });
         } else {
-            container.innerHTML = `<div class="f-carousel__slide hero-slide image-fallback" style="background: var(--secondary-color);"></div>`;
+            container.innerHTML = `<div class="hero-slide image-fallback" style="position:absolute; inset:0; background: var(--secondary-color); z-index:1;"></div>`;
+            return;
         }
 
-        if (heroCarouselInstance && typeof heroCarouselInstance.destroy === 'function') {
-            heroCarouselInstance.destroy();
-            heroCarouselInstance = null;
-        }
+        const heroImgs = Array.from(container.querySelectorAll('img'));
+        if (!heroImgs.length) return;
+        heroImgs[0].style.opacity = '1';
 
-        if (window.Carousel && typeof window.Carousel === 'function') {
-            const hasManySlides = slides.length > 1;
-            const plugins = (window.Carousel.Plugins && window.Carousel.Plugins.Autoplay)
-                ? { Autoplay: window.Carousel.Plugins.Autoplay }
-                : {};
+        if (heroImgs.length === 1) return;
 
-            heroCarouselInstance = new window.Carousel(container, {
-                infinite: hasManySlides,
-                center: false,
-                Navigation: hasManySlides,
-                Dots: hasManySlides,
-                transition: "slide",
-                Autoplay: hasManySlides ? {
-                    timeout: 5000,
-                    showProgress: false
-                } : false
-            }, plugins);
-        }
+        let currentIndex = 0;
+        heroSlideshowTimer = setInterval(() => {
+            const nextIndex = (currentIndex + 1) % heroImgs.length;
+            heroImgs[currentIndex].style.opacity = '0';
+            heroImgs[nextIndex].style.opacity = '1';
+            currentIndex = nextIndex;
+        }, 4000);
     }
 
     // Initialize - usar dados iniciais do PHP se disponível, depois carregar settings (logo/social) e chalés
     (async function init() {
         initHeroCarousel([]);
+        if (window.__INITIAL_CUSTOMIZATION) {
+            renderVideosSection(window.__INITIAL_CUSTOMIZATION.videosEnabled, window.__INITIAL_CUSTOMIZATION.videosJson);
+        }
         await loadSettings();
         loadBookingOptions();
         loadChalets();
@@ -1821,6 +1896,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.Fancybox && typeof window.Fancybox.bind === 'function') {
         window.Fancybox.bind('[data-fancybox^="chalet-"]', {
             Toolbar: { display: { left: ["infobar"], middle: [], right: ["iterateZoom", "close"] } }
+        });
+        window.Fancybox.bind('[data-fancybox="videos"]', {
+            Toolbar: { display: { left: ["infobar"], middle: [], right: ["fullscreen", "close"] } }
         });
     }
 
