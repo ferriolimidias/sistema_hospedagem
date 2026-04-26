@@ -2359,6 +2359,287 @@ document.addEventListener('DOMContentLoaded', async () => {
             setTimeout(() => toast.remove(), 220);
         }, 4200);
     }
+    let reportChartInstance = null;
+
+    function formatIsoDate(d) {
+        const dt = new Date(d);
+        if (isNaN(dt.getTime())) return '';
+        const y = dt.getFullYear();
+        const m = String(dt.getMonth() + 1).padStart(2, '0');
+        const day = String(dt.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    function openDashboardReportsModal() {
+        const host = document.getElementById('modalContainer') || document.body;
+        const today = new Date();
+        const startDefault = new Date(today.getFullYear(), today.getMonth(), 1);
+        const endDefault = today;
+        host.innerHTML = `
+            <div class="modal-overlay" id="reportModalOverlay" onclick="if(event.target === this) this.remove()">
+                <div class="modal-content" style="max-width: 980px; max-height: 90vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <h3><i class="ph ph-chart-line-up"></i> Relatórios Gerenciais</h3>
+                        <button class="close-btn" onclick="document.getElementById('reportModalOverlay').remove()"><i class="ph ph-x"></i></button>
+                    </div>
+                    <div id="reportQuickRanges" style="display:flex; gap:.45rem; flex-wrap:wrap; margin-bottom:.7rem;">
+                        <button type="button" class="btn report-range-btn" data-range="today" style="padding:.35rem .6rem; font-size:.78rem; background:#fff; border:1px solid var(--border-color); color:#374151;">Hoje</button>
+                        <button type="button" class="btn report-range-btn" data-range="last7" style="padding:.35rem .6rem; font-size:.78rem; background:#fff; border:1px solid var(--border-color); color:#374151;">Últimos 7 Dias</button>
+                        <button type="button" class="btn report-range-btn" data-range="thisMonth" style="padding:.35rem .6rem; font-size:.78rem; background:#fff; border:1px solid var(--border-color); color:#374151;">Este Mês</button>
+                        <button type="button" class="btn report-range-btn" data-range="lastMonth" style="padding:.35rem .6rem; font-size:.78rem; background:#fff; border:1px solid var(--border-color); color:#374151;">Mês Passado</button>
+                        <button type="button" class="btn report-range-btn" data-range="thisYear" style="padding:.35rem .6rem; font-size:.78rem; background:#fff; border:1px solid var(--border-color); color:#374151;">Este Ano</button>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr auto auto; gap:.6rem; align-items:end; margin-bottom:1rem;">
+                        <div class="form-group" style="margin:0;">
+                            <label>Início</label>
+                            <input type="date" id="reportStartDate" class="form-control" value="${formatIsoDate(startDefault)}">
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label>Fim</label>
+                            <input type="date" id="reportEndDate" class="form-control" value="${formatIsoDate(endDefault)}">
+                        </div>
+                        <button type="button" class="btn btn-primary" id="btn-report-refresh"><i class="ph ph-arrows-clockwise"></i> Atualizar</button>
+                        <button type="button" class="btn" id="btn-report-export" style="background:#0f766e;"><i class="ph ph-download-simple"></i> 📥 Baixar Planilha Excel/CSV</button>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:.75rem; margin-bottom:1rem;">
+                        <div class="card stat-card" style="margin:0;">
+                            <div class="stat-icon primary"><i class="ph ph-house-line"></i></div>
+                            <div class="stat-info">
+                                <h3>Total Hospedagem</h3>
+                                <p id="reportStayTotal">R$ 0,00</p>
+                            </div>
+                        </div>
+                        <div class="card stat-card" style="margin:0;">
+                            <div class="stat-icon info"><i class="ph ph-drop"></i></div>
+                            <div class="stat-info">
+                                <h3>Total Consumo</h3>
+                                <p id="reportConsumptionTotal">R$ 0,00</p>
+                            </div>
+                        </div>
+                        <div class="card stat-card" style="margin:0;">
+                            <div class="stat-icon success"><i class="ph ph-currency-circle-dollar"></i></div>
+                            <div class="stat-info">
+                                <h3>Total Geral</h3>
+                                <p id="reportGrandTotal">R$ 0,00</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin:0;">
+                        <h3 style="margin:0 0 .75rem 0;">Evolução Mensal (Hospedagem x Consumo)</h3>
+                        <div id="reportChart" style="min-height: 320px;"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const quickButtons = Array.from(document.querySelectorAll('#reportQuickRanges .report-range-btn'));
+        function setQuickButtonActive(activeKey) {
+            quickButtons.forEach((btn) => {
+                const isActive = btn.getAttribute('data-range') === activeKey;
+                btn.style.background = isActive ? '#2563eb' : '#fff';
+                btn.style.color = isActive ? '#fff' : '#374151';
+                btn.style.borderColor = isActive ? '#2563eb' : 'var(--border-color)';
+            });
+        }
+
+        function computeQuickRange(key) {
+            const now = new Date();
+            const todayIso = formatIsoDate(now);
+            if (key === 'today') {
+                return { start: todayIso, end: todayIso };
+            }
+            if (key === 'last7') {
+                const start = new Date(now);
+                start.setDate(start.getDate() - 6);
+                return { start: formatIsoDate(start), end: todayIso };
+            }
+            if (key === 'thisMonth') {
+                const start = new Date(now.getFullYear(), now.getMonth(), 1);
+                const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                return { start: formatIsoDate(start), end: formatIsoDate(end) };
+            }
+            if (key === 'lastMonth') {
+                const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const end = new Date(now.getFullYear(), now.getMonth(), 0);
+                return { start: formatIsoDate(start), end: formatIsoDate(end) };
+            }
+            if (key === 'thisYear') {
+                const start = new Date(now.getFullYear(), 0, 1);
+                const end = new Date(now.getFullYear(), 11, 31);
+                return { start: formatIsoDate(start), end: formatIsoDate(end) };
+            }
+            return { start: formatIsoDate(startDefault), end: formatIsoDate(endDefault) };
+        }
+
+        async function loadReportSummary() {
+            const startDate = (document.getElementById('reportStartDate')?.value || '').trim();
+            const endDate = (document.getElementById('reportEndDate')?.value || '').trim();
+            const params = new URLSearchParams({
+                action: 'summary',
+                start_date: startDate,
+                end_date: endDate
+            });
+            const req = await fetch(`../api/reports.php?${params.toString()}`, {
+                headers: { 'X-Internal-Key': window.internalKey || internalApiKey }
+            });
+            const data = await req.json().catch(() => ({}));
+            if (!req.ok || !data.ok) {
+                throw new Error(data.error || ('HTTP ' + req.status));
+            }
+
+            const fmt = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const stayEl = document.getElementById('reportStayTotal');
+            const consEl = document.getElementById('reportConsumptionTotal');
+            const grandEl = document.getElementById('reportGrandTotal');
+            if (stayEl) stayEl.textContent = fmt(data.hospedagem_total || 0);
+            if (consEl) consEl.textContent = fmt(data.consumo_total || 0);
+            if (grandEl) grandEl.textContent = fmt(data.geral_total || 0);
+
+            const months = Array.isArray(data.dados_mensais) ? data.dados_mensais : [];
+            const categories = months.map((m) => m.month || '');
+            const seriesStay = months.map((m) => Number(m.hospedagem || 0));
+            const seriesConsumption = months.map((m) => Number(m.consumo || 0));
+
+            const chartEl = document.getElementById('reportChart');
+            if (!chartEl) return;
+            if (reportChartInstance) {
+                reportChartInstance.destroy();
+                reportChartInstance = null;
+            }
+            if (typeof window.ApexCharts !== 'function') {
+                chartEl.innerHTML = '<div class="dash-empty-neutral">Biblioteca de gráficos não encontrada.</div>';
+                return;
+            }
+            reportChartInstance = new window.ApexCharts(chartEl, {
+                chart: { type: 'bar', height: 320, stacked: true, toolbar: { show: false } },
+                series: [
+                    { name: 'Hospedagem', data: seriesStay },
+                    { name: 'Consumo', data: seriesConsumption }
+                ],
+                xaxis: { categories },
+                yaxis: {
+                    labels: {
+                        formatter: (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0 })
+                    }
+                },
+                tooltip: {
+                    y: { formatter: (v) => 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }
+                },
+                colors: ['#2563eb', '#0ea5e9'],
+                legend: { position: 'top' },
+                plotOptions: { bar: { borderRadius: 4, columnWidth: '55%' } }
+            });
+            reportChartInstance.render();
+        }
+
+        const refreshBtn = document.getElementById('btn-report-refresh');
+        const startInput = document.getElementById('reportStartDate');
+        const endInput = document.getElementById('reportEndDate');
+
+        async function applyQuickRange(rangeKey) {
+            const range = computeQuickRange(rangeKey);
+            if (startInput) startInput.value = range.start;
+            if (endInput) endInput.value = range.end;
+            setQuickButtonActive(rangeKey);
+            if (refreshBtn) {
+                try {
+                    refreshBtn.disabled = true;
+                    refreshBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Atualizando...';
+                    await loadReportSummary();
+                } finally {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerHTML = '<i class="ph ph-arrows-clockwise"></i> Atualizar';
+                }
+            } else {
+                await loadReportSummary();
+            }
+        }
+
+        quickButtons.forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const rangeKey = btn.getAttribute('data-range') || 'thisMonth';
+                try {
+                    await applyQuickRange(rangeKey);
+                } catch (e) {
+                    showAdminInfoToast('Falha ao aplicar atalho: ' + (e.message || e));
+                }
+            });
+        });
+
+        // Alteração manual de datas remove destaque do atalho ativo.
+        if (startInput) startInput.addEventListener('change', () => setQuickButtonActive(''));
+        if (endInput) endInput.addEventListener('change', () => setQuickButtonActive(''));
+
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async () => {
+                try {
+                    refreshBtn.disabled = true;
+                    refreshBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Atualizando...';
+                    await loadReportSummary();
+                } catch (e) {
+                    showAdminInfoToast('Falha ao atualizar relatório: ' + (e.message || e));
+                } finally {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerHTML = '<i class="ph ph-arrows-clockwise"></i> Atualizar';
+                }
+            });
+        }
+
+        const exportBtn = document.getElementById('btn-report-export');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', async () => {
+                const startDate = (document.getElementById('reportStartDate')?.value || '').trim();
+                const endDate = (document.getElementById('reportEndDate')?.value || '').trim();
+                const params = new URLSearchParams({
+                    action: 'export',
+                    start_date: startDate,
+                    end_date: endDate
+                });
+                try {
+                    exportBtn.disabled = true;
+                    exportBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Gerando...';
+                    const req = await fetch(`../api/reports.php?${params.toString()}`, {
+                        headers: { 'X-Internal-Key': window.internalKey || internalApiKey }
+                    });
+                    if (!req.ok) {
+                        const err = await req.json().catch(() => ({}));
+                        throw new Error(err.error || ('HTTP ' + req.status));
+                    }
+                    const blob = await req.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'relatorio_gerencial.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 2000);
+                } catch (e) {
+                    showAdminInfoToast('Falha ao exportar relatório: ' + (e.message || e));
+                } finally {
+                    exportBtn.disabled = false;
+                    exportBtn.innerHTML = '<i class="ph ph-download-simple"></i> 📥 Baixar Planilha Excel/CSV';
+                }
+            });
+        }
+
+        const overlay = document.getElementById('reportModalOverlay');
+        if (overlay) {
+            overlay.addEventListener('remove', () => {
+                if (reportChartInstance) {
+                    reportChartInstance.destroy();
+                    reportChartInstance = null;
+                }
+            });
+        }
+
+        loadReportSummary().catch((e) => {
+            showAdminInfoToast('Falha ao carregar relatório: ' + (e.message || e));
+        });
+        setQuickButtonActive('thisMonth');
+    }
 
     // View Renderer
     async function renderView(viewName) {
@@ -2443,7 +2724,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const dashboardReportBtn = document.getElementById('btn-dashboard-report');
                 if (dashboardReportBtn) {
                     dashboardReportBtn.addEventListener('click', () => {
-                        showAdminInfoToast('🚧 Módulo em Desenvolvimento: Os relatórios gerenciais estarão disponíveis nas próximas atualizações.');
+                        openDashboardReportsModal();
                     });
                 }
                 // Link "Veja todas" dos widgets → leva para a view de Reservas.
