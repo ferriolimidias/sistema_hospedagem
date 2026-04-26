@@ -1581,16 +1581,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <span>PIX Manual via WhatsApp <small style="color:#666; font-weight:400;">— comprovante validado pelo administrador</small></span>
                         </label>
                         <div style="margin-bottom: 0.75rem; padding: 0.75rem 1rem; border: 1px solid #d6f0de; background: #f4fbf6; border-radius: 6px; font-size:0.85rem; color:#1d5c34;">
-                            Ao selecionar este método, o hóspede é redirecionado ao WhatsApp com a chave PIX e as instruções abaixo. A reserva entra como <strong>Pendente</strong> até que você confirme o pagamento manualmente.
+                            Ao selecionar este método, o sistema envia automaticamente ao hóspede a mensagem configurada abaixo via Evolution API. A reserva entra como <strong>Pendente</strong> até que você confirme o pagamento manualmente.
                         </div>
                         <div class="form-group">
                             <label>Chave PIX Principal</label>
                             <input type="text" class="form-control" id="manualPixKey" placeholder="CPF, e-mail, telefone ou chave aleatória">
                         </div>
                         <div class="form-group">
-                            <label>Instruções enviadas ao hóspede (WhatsApp)</label>
+                            <label>Template da Mensagem Automática de PIX/WhatsApp</label>
                             <textarea class="form-control" id="manualPixInstructions" rows="3" placeholder="Ex.: Olá! Acabei de pré-reservar pelo site. Segue o comprovante do PIX."></textarea>
-                            <small style="display:block; margin-top:0.35rem; color:#777;">Este texto é usado como mensagem inicial do WhatsApp. Dados da reserva (nome, datas, valor) são acrescentados automaticamente.</small>
+                            <small style="display:block; margin-top:0.35rem; color:#777;">Mensagem enviada automaticamente pelo servidor. Variáveis suportadas: {nome}, {pousada}, {checkin}, {checkout}, {total}, {id}, {chale}.</small>
                         </div>
                     </div>
 

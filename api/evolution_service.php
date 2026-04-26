@@ -157,6 +157,30 @@ function evo_message_for_recipient(PDO $pdo, array $reservation, string $event, 
     $checkinBr = $fmt($checkin);
     $checkoutBr = $fmt($checkout);
 
+    if ($event === 'reserva_pendente') {
+        $manualTemplate = trim(evo_setting($pdo, 'manual_pix_instructions', ''));
+        if ($manualTemplate === '') {
+            $manualTemplate = "Olá, {nome}! Recebemos sua pré-reserva em {pousada}.\n"
+                . "Check-in: {checkin}\nCheck-out: {checkout}\nTotal da reserva: {total}\n\n"
+                . "Envie o comprovante para concluir a confirmação.";
+        }
+        $replacements = [
+            '{nome}' => $name,
+            '{pousada}' => $brand,
+            '{checkin}' => $checkinBr,
+            '{checkout}' => $checkoutBr,
+            '{total}' => $totalText,
+            '{id}' => (string)($reservation['id'] ?? ''),
+            '{chale}' => $chaletName,
+            '{chalet}' => $chaletName,
+        ];
+        $msg = strtr($manualTemplate, $replacements);
+        if ($recipient === 'owner') {
+            $msg .= "\n\n🔔 Reserva pendente de pagamento manual registrada no sistema.";
+        }
+        return $msg;
+    }
+
     if ($event === 'reserva') {
         if ($recipient === 'owner') {
             return "🔔 *NOVA RESERVA RECEBIDA*\n\n"
@@ -225,10 +249,10 @@ function evo_message_for_recipient(PDO $pdo, array $reservation, string $event, 
 
 function evo_notify_event(PDO $pdo, array $reservation, string $event): array
 {
-    $toggleKey = $event === 'reserva'
+    $toggleKey = in_array($event, ['reserva', 'reserva_pendente'], true)
         ? 'evo_notify_reserva'
         : ($event === 'checkin' ? 'evo_notify_checkin' : 'evo_notify_checkout');
-    if (in_array($event, ['reserva', 'checkin', 'checkout'], true) && !evo_flag($pdo, $toggleKey, true)) {
+    if (in_array($event, ['reserva', 'reserva_pendente', 'checkin', 'checkout'], true) && !evo_flag($pdo, $toggleKey, true)) {
         return ['ok' => true, 'skipped' => true, 'reason' => 'toggle_off'];
     }
 
@@ -238,7 +262,7 @@ function evo_notify_event(PDO $pdo, array $reservation, string $event): array
         $targets[] = ['recipient' => 'guest', 'number' => $guestPhone];
     }
 
-    if (in_array($event, ['reserva', 'payment_confirmed', 'balance_paid'], true)) {
+    if (in_array($event, ['reserva', 'reserva_pendente', 'payment_confirmed', 'balance_paid'], true)) {
         $ownerPhone = evo_phone_normalize(evo_setting($pdo, 'owner_whatsapp', ''));
         if ($ownerPhone !== '') {
             $targets[] = ['recipient' => 'owner', 'number' => $ownerPhone];

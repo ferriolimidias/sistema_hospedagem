@@ -621,7 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function loadBookingOptions() {
-        const defaultMethods = { mercadopago_active: true, manual_pix_active: false, mp_configured: false, manual_pix_key: '', manual_instructions: '', wa_number: '' };
+        const defaultMethods = { mercadopago_active: true, manual_pix_active: false, mp_configured: false, wa_number: '' };
         try {
             const res = await fetch('api/booking_options.php');
             const data = await res.json();
@@ -1293,8 +1293,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 2. Ramificação por método de pagamento
             if (paymentMethod === 'manual') {
-                submitBtn.textContent = 'Reserva criada...';
-                window.location.href = `index.php?payment_pending=true&reservation_id=${reservationId}&manual=1`;
+                submitBtn.textContent = 'Reserva realizada';
+                submitBtn.disabled = false;
+                const attendantUrl = buildAttendantFallbackLink(reservationId);
+                showReservationFeedback(
+                    'Reserva realizada com sucesso! 🚀 Enviamos os detalhes e as instruções de pagamento agora mesmo para o seu WhatsApp.',
+                    attendantUrl
+                );
+                if (bookingModal) bookingModal.classList.remove('show');
                 return;
             }
 
@@ -1311,44 +1317,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 submitBtn.textContent = 'Redirecionando...';
             }
         });
-    }
-
-    /* =========================================
-       FLUXO MANUAL (PIX via WhatsApp)
-       ========================================= */
-    function buildManualPaymentWhatsAppLink(reservationId, reserva) {
-        const pm = (bookingOptions && bookingOptions.payment_methods) || {};
-        const rawNumber = String(pm.wa_number || '').replace(/[^\d]/g, '');
-        if (!rawNumber) return '';
-
-        const policy = getPaymentPolicyByCode(reserva.paymentRule || 'full');
-        const totalStr = (reserva.total || '').trim() || 'R$ 0,00';
-        const totalNumMatch = totalStr.replace(/\./g, '').replace(',', '.').match(/[\d.]+/);
-        const totalNum = totalNumMatch ? parseFloat(totalNumMatch[0]) : 0;
-        const agoraNum = Math.round((totalNum * Number(policy.percent_now || 100) / 100) * 100) / 100;
-        const fmt = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-
-        const pixKey = String(pm.manual_pix_key || '').trim();
-        const customIntro = String(pm.manual_instructions || '').trim();
-
-        const lines = [];
-        if (customIntro) lines.push(customIntro, '');
-        lines.push(
-            `Reserva #${reservationId}`,
-            `Hóspede: ${reserva.clientName}`,
-            `Hospedagem: ${reserva.chaletName}`,
-            `Check-in: ${reserva.checkin}  |  Check-out: ${reserva.checkout}`,
-            `Total da reserva: ${fmt(totalNum)}`,
-            `${policy.label} — valor agora: ${fmt(agoraNum)}`,
-            ''
-        );
-        if (pixKey) {
-            lines.push('Chave PIX para o sinal:', pixKey, '');
-        }
-        lines.push('Após transferir, envie o comprovante por aqui para confirmarmos. Obrigado!');
-
-        const text = encodeURIComponent(lines.join('\n'));
-        return `https://wa.me/${rawNumber}?text=${text}`;
     }
 
     /* =========================================
@@ -2011,33 +1979,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (toast) toast.classList.remove('show');
             }
         })();
-    } else if ((urlParams.get('payment_failed') === 'true' || urlParams.get('payment_pending') === 'true') && urlParams.get('reservation_id')) {
+    } else if (urlParams.get('payment_failed') === 'true' && urlParams.get('reservation_id')) {
         const resId = urlParams.get('reservation_id');
-        const isManualPending = urlParams.get('manual') === '1';
         window.history.replaceState({}, document.title, window.location.pathname);
 
-        if (isManualPending) {
-            const attendantUrl = buildAttendantFallbackLink(resId);
-            showReservationFeedback(
-                'Sua solicitação foi registrada. A confirmação está sendo enviada para o WhatsApp informado no cadastro.',
-                attendantUrl
-            );
-        } else {
-            // Cancelar reserva para liberar as datas para outras pessoas
-            (async () => {
-                try {
-                    await fetch(`api/reservations.php?id=${resId}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ status: 'Cancelada' })
-                    });
-                } catch (e) {
-                    console.error("Erro ao cancelar reserva", e);
-                }
-            })();
+        // Cancelar reserva para liberar as datas para outras pessoas
+        (async () => {
+            try {
+                await fetch(`api/reservations.php?id=${resId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'Cancelada' })
+                });
+            } catch (e) {
+                console.error("Erro ao cancelar reserva", e);
+            }
+        })();
 
-            alert("O pagamento não foi concluído. A reserva foi cancelada e as datas estão disponíveis para nova reserva.");
-        }
+        alert("O pagamento não foi concluído. A reserva foi cancelada e as datas estão disponíveis para nova reserva.");
     }
 });
 

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/booking_extras.php';
 
 function reportsJsonError(string $message, int $status = 500): void
 {

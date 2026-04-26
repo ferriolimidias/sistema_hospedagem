@@ -333,9 +333,12 @@ switch ($method) {
                     'checkin_date' => (string) $checkin,
                     'checkout_date' => (string) $checkout,
                     'total_amount' => (float) $total,
+                    'payment_method' => (string) $paymentMethod,
+                    'payment_rule' => (string) $payment_rule,
                     'fnrh_access_token' => (string) $fnrhToken,
                 ];
-                evo_notify_event($pdo, $eventRes, 'reserva');
+                $notifyEvent = $paymentMethod === 'manual' ? 'reserva_pendente' : 'reserva';
+                evo_notify_event($pdo, $eventRes, $notifyEvent);
             } catch (Throwable $e) {
                 error_log('[reservations] evo reserva notify fail: ' . $e->getMessage());
             }
