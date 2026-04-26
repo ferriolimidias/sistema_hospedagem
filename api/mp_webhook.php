@@ -10,6 +10,7 @@
  */
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/contract_service.php';
+require_once __DIR__ . '/evolution_service.php';
 
 function loadPaymentPolicies(PDO $pdo): array
 {
@@ -153,48 +154,25 @@ if ($stmt->rowCount() > 0) {
         error_log('MP Webhook: Falha ao gerar contrato da reserva #' . $reservationId . ' - ' . $e->getMessage());
     }
 
-    // Buscar dados da reserva e enviar WhatsApp
+    // Buscar dados da reserva e enviar WhatsApp via evolution_service (fonte única).
     $stmtRes = $pdo->prepare("SELECT r.*, c.name as chalet_name FROM reservations r LEFT JOIN chalets c ON r.chalet_id = c.id WHERE r.id = ?");
     $stmtRes->execute([$reservationId]);
     $res = $stmtRes->fetch();
     if ($res) {
-        $totalNum = (float) $res['total_amount'];
-        $policyRes = findPaymentPolicyByCode($policies, strtolower((string)($res['payment_rule'] ?? 'full')));
-        $pctRes = (float)($policyRes['percent_now'] ?? 100);
-        $valorPagoNum = ($totalNum * $pctRes) / 100;
-        $condicao = trim((string)($policyRes['label'] ?? ''));
-        if ($condicao === '') {
-            $condicao = $pctRes >= 100 ? 'Pagamento antecipado integral' : 'Pagamento parcial na reserva';
-        }
-        $webhookPayload = [
-            'clientName' => $res['guest_name'],
-            'clientPhone' => $res['guest_phone'],
-            'chaletName' => $res['chalet_name'] ?? '',
-            'checkin' => $res['checkin_date'],
-            'checkout' => $res['checkout_date'],
-            'total' => 'R$ ' . number_format($totalNum, 2, ',', '.'),
-            'valorPago' => 'R$ ' . number_format($valorPagoNum, 2, ',', '.'),
-            'condicao' => $condicao,
-            'paymentRule' => $res['payment_rule'] ?? 'full',
-            'id' => $res['id']
-        ];
-        // Enviar WhatsApp via send_webhook
-        $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-        $apiPath = dirname($_SERVER['SCRIPT_NAME'] ?? '/api');
-        $webhookUrl = rtrim($base . $apiPath, '/') . '/send_webhook.php';
-        $ctx = stream_context_create([
-            'http' => [
-                'method' => 'POST',
-                'header' => "Content-Type: application/json\r\n",
-                'content' => json_encode($webhookPayload),
-                'timeout' => 10
-            ]
-        ]);
-        $webhookResult = @file_get_contents($webhookUrl, false, $ctx);
-        if ($webhookResult === false) {
-            error_log('MP Webhook: falha ao chamar send_webhook para reserva #' . $reservationId);
-        } else {
-            error_log('MP Webhook: send_webhook executado com sucesso para reserva #' . $reservationId);
+        try {
+            evo_notify_event($pdo, [
+                'id' => (int)($res['id'] ?? 0),
+                'guest_name' => (string)($res['guest_name'] ?? ''),
+                'guest_phone' => (string)($res['guest_phone'] ?? ''),
+                'chalet_name' => (string)($res['chalet_name'] ?? ''),
+                'checkin_date' => (string)($res['checkin_date'] ?? ''),
+                'checkout_date' => (string)($res['checkout_date'] ?? ''),
+                'total_amount' => (float)($res['total_amount'] ?? 0),
+                'payment_rule' => (string)($res['payment_rule'] ?? 'full'),
+                'fnrh_access_token' => (string)($res['fnrh_access_token'] ?? ''),
+            ], 'payment_confirmed');
+        } catch (Throwable $e) {
+            error_log('MP Webhook: falha ao notificar Evolution para reserva #' . $reservationId . ' - ' . $e->getMessage());
         }
     }
 }

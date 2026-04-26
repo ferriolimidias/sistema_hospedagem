@@ -532,9 +532,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         input.dataset.removeBound = '1';
     }
 
-    function renderLogoSitePreview(imagePath) {
-        const previewEl = document.getElementById('currentLogoSitePreview');
-        const hiddenEl = document.getElementById('removeLogoImg');
+    function renderLogoVariantPreview(variant, imagePath) {
+        const map = {
+            principal: { preview: 'currentLogoPrincipalPreview', hidden: 'removeLogoPrincipalImg' },
+            alternativa: { preview: 'currentLogoAlternativaPreview', hidden: 'removeLogoAlternativaImg' }
+        };
+        const conf = map[variant];
+        if (!conf) return;
+        const previewEl = document.getElementById(conf.preview);
+        const hiddenEl = document.getElementById(conf.hidden);
         if (!previewEl) return;
         const img = String(imagePath || '').trim();
         if (!img || (hiddenEl && hiddenEl.value === '1')) {
@@ -542,12 +548,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         previewEl.innerHTML = `
-            <img src="${buildThumbAssetUrl(img)}" alt="Logo do site" loading="lazy" style="max-height: 70px; max-width: 100%; border-radius: 4px;">
-            <button type="button" class="btn btn-sm btn-outline-danger mt-2" id="removeLogoSiteBtn" style="margin-top:0.5rem;">
+            <img src="${buildThumbAssetUrl(img)}" alt="Logo do site (${variant})" loading="lazy" style="max-height: 70px; max-width: 100%; border-radius: 4px;">
+            <button type="button" class="btn btn-sm btn-outline-danger mt-2" data-remove-logo-variant="${variant}" style="margin-top:0.5rem;">
                 <i class="ph ph-trash"></i> Excluir logo
             </button>
         `;
-        const removeBtn = document.getElementById('removeLogoSiteBtn');
+        const removeBtn = previewEl.querySelector(`[data-remove-logo-variant="${variant}"]`);
         if (removeBtn) {
             removeBtn.addEventListener('click', () => {
                 if (hiddenEl) hiddenEl.value = '1';
@@ -556,9 +562,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function bindLogoSiteInput() {
-        const input = document.getElementById('customLogoImage');
-        const hiddenEl = document.getElementById('removeLogoImg');
+    function bindLogoVariantInput(variant) {
+        const map = {
+            principal: { input: 'customLogoPrincipalImage', hidden: 'removeLogoPrincipalImg' },
+            alternativa: { input: 'customLogoAlternativaImage', hidden: 'removeLogoAlternativaImg' }
+        };
+        const conf = map[variant];
+        if (!conf) return;
+        const input = document.getElementById(conf.input);
+        const hiddenEl = document.getElementById(conf.hidden);
         if (!input || input.dataset.logoBound === '1') return;
         input.addEventListener('change', () => {
             if (hiddenEl) hiddenEl.value = '0';
@@ -1024,7 +1036,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return `
             <div class="page-header">
                 <h1 class="page-title">Dashboard</h1>
-                <button class="btn"><i class="ph ph-download-simple"></i> Relatório</button>
+                <button class="btn" id="btn-dashboard-report"><i class="ph ph-download-simple"></i> Relatório</button>
             </div>
 
             <div class="grid-cards">
@@ -1476,41 +1488,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </form>
                 </div>
 
-                <!-- Company Logo Customization -->
-                <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
-                    <h3 style="margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
-                        <i class="ph ph-image" style="color: var(--primary); margin-right: 0.5rem; vertical-align: bottom;"></i>
-                        Personalização: Logotipos da Empresa
-                    </h3>
-                    <p style="margin-bottom: 1.5rem; color: #666; font-size: 0.9rem;">Envie as versões clara e escura do logotipo da sua empresa para serem exibidas corretamente no cabeçalho e rodapé.</p>
-                    <form id="logoForm">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
-                            <!-- Dark Logo -->
-                            <div class="form-group" style="text-align: center; border: 2px dashed var(--border-color); padding: 2rem; border-radius: 8px; background: #fff;">
-                                <h4 style="margin-bottom: 1rem; color: var(--text-dark);">Logo Principal (Fundo Claro)</h4>
-                                <input type="file" id="companyLogoFile" accept="image/*" style="display:none;" onchange="document.getElementById('logoName').textContent = this.files[0]?.name || ''">
-                                <label for="companyLogoFile" class="btn btn-outline" style="cursor: pointer; margin-bottom: 1rem;"><i class="ph ph-upload"></i> Escolher Arquivo</label>
-                                <div id="logoName" style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">Nenhum arquivo selecionado</div>
-                                <div id="currentLogoPreview" style="margin-top: 1rem;"></div>
-                            </div>
-                            
-                            <!-- Light Logo -->
-                            <div class="form-group" style="text-align: center; border: 2px dashed var(--border-color); padding: 2rem; border-radius: 8px; background: #1a1a1a;">
-                                <h4 style="margin-bottom: 1rem; color: #fff;">Logo Alternativa (Fundo Escuro/Rodapé)</h4>
-                                <input type="file" id="companyLogoLightFile" accept="image/*" style="display:none;" onchange="document.getElementById('logoLightName').textContent = this.files[0]?.name || ''">
-                                <label for="companyLogoLightFile" class="btn btn-outline" style="cursor: pointer; margin-bottom: 1rem; background-color: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.3);"><i class="ph ph-upload"></i> Escolher Arquivo</label>
-                                <div id="logoLightName" style="color: #ccc; font-size: 0.85rem; margin-top: 0.5rem;">Nenhum arquivo selecionado</div>
-                                <div id="currentLogoLightPreview" style="margin-top: 1rem;"></div>
-                            </div>
-                        </div>
-                        <div style="margin-top: 1.5rem; text-align: right;">
-                            <button type="button" class="btn btn-primary" id="saveLogoBtn">
-                                <i class="ph ph-floppy-disk"></i> Salvar Logos
-                            </button>
-                        </div>
-                    </form>
-                </div>
-
                 <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
                     <h3 style="margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
                         <i class="ph ph-whatsapp-logo" style="color: #25D366; margin-right: 0.5rem; vertical-align: bottom;"></i>
@@ -1532,6 +1509,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <input type="password" class="form-control" id="evoApikey" placeholder="apikey">
                             </div>
                         </div>
+                        <div class="form-group" style="margin-top: 0.75rem;">
+                            <label>WhatsApp do Dono (alerta ativo)</label>
+                            <input type="text" class="form-control" id="ownerWhatsapp" placeholder="Ex.: 5591999999999">
+                            <small style="display:block; margin-top:0.35rem; color:#777;">Recebe alertas automáticos de nova reserva e eventos financeiros.</small>
+                        </div>
 
                         <div style="margin-top: 1rem; display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem;">
                             <label style="display:flex; align-items:center; gap:.5rem; border:1px solid var(--border-color); border-radius:8px; padding:.7rem .8rem;">
@@ -1548,7 +1530,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </label>
                         </div>
 
-                        <div style="margin-top: 1.5rem; text-align: right;">
+                        <div style="margin-top: 1.5rem; text-align: right; display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
+                            <button type="button" id="btn-test-evo" class="btn btn-outline-info btn-sm mt-2">
+                                <i class="bi bi-send"></i> Enviar Teste de Notificação
+                            </button>
                             <button type="button" class="btn btn-primary" id="saveEvolutionBtn">
                                 <i class="ph ph-floppy-disk"></i> Salvar Comunicação e Integrações
                             </button>
@@ -1733,19 +1718,33 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <!-- Logo do Site -->
                 <div class="accordion-item">
                     <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
-                        <h3><i class="ph ph-image-square" style="color: var(--primary);"></i> Logo do Site</h3>
+                        <h3><i class="ph ph-image-square" style="color: var(--primary);"></i> Logos do Site (Principal e Alternativa)</h3>
                         <i class="ph ph-caret-down accordion-icon"></i>
                     </div>
                     <div class="accordion-body">
                         <div class="accordion-body-inner">
-                            <p style="margin-bottom: 1rem; color: #666; font-size:0.9rem;">A logo enviada aqui substitui o ícone genérico no cabeçalho do site público.</p>
-                            <div style="text-align: center; border: 2px dashed var(--border-color); padding: 1.5rem; border-radius: 8px; background: var(--bg-light);">
-                                <h4 style="margin-bottom: 1rem; color: var(--text-dark);">Logo da Navbar</h4>
-                                <input type="file" id="customLogoImage" accept="image/*" style="display:none;" onchange="document.getElementById('logoImgName').textContent = this.files[0]?.name || 'Nenhum arquivo selecionado';">
-                                <label for="customLogoImage" class="btn btn-outline" style="cursor: pointer; margin-bottom: 1rem;"><i class="ph ph-upload"></i> Escolher Logo</label>
-                                <div id="logoImgName" style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">Nenhum arquivo selecionado</div>
-                                <div id="currentLogoSitePreview" style="margin-top: 1rem;"></div>
-                                <input type="hidden" id="removeLogoImg" value="0">
+                            <p style="margin-bottom: 1rem; color: #666; font-size:0.9rem;">Use a principal para fundos claros e a alternativa para fundos escuros/transparência.</p>
+                            <div class="row" style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="col-md-6">
+                                    <div style="text-align: center; border: 2px dashed var(--border-color); padding: 1.5rem; border-radius: 8px; background: var(--bg-light);">
+                                        <h4 style="margin-bottom: 1rem; color: var(--text-dark);">Logo Principal (Fundo Claro)</h4>
+                                        <input type="file" id="customLogoPrincipalImage" accept="image/*" style="display:none;" onchange="document.getElementById('logoPrincipalImgName').textContent = this.files[0]?.name || 'Nenhum arquivo selecionado';">
+                                        <label for="customLogoPrincipalImage" class="btn btn-outline" style="cursor: pointer; margin-bottom: 1rem;"><i class="ph ph-upload"></i> Escolher Logo</label>
+                                        <div id="logoPrincipalImgName" style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">Nenhum arquivo selecionado</div>
+                                        <div id="currentLogoPrincipalPreview" style="margin-top: 1rem;"></div>
+                                        <input type="hidden" id="removeLogoPrincipalImg" value="0">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div style="text-align: center; border: 2px dashed rgba(255,255,255,0.18); padding: 1.5rem; border-radius: 8px; background: #0f172a;">
+                                        <h4 style="margin-bottom: 1rem; color: #f8fafc;">Logo Alternativa (Fundo Escuro/Rodapé)</h4>
+                                        <input type="file" id="customLogoAlternativaImage" accept="image/*" style="display:none;" onchange="document.getElementById('logoAlternativaImgName').textContent = this.files[0]?.name || 'Nenhum arquivo selecionado';">
+                                        <label for="customLogoAlternativaImage" class="btn btn-outline" style="cursor: pointer; margin-bottom: 1rem; color:#fff; border-color:rgba(255,255,255,0.4); background: rgba(255,255,255,0.08);"><i class="ph ph-upload"></i> Escolher Logo</label>
+                                        <div id="logoAlternativaImgName" style="color: #cbd5e1; font-size: 0.85rem; margin-top: 0.5rem;">Nenhum arquivo selecionado</div>
+                                        <div id="currentLogoAlternativaPreview" style="margin-top: 1rem;"></div>
+                                        <input type="hidden" id="removeLogoAlternativaImg" value="0">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2342,6 +2341,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     window.formatDateBRGlobal = formatDateBR;
 
+    function showAdminInfoToast(message) {
+        const existing = document.getElementById('admin-inline-toast');
+        if (existing) existing.remove();
+        const toast = document.createElement('div');
+        toast.id = 'admin-inline-toast';
+        toast.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:99999;max-width:460px;background:#1f2937;color:#fff;padding:12px 14px;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.25);font-size:.9rem;line-height:1.4;opacity:0;transform:translateY(8px);transition:all .2s ease;';
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+        });
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(8px)';
+            setTimeout(() => toast.remove(), 220);
+        }, 4200);
+    }
+
     // View Renderer
     async function renderView(viewName) {
         // Bloqueia acesso conforme permissões
@@ -2390,11 +2408,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (viewName === 'settings') {
                 await loadAllSettings();
                 document.getElementById('saveEvolutionBtn').addEventListener('click', saveEvolutionSettings);
+                const testEvolutionBtnEl = document.getElementById('btn-test-evo');
+                if (testEvolutionBtnEl) testEvolutionBtnEl.addEventListener('click', testEvolutionConnection);
                 const savePaymentMethodsBtnEl = document.getElementById('savePaymentMethodsBtn');
                 if (savePaymentMethodsBtnEl) savePaymentMethodsBtnEl.addEventListener('click', savePaymentMethodsSettings);
                 const saveFnrhBtnEl = document.getElementById('saveFnrhSettingsBtn');
                 if (saveFnrhBtnEl) saveFnrhBtnEl.addEventListener('click', saveFnrhSettings);
-                document.getElementById('saveLogoBtn').addEventListener('click', saveLogoSettings);
                 document.getElementById('saveSocialBtn').addEventListener('click', saveSocialSettings);
                 document.getElementById('saveIdentitySeoBtn').addEventListener('click', saveIdentitySeoSettings);
                 const saveRulesBtnEl = document.getElementById('saveRulesBtn');
@@ -2421,6 +2440,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 renderDashboardCalendar();
                 // Habilita botões "Revisar" / "Receber Saldo" dos widgets do Dashboard.
                 bindReservationButtons();
+                const dashboardReportBtn = document.getElementById('btn-dashboard-report');
+                if (dashboardReportBtn) {
+                    dashboardReportBtn.addEventListener('click', () => {
+                        showAdminInfoToast('🚧 Módulo em Desenvolvimento: Os relatórios gerenciais estarão disponíveis nas próximas atualizações.');
+                    });
+                }
                 // Link "Veja todas" dos widgets → leva para a view de Reservas.
                 appContainer.querySelectorAll('[data-jump="reservations"]').forEach(link => {
                     link.addEventListener('click', (ev) => {
@@ -3067,6 +3092,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const settings = {
             evo_url: (document.getElementById('evoUrl')?.value || '').trim(),
             evo_instance: (document.getElementById('evoInstance')?.value || '').trim(),
+            owner_whatsapp: (document.getElementById('ownerWhatsapp')?.value || '').trim(),
             evo_notify_reserva: document.getElementById('evoNotifyReserva')?.checked ? '1' : '0',
             evo_notify_checkin: document.getElementById('evoNotifyCheckin')?.checked ? '1' : '0',
             evo_notify_checkout: document.getElementById('evoNotifyCheckout')?.checked ? '1' : '0'
@@ -3074,6 +3100,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (evoApikey !== '') settings.evo_apikey = evoApikey;
         await saveSettingsToAPI(settings);
         alert('Configuração de Comunicação e Integrações salva com sucesso!');
+    }
+
+    async function testEvolutionConnection() {
+        const btn = document.getElementById('btn-test-evo');
+        if (!btn) return;
+        const ownerWhatsapp = (document.getElementById('ownerWhatsapp')?.value || '').trim();
+        if (!ownerWhatsapp) {
+            alert('Informe o WhatsApp do Dono antes de testar a integração.');
+            return;
+        }
+        if (!confirm('Deseja enviar um teste de notificação da Evolution API agora?')) {
+            return;
+        }
+
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="margin-right:6px;"></span> Testando...';
+
+        try {
+            const response = await fetch('../api/evolution_service.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Internal-Key': window.internalKey || internalApiKey
+                },
+                body: JSON.stringify({
+                    action: 'test_notify',
+                    number: ownerWhatsapp
+                })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (response.ok && result.ok) {
+                alert('Mensagem enviada!');
+            } else {
+                alert('Falha: Verifique URL/API Key');
+            }
+        } catch (error) {
+            alert('Falha: Verifique URL/API Key');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
     }
 
     async function savePaymentMethodsSettings() {
@@ -3326,28 +3394,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         try {
             const payload = {
-                clientName: reserva.clientName,
-                clientPhone: reserva.clientPhone,
-                chaletName: reserva.chaletName,
-                checkin: reserva.checkin,
-                checkout: reserva.checkout,
-                total: reserva.total,
-                valorPago: reserva.valorPago,
-                condicao: reserva.condicao,
-                paymentRule: reserva.paymentRule,
-                id: reserva.id
+                action: 'notify_event',
+                event: 'reserva',
+                reservation: {
+                    id: reserva.id,
+                    guest_name: reserva.clientName,
+                    guest_phone: reserva.clientPhone,
+                    chalet_name: reserva.chaletName,
+                    checkin_date: reserva.checkin,
+                    checkout_date: reserva.checkout
+                }
             };
-            if (isManual) payload.manual = true;
-            const res = await fetch('../api/send_webhook.php', {
+            const res = await fetch('../api/evolution_service.php', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Internal-Key': window.internalKey || internalApiKey
+                },
                 body: JSON.stringify(payload)
             });
             const data = await res.json().catch(() => ({}));
-            if (res.ok && data.success) {
-                return { success: true, message: "Mensagem enviada com sucesso para o hóspede!" };
+            if (res.ok && data.ok) {
+                return { success: true, message: "Notificação enviada com sucesso." };
             }
-            return { success: false, message: data.error || "Falha ao enviar a mensagem. Verifique as configurações da Evolution API." };
+            return { success: false, message: data.error || "Falha ao enviar notificação. Verifique as configurações da Evolution API." };
         } catch (e) {
             console.error("Erro ao enviar webhook", e);
             return { success: false, message: "Erro de conexão ao enviar mensagem." };
@@ -3394,9 +3464,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             set('customLocCar', custom.locCar);
             set('customLocMapLink', custom.locMapLink);
             set('customLocMapEmbed', custom.locMapEmbed);
-            set('removeLogoImg', '0');
-            bindLogoSiteInput();
-            renderLogoSitePreview(custom.logoImg || '');
+            set('removeLogoPrincipalImg', '0');
+            set('removeLogoAlternativaImg', '0');
+            bindLogoVariantInput('principal');
+            bindLogoVariantInput('alternativa');
+            renderLogoVariantPreview('principal', custom.logoPrincipalImg || '');
+            renderLogoVariantPreview('alternativa', custom.logoAlternativaImg || '');
             const videosEnabledEl = document.getElementById('customVideosEnabled');
             if (videosEnabledEl) videosEnabledEl.checked = Number(custom.videosEnabled || 0) === 1;
             renderVideoLinksManager(Array.isArray(custom.videosJson)
@@ -3455,6 +3528,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
             if (document.getElementById('evoUrl')) document.getElementById('evoUrl').value = data.evo_url || '';
             if (document.getElementById('evoInstance')) document.getElementById('evoInstance').value = data.evo_instance || '';
+            if (document.getElementById('ownerWhatsapp')) document.getElementById('ownerWhatsapp').value = data.owner_whatsapp || '';
             if (document.getElementById('evoApikey')) {
                 const hasEvoKey = typeof data.evo_apikey === 'string' && data.evo_apikey.trim() !== '';
                 const el = document.getElementById('evoApikey');
@@ -3539,14 +3613,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (titleEl) titleEl.textContent = 'Admin · ' + brandName;
             try { document.title = 'Admin · ' + brandName; } catch (_) { /* noop */ }
 
-            // Popula Logo Preview
-            if (data.company_logo) {
-                document.getElementById('currentLogoPreview').innerHTML = `<img src="${buildThumbAssetUrl(data.company_logo)}" alt="Company Logo" loading="lazy" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
-            }
-            if (data.company_logo_light) {
-                document.getElementById('currentLogoLightPreview').innerHTML = `<img src="${buildThumbAssetUrl(data.company_logo_light)}" alt="Company Logo Light" loading="lazy" style="max-height: 100px; max-width: 100%; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`;
-            }
-
             // Popula Customization
             const customView = document.getElementById('customHeroTitle');
             if (customView && data.customization) {
@@ -3580,10 +3646,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         ? `<img src="${buildThumbAssetUrl(custom.favicon)}" alt="Favicon" loading="lazy" style="width: 32px; height: 32px; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`
                         : '';
                 }
-                const removeLogoEl = document.getElementById('removeLogoImg');
-                if (removeLogoEl) removeLogoEl.value = '0';
-                bindLogoSiteInput();
-                renderLogoSitePreview(custom.logoImg || '');
+                const removeLogoPrincipalEl = document.getElementById('removeLogoPrincipalImg');
+                if (removeLogoPrincipalEl) removeLogoPrincipalEl.value = '0';
+                const removeLogoAlternativaEl = document.getElementById('removeLogoAlternativaImg');
+                if (removeLogoAlternativaEl) removeLogoAlternativaEl.value = '0';
+                bindLogoVariantInput('principal');
+                bindLogoVariantInput('alternativa');
+                renderLogoVariantPreview('principal', custom.logoPrincipalImg || '');
+                renderLogoVariantPreview('alternativa', custom.logoAlternativaImg || '');
 
                 document.getElementById('customChaletsSubtitle').value = custom.chaletsSubtitle || '';
                 document.getElementById('customChaletsTitle').value = custom.chaletsTitle || '';
@@ -3652,50 +3722,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    async function saveLogoSettings() {
-        const fileInput = document.getElementById('companyLogoFile');
-        const fileLightInput = document.getElementById('companyLogoLightFile');
-
-        const file = fileInput.files[0];
-        const fileLight = fileLightInput.files[0];
-
-        if (!file && !fileLight) {
-            alert('Por favor, selecione pelo menos um arquivo de logo para salvar.');
-            return;
-        }
-
-        const formData = new FormData();
-        if (file) await appendCompressedImage(formData, 'logo', file, { maxWidth: 1920, quality: 0.8, forceLossy: true });
-        if (fileLight) await appendCompressedImage(formData, 'logo_light', fileLight, { maxWidth: 1920, quality: 0.8, forceLossy: true });
-
-        // Required dummy field to trigger API processing since we bypass standard JSON parsing
-        formData.append('dummy', 'true');
-
-        try {
-            document.getElementById('saveLogoBtn').disabled = true;
-            document.getElementById('saveLogoBtn').textContent = 'Salvando...';
-
-            const res = await fetch('../api/settings.php', {
-                method: 'POST',
-                credentials: 'same-origin',
-                body: formData // No Content-Type header so browser sets multipart/form-data with boundary
-            });
-
-            if (res.ok) {
-                alert('Logos salvos com sucesso!');
-                await loadAllSettings();
-            } else {
-                alert('Erro ao salvar logos.');
-            }
-        } catch (e) {
-            console.error("Erro no upload dos logos", e);
-            alert("Erro de conexão");
-        } finally {
-            document.getElementById('saveLogoBtn').disabled = false;
-            document.getElementById('saveLogoBtn').innerHTML = '<i class="ph ph-floppy-disk"></i> Salvar Logos';
-        }
-    }
-
     async function saveSocialSettings() {
         const settings = {
             socialSettings: {
@@ -3732,13 +3758,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (fileAboutInput.files[0]) await appendCompressedImage(formData, 'about_image', fileAboutInput.files[0], { maxWidth: 1920, quality: 0.8, forceLossy: true });
         const fileFaviconInput = document.getElementById('customFaviconImage');
-        const fileLogoInput = document.getElementById('customLogoImage');
+        const fileLogoPrincipalInput = document.getElementById('customLogoPrincipalImage');
+        const fileLogoAlternativaInput = document.getElementById('customLogoAlternativaImage');
         if (fileFaviconInput && fileFaviconInput.files[0]) await appendCompressedImage(formData, 'favicon_image', fileFaviconInput.files[0], { maxWidth: 512, quality: 0.9, forceLossy: false });
-        if (fileLogoInput && fileLogoInput.files[0]) await appendCompressedImage(formData, 'logoImg', fileLogoInput.files[0], { maxWidth: 1200, quality: 0.9, forceLossy: true });
+        if (fileLogoPrincipalInput && fileLogoPrincipalInput.files[0]) await appendCompressedImage(formData, 'logoPrincipalImg', fileLogoPrincipalInput.files[0], { maxWidth: 1200, quality: 0.9, forceLossy: true });
+        if (fileLogoAlternativaInput && fileLogoAlternativaInput.files[0]) await appendCompressedImage(formData, 'logoAlternativaImg', fileLogoAlternativaInput.files[0], { maxWidth: 1200, quality: 0.9, forceLossy: true });
         if (fileTesti1Input.files[0]) await appendCompressedImage(formData, 'testi1_image', fileTesti1Input.files[0], { maxWidth: 1200, quality: 0.82, forceLossy: true });
         if (fileTesti2Input.files[0]) await appendCompressedImage(formData, 'testi2_image', fileTesti2Input.files[0], { maxWidth: 1200, quality: 0.82, forceLossy: true });
         if (fileTesti3Input.files[0]) await appendCompressedImage(formData, 'testi3_image', fileTesti3Input.files[0], { maxWidth: 1200, quality: 0.82, forceLossy: true });
-        formData.append('remove_logoImg', (document.getElementById('removeLogoImg')?.value === '1') ? '1' : '0');
+        formData.append('remove_logoPrincipalImg', (document.getElementById('removeLogoPrincipalImg')?.value === '1') ? '1' : '0');
+        formData.append('remove_logoAlternativaImg', (document.getElementById('removeLogoAlternativaImg')?.value === '1') ? '1' : '0');
         formData.append('remove_testi1Img', (document.getElementById('removeTesti1Img')?.value === '1') ? '1' : '0');
         formData.append('remove_testi2Img', (document.getElementById('removeTesti2Img')?.value === '1') ? '1' : '0');
         formData.append('remove_testi3Img', (document.getElementById('removeTesti3Img')?.value === '1') ? '1' : '0');
@@ -3783,7 +3812,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             footerEmail: document.getElementById('customFooterEmail').value,
             footerPhone: document.getElementById('customFooterPhone').value,
             footerCopyright: document.getElementById('customFooterCopyright').value,
-            logoImg: ''
+            logoPrincipalImg: '',
+            logoAlternativaImg: ''
         };
 
         formData.append('dummy', 'true');
@@ -4606,9 +4636,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </div>
                             <div style="display:flex; gap:1rem;">
                                 <div class="form-group" style="flex:1;">
-                                    <label>Valor Adicional / Ajuste (R$)</label>
+                                    <label>Ajuste na Hospedagem (Desconto/Acréscimo)</label>
                                     <input type="number" step="0.01" id="editResAdditionalValue" class="form-control" value="${res.additional_value != null ? res.additional_value : '0'}">
-                                    <small style="color:#666;">Use para somar extras ou aplicar descontos (valor negativo).</small>
+                                    <small style="color:#b45309;">⚠️ Use apenas para ajustes nas diárias. Itens de frigobar devem ser lançados na aba Consumo.</small>
                                 </div>
                                 <div class="form-group" style="flex:1;">
                                     <label>Status atual</label>
@@ -4981,19 +5011,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             const f = buildFinanceNumbers();
             summaryEl.innerHTML = `
                 <div class="folio-fin-card">
-                    <small>Total Diárias</small>
-                    <strong>${fmtMoney(f.totalDiarias)}</strong>
-                    <span>Sinal: ${fmtMoney(f.sinal)} · Saldo: ${f.saldoPago ? 'Pago' : 'Pendente'}</span>
+                    <small>Hospedagem (Diárias + Hóspedes Extras + Ajuste) - Valor Já Pago</small>
+                    <strong>${fmtMoney(f.saldoPendente)}</strong>
+                    <span>Total hospedagem: ${fmtMoney(f.totalDiarias)} · Sinal: ${fmtMoney(f.sinal)} · Situação: ${f.saldoPago ? 'Quitado' : 'Pendente'}</span>
                 </div>
                 <div class="folio-fin-card">
-                    <small>Total Consumo</small>
+                    <small>Consumo (Conta do Quarto / Frigobar)</small>
                     <strong>${fmtMoney(f.consumo)}</strong>
                     <span>Lançamentos da aba Consumo</span>
                 </div>
                 <div class="folio-fin-card accent">
-                    <small>Total final a pagar agora</small>
+                    <small>Total Final (Hospedagem pendente + Consumo)</small>
                     <strong>${fmtMoney(f.finalAgora)}</strong>
-                    <span>Saldo de diárias + consumo</span>
+                    <span>${fmtMoney(f.saldoPendente)} + ${fmtMoney(f.consumo)}</span>
                 </div>
             `;
 
@@ -5073,7 +5103,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 throw new Error(pbd.error || 'Falha ao registrar quitação do saldo.');
                             }
                         }
-                        const payload = { status: 'Finalizada' };
+                        const payload = {
+                            status: 'Finalizada',
+                            checkout_summary: {
+                                stay_total: Number(f.saldoPendente || 0),
+                                consumption_total: Number(f.consumo || 0),
+                                grand_total: Number(f.finalAgora || 0),
+                                stay_full_total: Number(f.totalDiarias || 0)
+                            }
+                        };
                         const req = await fetch(`../api/reservations.php?id=${encodeURIComponent(res.id)}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json', 'X-Internal-Key': window.internalKey || internalApiKey },

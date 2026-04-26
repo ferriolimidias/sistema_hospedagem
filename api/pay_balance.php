@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/evolution_service.php';
 
 function loadPaymentPolicies(PDO $pdo): array
 {
@@ -50,7 +51,7 @@ if ($reservationId <= 0) {
     jsonResponse(['error' => 'reservation_id é obrigatório'], 400);
 }
 
-function appendBalanceAuditLog(int $reservationId): void
+function appendBalanceAuditLog(int $reservationId, string $action = 'balance_paid'): void
 {
     $logsDir = realpath(__DIR__ . '/../storage/logs');
     if (!$logsDir || !is_dir($logsDir)) {
@@ -64,7 +65,7 @@ function appendBalanceAuditLog(int $reservationId): void
     if (!file_exists($htaccess)) {
         file_put_contents($htaccess, "Deny from all\n");
     }
-    $line = date('c') . "\treservation_id={$reservationId}\tip=" . ($_SERVER['REMOTE_ADDR'] ?? '-') . "\n";
+    $line = date('c') . "\taction={$action}\treservation_id={$reservationId}\tip=" . ($_SERVER['REMOTE_ADDR'] ?? '-') . "\n";
     @file_put_contents($logsDir . DIRECTORY_SEPARATOR . 'balance_audit.txt', $line, FILE_APPEND | LOCK_EX);
 }
 
@@ -114,7 +115,7 @@ try {
         jsonResponse(['error' => 'Não foi possível aplicar a baixa. Verifique o estado da reserva.'], 409);
     }
 
-    appendBalanceAuditLog($reservationId);
+    appendBalanceAuditLog($reservationId, 'balance_paid');
 
     $stmtRes = $pdo->prepare("
         SELECT r.*, c.name AS chalet_name
@@ -129,35 +130,21 @@ try {
         jsonResponse(['error' => 'Reserva não encontrada após atualização'], 500);
     }
 
-    $totalNum = (float)$res['total_amount'];
-    $payload = [
-        'event' => 'balance_paid',
-        'manual' => true,
-        'id' => $reservationId,
-        'clientName' => $res['guest_name'],
-        'clientEmail' => $res['guest_email'],
-        'clientPhone' => $res['guest_phone'],
-        'chaletName' => $res['chalet_name'] ?? '',
-        'checkin' => $res['checkin_date'],
-        'checkout' => $res['checkout_date'],
-        'total' => 'R$ ' . number_format($totalNum, 2, ',', '.'),
-        'valorPago' => 'R$ ' . number_format($totalNum, 2, ',', '.'),
-        'condicao' => 'Saldo recebido no check-in',
-        'paymentRule' => $res['payment_rule'] ?? 'full'
-    ];
-
-    $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-    $apiPath = dirname($_SERVER['SCRIPT_NAME'] ?? '/api');
-    $sendWebhookUrl = rtrim($base . $apiPath, '/') . '/send_webhook.php';
-    $ctx = stream_context_create([
-        'http' => [
-            'method' => 'POST',
-            'header' => "Content-Type: application/json\r\n",
-            'content' => json_encode($payload),
-            'timeout' => 10
-        ]
-    ]);
-    @file_get_contents($sendWebhookUrl, false, $ctx);
+    try {
+        evo_notify_event($pdo, [
+            'id' => (int)($res['id'] ?? 0),
+            'guest_name' => (string)($res['guest_name'] ?? ''),
+            'guest_phone' => (string)($res['guest_phone'] ?? ''),
+            'chalet_name' => (string)($res['chalet_name'] ?? ''),
+            'checkin_date' => (string)($res['checkin_date'] ?? ''),
+            'checkout_date' => (string)($res['checkout_date'] ?? ''),
+            'total_amount' => (float)($res['total_amount'] ?? 0),
+            'payment_rule' => (string)($res['payment_rule'] ?? 'full'),
+            'fnrh_access_token' => (string)($res['fnrh_access_token'] ?? ''),
+        ], 'balance_paid');
+    } catch (Throwable $e) {
+        error_log('[pay_balance] falha ao notificar Evolution: ' . $e->getMessage());
+    }
 
     jsonResponse([
         'success' => true,

@@ -276,12 +276,15 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     }
 
-    function applyNavbarLogoFromCustomization(logoImg, brandAlt) {
-        const src = String(logoImg || '').trim();
-        if (!src) return false;
+    function applyNavbarLogoFromCustomization(logoPrincipalImg, logoAlternativaImg, brandAlt) {
+        const principal = String(logoPrincipalImg || '').trim();
+        const alternativa = String(logoAlternativaImg || '').trim();
+        const srcDark = alternativa || principal;
+        const srcLight = principal || alternativa;
+        if (!srcDark && !srcLight) return false;
         const headerLogo = document.querySelector('.navbar .logo');
         if (!headerLogo) return false;
-        headerLogo.innerHTML = `<img src="${src}" alt="${brandAlt}" style="max-height: 45px; object-fit: contain; margin-right: 10px;" data-light="${src}" data-dark="${src}">`;
+        headerLogo.innerHTML = `<img src="${srcDark || srcLight}" alt="${brandAlt}" style="max-height: 45px; object-fit: contain; margin-right: 10px;" data-light="${srcDark || srcLight}" data-dark="${srcLight || srcDark}">`;
         window.dispatchEvent(new Event('scroll'));
         return true;
     }
@@ -1290,22 +1293,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 2. Ramificação por método de pagamento
             if (paymentMethod === 'manual') {
-                const waUrl = buildManualPaymentWhatsAppLink(reservationId, {
-                    ...reserva,
-                    guestsAdults,
-                    guestsChildren,
-                    paymentRule
-                });
-                if (!waUrl) {
-                    alert('Pré-reserva criada, mas o número de WhatsApp do estabelecimento não está configurado. Entre em contato pelos canais disponíveis.');
-                    submitBtn.textContent = 'Confirmar Reserva e Pagar';
-                    submitBtn.disabled = false;
-                    return;
-                }
-                submitBtn.textContent = 'Abrindo WhatsApp...';
-                // Abre numa nova aba para preservar a página atual com o feedback.
-                window.open(waUrl, '_blank');
-                // Também redireciona na mesma aba para página de sucesso informativa (usa mesmo param do MP pending).
+                submitBtn.textContent = 'Reserva criada...';
                 window.location.href = `index.php?payment_pending=true&reservation_id=${reservationId}&manual=1`;
                 return;
             }
@@ -1511,33 +1499,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    /* =========================================
-       EVOLUTION API INTEGRATION LOGIC
-       ========================================= */
-    async function sendEvolutionWebhooks(reserva) {
-        try {
-            const res = await fetch('api/send_webhook.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    clientName: reserva.clientName,
-                    clientPhone: reserva.clientPhone,
-                    chaletName: reserva.chaletName,
-                    checkin: reserva.checkin,
-                    checkout: reserva.checkout,
-                    total: reserva.total,
-                    valorPago: reserva.valorPago,
-                    condicao: reserva.condicao,
-                    paymentRule: reserva.paymentRule,
-                    id: reserva.id
-                })
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                console.warn("Webhook:", data.error || "Falha ao enviar mensagens");
-            }
-        } catch (e) {
-            console.error("Erro ao enviar mensagens de confirmação:", e);
+    function buildAttendantFallbackLink(reservationId) {
+        const pm = (bookingOptions && bookingOptions.payment_methods) || {};
+        const rawNumber = String(pm.wa_number || '').replace(/[^\d]/g, '');
+        if (!rawNumber) return '';
+        const txt = encodeURIComponent(`Olá! Preciso de suporte para a reserva #${reservationId}.`);
+        return `https://wa.me/${rawNumber}?text=${txt}`;
+    }
+
+    function showReservationFeedback(message, attendantUrl) {
+        const existing = document.getElementById('reservation-feedback-box');
+        if (existing) existing.remove();
+        const box = document.createElement('div');
+        box.id = 'reservation-feedback-box';
+        box.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:9999;max-width:380px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:14px;';
+        box.innerHTML = `
+            <div style="font-weight:700; margin-bottom:8px; color:#111827;">Reserva registrada</div>
+            <div style="font-size:0.92rem; color:#374151; line-height:1.45;">${message}</div>
+            <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end;">
+                ${attendantUrl ? `<a href="${attendantUrl}" target="_blank" rel="noopener" style="text-decoration:none; padding:8px 12px; border-radius:8px; border:1px solid #d1d5db; color:#111827; font-size:0.86rem;">Falar com Atendente</a>` : ''}
+                <button type="button" id="reservation-feedback-close" style="padding:8px 12px; border-radius:8px; border:none; background:#2563eb; color:white; font-size:0.86rem; cursor:pointer;">Entendi</button>
+            </div>
+        `;
+        document.body.appendChild(box);
+        const closeBtn = document.getElementById('reservation-feedback-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => box.remove());
         }
     }
 
@@ -1581,10 +1568,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 || (document.title && document.title.trim())
                 || 'Logo';
             const brandAlt = brandName.replace(/"/g, '&quot;');
-            const customLogoImg = data.customization && typeof data.customization === 'object'
-                ? String(data.customization.logoImg || '').trim()
+            const customLogoPrincipalImg = data.customization && typeof data.customization === 'object'
+                ? String(data.customization.logoPrincipalImg || '').trim()
                 : '';
-            const hasCustomNavbarLogo = applyNavbarLogoFromCustomization(customLogoImg, brandAlt);
+            const customLogoAlternativaImg = data.customization && typeof data.customization === 'object'
+                ? String(data.customization.logoAlternativaImg || '').trim()
+                : '';
+            const hasCustomNavbarLogo = applyNavbarLogoFromCustomization(customLogoPrincipalImg, customLogoAlternativaImg, brandAlt);
             if (data.company_logo) {
                 const headerLogo = document.querySelector('.navbar .logo');
                 if (headerLogo && !hasCustomNavbarLogo) {
@@ -2000,30 +1990,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 if (resUpdate.ok) {
-                    // Fetch details to send Webhooks
+                    // Busca detalhes para consistência visual; as notificações são enviadas no backend.
                     const getRes = await fetch(`api/reservations.php?id=${resId}`);
                     if (getRes.ok) {
-                        const resData = await getRes.json();
-                        const totalNum = parseFloat(resData.total_amount) || 0;
-                        const policy = getPaymentPolicyByCode(resData.payment_rule || 'full');
-                        const pct = Number(policy.percent_now || 100);
-                        const valorPagoNum = (totalNum * pct) / 100;
-                        const totalFmt = 'R$ ' + totalNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-                        const valorPagoFmt = 'R$ ' + valorPagoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-                        const legacyData = {
-                            clientName: resData.guest_name,
-                            clientEmail: resData.guest_email,
-                            clientPhone: resData.guest_phone,
-                            chaletName: resData.chalet_name,
-                            checkin: resData.checkin_date,
-                            checkout: resData.checkout_date,
-                            total: totalFmt,
-                            valorPago: valorPagoFmt,
-                            condicao: policy.label || `${pct}% no ato da reserva`,
-                            paymentRule: resData.payment_rule || 'full',
-                            id: resData.id
-                        };
-                        sendEvolutionWebhooks(legacyData);
+                        await getRes.json();
                     }
 
                     if (toast) {
@@ -2043,22 +2013,31 @@ document.addEventListener('DOMContentLoaded', () => {
         })();
     } else if ((urlParams.get('payment_failed') === 'true' || urlParams.get('payment_pending') === 'true') && urlParams.get('reservation_id')) {
         const resId = urlParams.get('reservation_id');
+        const isManualPending = urlParams.get('manual') === '1';
         window.history.replaceState({}, document.title, window.location.pathname);
 
-        // Cancelar reserva para liberar as datas para outras pessoas
-        (async () => {
-            try {
-                await fetch(`api/reservations.php?id=${resId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: 'Cancelada' })
-                });
-            } catch (e) {
-                console.error("Erro ao cancelar reserva", e);
-            }
-        })();
+        if (isManualPending) {
+            const attendantUrl = buildAttendantFallbackLink(resId);
+            showReservationFeedback(
+                'Sua solicitação foi registrada. A confirmação está sendo enviada para o WhatsApp informado no cadastro.',
+                attendantUrl
+            );
+        } else {
+            // Cancelar reserva para liberar as datas para outras pessoas
+            (async () => {
+                try {
+                    await fetch(`api/reservations.php?id=${resId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'Cancelada' })
+                    });
+                } catch (e) {
+                    console.error("Erro ao cancelar reserva", e);
+                }
+            })();
 
-        alert("O pagamento não foi concluído. A reserva foi cancelada e as datas estão disponíveis para nova reserva.");
+            alert("O pagamento não foi concluído. A reserva foi cancelada e as datas estão disponíveis para nova reserva.");
+        }
     }
 });
 

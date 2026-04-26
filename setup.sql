@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS `personalizacao` (
   `footer_email` varchar(255) DEFAULT NULL,
   `footer_telefone` varchar(50) DEFAULT NULL,
   `footer_copyright` varchar(255) DEFAULT NULL,
-  `logo_imagem` varchar(500) DEFAULT NULL,
+  `logo_principal` varchar(500) DEFAULT NULL,
+  `logo_alternativa` varchar(500) DEFAULT NULL,
   `favicon` varchar(500) DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
@@ -100,7 +101,7 @@ INSERT INTO `personalizacao` (
   `loc_endereco`, `loc_carro`, `loc_map_link`, `loc_map_embed`,
   `videos_enabled`, `videos_json`,
   `wa_numero`, `wa_mensagem`,
-  `footer_desc`, `footer_endereco`, `footer_email`, `footer_telefone`, `footer_copyright`, `logo_imagem`
+  `footer_desc`, `footer_endereco`, `footer_email`, `footer_telefone`, `footer_copyright`, `logo_principal`, `logo_alternativa`
 ) VALUES (
   'Bem-vindo ao Sistema Modelo',
   'Gestão completa para reservas, check-in e experiência digital de hospedagem.',
@@ -143,6 +144,7 @@ INSERT INTO `personalizacao` (
   'contato@meuestabelecimento.com',
   '(00) 00000-0000',
   '© 2026 Todos os direitos reservados.',
+  '',
   ''
 );
 
@@ -199,6 +201,7 @@ INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES
 ('meta_description', 'Plataforma completa para gestão de reservas, check-in online e controle de hospedagem.'),
 ('primary_color', '#2563eb'),
 ('secondary_color', '#1e293b'),
+('owner_whatsapp', ''),
 ('manual_pix_instructions', 'Para confirmar a reserva, realizamos o pagamento em PIX em 2 etapas: 50% no ato da contratação e 50% até o check-in. Após o envio do comprovante, o contrato digital é liberado para assinatura.'),
 ('pre_checkin_message', 'Olá, {nome}! Sua reserva em {pousada} está confirmada para {checkin} a {checkout}. Para agilizar sua chegada, finalize o pré-check-in no link enviado pela equipe.'),
 ('wa_mensagem', 'Olá, gostaria de informações sobre disponibilidade e política de pagamento (PIX em 2x com contrato) da {pousada}.')

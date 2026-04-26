@@ -10,6 +10,9 @@ switch ($method) {
     case 'GET':
         // Busca todas as configurações (ou uma específica se chave informada)
         if (isset($_GET['key'])) {
+            if ($_GET['key'] === 'evolutionSettings') {
+                jsonResponse([$_GET['key'] => null]);
+            }
             $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
             $stmt->execute([$_GET['key']]);
             $setting = $stmt->fetch();
@@ -25,6 +28,7 @@ switch ($method) {
         else {
             $stmt = $pdo->query("SELECT setting_key, setting_value FROM settings");
             $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+            unset($settings['evolutionSettings']);
 
             // Decodar os que parecem JSON - sempre retornar objeto para o frontend
             $parsedSettings = [];
@@ -85,7 +89,8 @@ switch ($method) {
                             'footerEmail' => $row['footer_email'] ?? '',
                             'footerPhone' => $row['footer_telefone'] ?? '',
                             'footerCopyright' => $row['footer_copyright'] ?? '',
-                            'logoImg' => $row['logo_imagem'] ?? '',
+                            'logoPrincipalImg' => $row['logo_principal'] ?? '',
+                            'logoAlternativaImg' => $row['logo_alternativa'] ?? '',
                             'favicon' => $row['favicon'] ?? ''
                         ];
                     }
@@ -194,7 +199,7 @@ switch ($method) {
         try {
             $stmt = $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
 
-            $ignoreKeys = ['logo', 'logo_light', 'dummy', 'hero_images', 'about_image', 'favicon_image', 'testi1_image', 'testi2_image', 'testi3_image'];
+            $ignoreKeys = ['logo', 'logo_light', 'dummy', 'hero_images', 'about_image', 'favicon_image', 'testi1_image', 'testi2_image', 'testi3_image', 'evolutionSettings'];
             foreach ($data as $key => $value) {
                 if (in_array($key, $ignoreKeys)) continue;
                 if (is_array($value) && isset($value['tmp_name'])) continue; // skip raw file refs

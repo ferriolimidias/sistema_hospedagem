@@ -140,23 +140,136 @@ function evo_message_for_event(PDO $pdo, array $reservation, string $event): str
     return '';
 }
 
+function evo_message_for_recipient(PDO $pdo, array $reservation, string $event, string $recipient): string
+{
+    $brand = evo_brand_name($pdo);
+    $name = trim((string) ($reservation['guest_name'] ?? 'Hóspede'));
+    $chaletName = trim((string) ($reservation['chalet_name'] ?? ''));
+    $totalAmount = isset($reservation['total_amount']) ? (float) $reservation['total_amount'] : 0.0;
+    $totalText = $totalAmount > 0 ? evo_fmt_money($totalAmount) : '';
+    $checkin = trim((string) ($reservation['checkin_date'] ?? ''));
+    $checkout = trim((string) ($reservation['checkout_date'] ?? ''));
+    $fmt = static function (string $d): string {
+        if ($d === '') return '';
+        $parts = explode('-', $d);
+        return count($parts) === 3 ? ($parts[2] . '/' . $parts[1] . '/' . $parts[0]) : $d;
+    };
+    $checkinBr = $fmt($checkin);
+    $checkoutBr = $fmt($checkout);
+
+    if ($event === 'reserva') {
+        if ($recipient === 'owner') {
+            return "🔔 *NOVA RESERVA RECEBIDA*\n\n"
+                . "Hóspede: {$name}\n"
+                . ($chaletName !== '' ? "Chalé: {$chaletName}\n" : '')
+                . ($checkinBr !== '' ? "Check-in: {$checkinBr}\n" : '')
+                . ($checkoutBr !== '' ? "Check-out: {$checkoutBr}\n" : '')
+                . ($totalText !== '' ? "Valor: {$totalText}\n" : '')
+                . "Sistema: {$brand}";
+        }
+        return "Olá, {$name}! Sua reserva na {$brand} foi recebida com sucesso.\n\n"
+            . ($chaletName !== '' ? "Chalé: {$chaletName}\n" : '')
+            . ($checkinBr !== '' ? "Check-in: {$checkinBr}\n" : '')
+            . ($checkoutBr !== '' ? "Check-out: {$checkoutBr}\n" : '')
+            . ($totalText !== '' ? "Valor da reserva: {$totalText}\n" : '')
+            . "\nObrigado por escolher {$brand}.";
+    }
+
+    if ($event === 'payment_confirmed') {
+        if ($recipient === 'owner') {
+            return "✅ *PAGAMENTO APROVADO*\n\n"
+                . "Hóspede: {$name}\n"
+                . ($chaletName !== '' ? "Chalé: {$chaletName}\n" : '')
+                . ($totalText !== '' ? "Total: {$totalText}\n" : '')
+                . "Sistema: {$brand}";
+        }
+        return "Pagamento confirmado com sucesso, {$name}! ✅\n\n"
+            . ($chaletName !== '' ? "Reserva: {$chaletName}\n" : '')
+            . ($totalText !== '' ? "Total da reserva: {$totalText}\n" : '')
+            . "Em breve você receberá as próximas orientações da {$brand}.";
+    }
+
+    if ($event === 'balance_paid') {
+        if ($recipient === 'owner') {
+            return "💵 *SALDO REGISTRADO COMO PAGO*\n\n"
+                . "Hóspede: {$name}\n"
+                . ($chaletName !== '' ? "Chalé: {$chaletName}\n" : '')
+                . ($checkinBr !== '' ? "Check-in: {$checkinBr}\n" : '')
+                . ($checkoutBr !== '' ? "Check-out: {$checkoutBr}\n" : '')
+                . "Sistema: {$brand}";
+        }
+        return "Saldo da sua reserva registrado com sucesso, {$name}. ✅\n\nObrigado por concluir os pagamentos da estadia.";
+    }
+
+    if ($event === 'checkout') {
+        $stayTotal = isset($reservation['stay_total']) ? (float)$reservation['stay_total'] : 0.0;
+        $consumptionTotal = isset($reservation['consumption_total']) ? (float)$reservation['consumption_total'] : 0.0;
+        $grandTotal = isset($reservation['grand_total']) ? (float)$reservation['grand_total'] : ($stayTotal + $consumptionTotal);
+        $template = "Olá, {{guest_name}}! Sua estadia em {{company_name}} foi finalizada com sucesso. 🏨\n\n"
+            . "📝 Resumo do Fechamento:\n"
+            . "🏠 Hospedagem: {{stay_total}}\n"
+            . "🥤 Consumo/Extras: {{consumption_total}}\n"
+            . "💰 Total Geral: {{grand_total}}\n\n"
+            . "Agradecemos a preferência e esperamos te ver em breve!";
+        return strtr($template, [
+            '{{company_name}}' => $brand,
+            '{{guest_name}}' => $name,
+            '{{stay_total}}' => evo_fmt_money($stayTotal),
+            '{{consumption_total}}' => evo_fmt_money($consumptionTotal),
+            '{{grand_total}}' => evo_fmt_money($grandTotal),
+        ]);
+    }
+
+    return evo_message_for_event($pdo, $reservation, $event);
+}
+
 function evo_notify_event(PDO $pdo, array $reservation, string $event): array
 {
     $toggleKey = $event === 'reserva'
         ? 'evo_notify_reserva'
         : ($event === 'checkin' ? 'evo_notify_checkin' : 'evo_notify_checkout');
-    if (!evo_flag($pdo, $toggleKey, true)) {
+    if (in_array($event, ['reserva', 'checkin', 'checkout'], true) && !evo_flag($pdo, $toggleKey, true)) {
         return ['ok' => true, 'skipped' => true, 'reason' => 'toggle_off'];
     }
-    $phone = evo_phone_normalize((string) ($reservation['guest_phone'] ?? ''));
-    if ($phone === '') {
-        return ['ok' => false, 'error' => 'Telefone do hóspede ausente.'];
+
+    $targets = [];
+    $guestPhone = evo_phone_normalize((string) ($reservation['guest_phone'] ?? ''));
+    if ($guestPhone !== '') {
+        $targets[] = ['recipient' => 'guest', 'number' => $guestPhone];
     }
-    $text = evo_message_for_event($pdo, $reservation, $event);
-    if (trim($text) === '') {
-        return ['ok' => false, 'error' => 'Mensagem vazia para o evento.'];
+
+    if (in_array($event, ['reserva', 'payment_confirmed', 'balance_paid'], true)) {
+        $ownerPhone = evo_phone_normalize(evo_setting($pdo, 'owner_whatsapp', ''));
+        if ($ownerPhone !== '') {
+            $targets[] = ['recipient' => 'owner', 'number' => $ownerPhone];
+        }
     }
-    return evo_send_text($pdo, $phone, $text);
+
+    if (count($targets) === 0) {
+        return ['ok' => false, 'error' => 'Nenhum destinatário válido para envio.'];
+    }
+
+    $results = [];
+    $overallOk = true;
+    foreach ($targets as $target) {
+        $text = evo_message_for_recipient($pdo, $reservation, $event, $target['recipient']);
+        if (trim($text) === '') {
+            $results[] = [
+                'recipient' => $target['recipient'],
+                'ok' => false,
+                'error' => 'Mensagem vazia para o evento.'
+            ];
+            $overallOk = false;
+            continue;
+        }
+        $sendResult = evo_send_text($pdo, $target['number'], $text);
+        $results[] = ['recipient' => $target['recipient']] + $sendResult;
+        if (empty($sendResult['ok'])) {
+            $overallOk = false;
+        }
+    }
+
+    return ['ok' => $overallOk, 'results' => $results];
 }
 
 // Endpoint opcional para disparo manual (admin-only)
@@ -167,9 +280,41 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
     }
     $data = json_decode((string) file_get_contents('php://input'), true);
     if (!is_array($data)) jsonResponse(['error' => 'Payload inválido'], 400);
+    $action = strtolower(trim((string) ($data['action'] ?? 'send_text')));
+    if ($action === 'notify_event') {
+        $event = strtolower(trim((string) ($data['event'] ?? 'reserva')));
+        $reservation = $data['reservation'] ?? [];
+        if (!is_array($reservation)) {
+            jsonResponse(['error' => 'reservation inválida'], 400);
+        }
+        $r = evo_notify_event($pdo, $reservation, $event);
+        jsonResponse($r, !empty($r['ok']) ? 200 : 400);
+    }
+    if ($action === 'test_notify') {
+        $ownerPhoneRaw = trim((string) ($data['number'] ?? evo_setting($pdo, 'owner_whatsapp', '')));
+        $ownerPhone = evo_phone_normalize($ownerPhoneRaw);
+        if ($ownerPhone === '') {
+            jsonResponse(['ok' => false, 'error' => 'owner_whatsapp não configurado para teste.'], 400);
+        }
+        $fakePhone = evo_phone_normalize('5511999999999');
+        $brand = evo_brand_name($pdo);
+        $testMessage = "🚀 Teste de Sistema: A integração de {$brand} com a Evolution API está funcionando perfeitamente!";
+
+        $ownerResult = evo_send_text($pdo, $ownerPhone, $testMessage);
+        $fakeResult = evo_send_text($pdo, $fakePhone, $testMessage);
+
+        $ok = !empty($ownerResult['ok']) || !empty($fakeResult['ok']);
+        jsonResponse([
+            'ok' => $ok,
+            'results' => [
+                'owner' => $ownerResult,
+                'fake' => $fakeResult,
+            ],
+        ], $ok ? 200 : 400);
+    }
+
     $number = evo_phone_normalize((string) ($data['number'] ?? ''));
     if ($number === '') jsonResponse(['error' => 'number é obrigatório'], 400);
-    $action = strtolower(trim((string) ($data['action'] ?? 'send_text')));
     $text = trim((string) ($data['text'] ?? ''));
 
     if ($action === 'folio_receipt') {

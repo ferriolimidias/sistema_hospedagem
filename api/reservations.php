@@ -8,6 +8,109 @@ be_require_internal_key($pdo);
 
 $method = $_SERVER['REQUEST_METHOD'];
 
+function loadPaymentPoliciesReservation(PDO $pdo): array
+{
+    $fallback = [
+        ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50.0],
+        ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100.0],
+    ];
+    try {
+        $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'payment_policies' LIMIT 1");
+        $stmt->execute();
+        $raw = $stmt->fetchColumn();
+        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_array($decoded) || count($decoded) === 0) return $fallback;
+        $clean = [];
+        foreach ($decoded as $item) {
+            if (!is_array($item)) continue;
+            $code = strtolower(trim((string)($item['code'] ?? '')));
+            $pct = isset($item['percent_now']) ? (float)$item['percent_now'] : -1;
+            $label = trim((string)($item['label'] ?? ''));
+            if ($code === '' || $pct <= 0) continue;
+            $clean[] = ['code' => $code, 'label' => $label, 'percent_now' => max(0.0, min(100.0, $pct))];
+        }
+        return count($clean) ? $clean : $fallback;
+    } catch (Throwable $e) {
+        return $fallback;
+    }
+}
+
+function findPaymentPolicyReservation(array $policies, string $code): array
+{
+    foreach ($policies as $policy) {
+        if (strtolower((string)($policy['code'] ?? '')) === strtolower($code)) return $policy;
+    }
+    return strtolower($code) === 'half'
+        ? ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50.0]
+        : ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100.0];
+}
+
+function buildCheckoutSummaryForNotification(PDO $pdo, int $reservationId, array $reservationRow, ?array $explicitSummary = null): array
+{
+    $totalAmount = round((float)($reservationRow['total_amount'] ?? 0), 2);
+    $policyCode = (string)($reservationRow['payment_rule'] ?? 'full');
+    $policies = loadPaymentPoliciesReservation($pdo);
+    $policy = findPaymentPolicyReservation($policies, $policyCode);
+    $percentNow = max(0.0, min(100.0, (float)($policy['percent_now'] ?? 100.0)));
+    $percentBal = max(0.0, 100.0 - $percentNow);
+    $saldo = round(($totalAmount * $percentBal) / 100.0, 2);
+    $saldoPendente = ((int)($reservationRow['balance_paid'] ?? 0) === 1) ? 0.0 : $saldo;
+
+    $stc = $pdo->prepare("SELECT COALESCE(SUM(total_price),0) FROM reservation_consumptions WHERE reservation_id = ?");
+    $stc->execute([$reservationId]);
+    $consumption = round((float)$stc->fetchColumn(), 2);
+    $grand = round($saldoPendente + $consumption, 2);
+
+    $audited = [
+        'stay_total' => $saldoPendente,
+        'consumption_total' => $consumption,
+        'grand_total' => $grand,
+        'stay_full_total' => $totalAmount,
+    ];
+
+    // Audit Check: compara valor vindo do frontend com cálculo autoritativo do backend.
+    if (is_array($explicitSummary)) {
+        $feStay = round((float)($explicitSummary['stay_total'] ?? 0), 2);
+        $feConsumption = round((float)($explicitSummary['consumption_total'] ?? 0), 2);
+        $feGrand = round((float)($explicitSummary['grand_total'] ?? ($feStay + $feConsumption)), 2);
+
+        $diffStay = abs($audited['stay_total'] - $feStay);
+        $diffConsumption = abs($audited['consumption_total'] - $feConsumption);
+        $diffGrand = abs($audited['grand_total'] - $feGrand);
+
+        $divergences = [];
+        if ($diffStay > 0.01) {
+            $divergences[] = 'Divergência isolada em Hospedagem: Front '
+                . number_format($feStay, 2, '.', '')
+                . ' vs Back ' . number_format($audited['stay_total'], 2, '.', '');
+        }
+        if ($diffConsumption > 0.01) {
+            $divergences[] = 'Divergência isolada em Consumo: Front '
+                . number_format($feConsumption, 2, '.', '')
+                . ' vs Back ' . number_format($audited['consumption_total'], 2, '.', '');
+        }
+        if ($diffGrand > 0.01) {
+            $divergences[] = 'Divergência isolada em Total: Front '
+                . number_format($feGrand, 2, '.', '')
+                . ' vs Back ' . number_format($audited['grand_total'], 2, '.', '');
+        }
+
+        if (count($divergences) > 0) {
+            error_log('[CRITICAL][checkout_audit_mismatch] reservation_id=' . $reservationId
+                . ' frontend_grand=' . number_format($feGrand, 2, '.', '')
+                . ' backend_grand=' . number_format($audited['grand_total'], 2, '.', '')
+                . ' frontend_stay=' . number_format($feStay, 2, '.', '')
+                . ' backend_stay=' . number_format($audited['stay_total'], 2, '.', '')
+                . ' frontend_consumption=' . number_format($feConsumption, 2, '.', '')
+                . ' backend_consumption=' . number_format($audited['consumption_total'], 2, '.', '')
+                . ' | details=' . implode(' || ', $divergences));
+            throw new RuntimeException('Divergência financeira detectada no fechamento. Atualize a página e tente novamente.');
+        }
+    }
+
+    return $audited;
+}
+
 switch ($method) {
     case 'GET':
         // Rotina autônoma: expira holds de pagamento vencidos.
@@ -226,8 +329,10 @@ switch ($method) {
                     'id' => $newId,
                     'guest_name' => (string) ($data['guest_name'] ?? ''),
                     'guest_phone' => (string) ($phone ?? ''),
+                    'chalet_name' => (string) ($chaletRow['name'] ?? ''),
                     'checkin_date' => (string) $checkin,
                     'checkout_date' => (string) $checkout,
+                    'total_amount' => (float) $total,
                     'fnrh_access_token' => (string) $fnrhToken,
                 ];
                 evo_notify_event($pdo, $eventRes, 'reserva');
@@ -323,6 +428,19 @@ switch ($method) {
                     $newStatus = (string) $st;
                     if ($newStatus !== $prevStatus && in_array($newStatus, ['Hospedado', 'Finalizada'], true)) {
                         $evt = $newStatus === 'Hospedado' ? 'checkin' : 'checkout';
+                        $checkoutSummary = $evt === 'checkout'
+                            ? buildCheckoutSummaryForNotification($pdo, (int)$_GET['id'], [
+                                'total_amount' => $data['total_amount'] ?? 0,
+                                'payment_rule' => $data['payment_rule'] ?? ($prevRow['payment_rule'] ?? 'full'),
+                                'balance_paid' => $prevBalancePaid
+                            ], $data['checkout_summary'] ?? null)
+                            : null;
+                        if ($newStatus === 'Finalizada' && $balancePaid !== 1) {
+                            $balancePaid = 1;
+                            $balancePaidAt = $balancePaidAt ?: date('Y-m-d H:i:s');
+                            $forcePaidStmt = $pdo->prepare("UPDATE reservations SET balance_paid = 1, balance_paid_at = COALESCE(balance_paid_at, NOW()) WHERE id = ?");
+                            $forcePaidStmt->execute([$_GET['id']]);
+                        }
                         $eventRes = [
                             'id' => (int) $_GET['id'],
                             'guest_name' => (string) ($data['guest_name'] ?? ($prevRow['guest_name'] ?? '')),
@@ -331,9 +449,18 @@ switch ($method) {
                             'checkout_date' => (string) ($data['checkout_date'] ?? ($prevRow['checkout_date'] ?? '')),
                             'fnrh_access_token' => (string) ($prevRow['fnrh_access_token'] ?? ''),
                         ];
+                        if (is_array($checkoutSummary)) {
+                            $eventRes['stay_total'] = $checkoutSummary['stay_total'];
+                            $eventRes['consumption_total'] = $checkoutSummary['consumption_total'];
+                            $eventRes['grand_total'] = $checkoutSummary['grand_total'];
+                            $eventRes['stay_full_total'] = $checkoutSummary['stay_full_total'];
+                        }
                         evo_notify_event($pdo, $eventRes, $evt);
                     }
                 } catch (Throwable $e) {
+                    if (stripos((string)$e->getMessage(), 'Divergência financeira detectada no fechamento') !== false) {
+                        jsonResponse(['error' => $e->getMessage()], 409);
+                    }
                     error_log('[reservations] evo status notify fail: ' . $e->getMessage());
                 }
                 jsonResponse(['status' => 'success']);
@@ -377,7 +504,7 @@ switch ($method) {
         }
         elseif (isset($data['status'])) {
             // Edição só de status (via select rápido da tabela)
-            $stPrev = $pdo->prepare("SELECT id, status, guest_name, guest_phone, checkin_date, checkout_date, fnrh_access_token FROM reservations WHERE id = ? LIMIT 1");
+            $stPrev = $pdo->prepare("SELECT id, status, guest_name, guest_phone, checkin_date, checkout_date, fnrh_access_token, payment_rule, total_amount, balance_paid FROM reservations WHERE id = ? LIMIT 1");
             $stPrev->execute([$_GET['id']]);
             $prev = $stPrev->fetch();
             $stmt = $pdo->prepare("UPDATE reservations SET status = ? WHERE id = ?");
@@ -387,6 +514,13 @@ switch ($method) {
                     $oldStatus = (string) ($prev['status'] ?? '');
                     if ($newStatus !== $oldStatus && in_array($newStatus, ['Hospedado', 'Finalizada'], true)) {
                         $evt = $newStatus === 'Hospedado' ? 'checkin' : 'checkout';
+                        $checkoutSummary = $evt === 'checkout'
+                            ? buildCheckoutSummaryForNotification($pdo, (int)($_GET['id'] ?? 0), $prev ?: [], $data['checkout_summary'] ?? null)
+                            : null;
+                        if ($newStatus === 'Finalizada') {
+                            $pdo->prepare("UPDATE reservations SET balance_paid = 1, balance_paid_at = COALESCE(balance_paid_at, NOW()) WHERE id = ?")
+                                ->execute([$_GET['id']]);
+                        }
                         evo_notify_event($pdo, [
                             'id' => (int) ($_GET['id'] ?? 0),
                             'guest_name' => (string) ($prev['guest_name'] ?? ''),
@@ -394,9 +528,16 @@ switch ($method) {
                             'checkin_date' => (string) ($prev['checkin_date'] ?? ''),
                             'checkout_date' => (string) ($prev['checkout_date'] ?? ''),
                             'fnrh_access_token' => (string) ($prev['fnrh_access_token'] ?? ''),
+                            'stay_total' => is_array($checkoutSummary) ? $checkoutSummary['stay_total'] : null,
+                            'consumption_total' => is_array($checkoutSummary) ? $checkoutSummary['consumption_total'] : null,
+                            'grand_total' => is_array($checkoutSummary) ? $checkoutSummary['grand_total'] : null,
+                            'stay_full_total' => is_array($checkoutSummary) ? $checkoutSummary['stay_full_total'] : null,
                         ], $evt);
                     }
                 } catch (Throwable $e) {
+                    if (stripos((string)$e->getMessage(), 'Divergência financeira detectada no fechamento') !== false) {
+                        jsonResponse(['error' => $e->getMessage()], 409);
+                    }
                     error_log('[reservations] evo status-only notify fail: ' . $e->getMessage());
                 }
                 jsonResponse(['status' => 'success']);
