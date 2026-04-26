@@ -36,7 +36,7 @@ $c = [
     'testi1Name' => '', 'testi1Location' => '', 'testi1Text' => '', 'testi1Image' => '',
     'testi2Name' => '', 'testi2Location' => '', 'testi2Text' => '', 'testi2Image' => '',
     'testi3Name' => '', 'testi3Location' => '', 'testi3Text' => '', 'testi3Image' => '',
-    'locAddress' => '', 'locCar' => '', 'locMapLink' => '',
+    'locAddress' => '', 'locCar' => '', 'locMapLink' => '', 'locMapEmbed' => '',
     'waNumber' => '', 'waMessage' => '',
     'footerDesc' => '', 'footerAddress' => '', 'footerEmail' => '', 'footerPhone' => '', 'footerCopyright' => '',
     'favicon' => ''
@@ -68,6 +68,7 @@ try {
         $c['testi3Text'] = $row['testi3_texto'] ?? ''; $c['testi3Image'] = $row['testi3_imagem'] ?? '';
         $c['locAddress'] = $row['loc_endereco'] ?? ''; $c['locCar'] = $row['loc_carro'] ?? '';
         $c['locMapLink'] = $row['loc_map_link'] ?? '';
+        $c['locMapEmbed'] = $row['loc_map_embed'] ?? '';
         $c['waNumber'] = $row['wa_numero'] ?? ''; $c['waMessage'] = $row['wa_mensagem'] ?? '';
         $c['footerDesc'] = $row['footer_desc'] ?? ''; $c['footerAddress'] = $row['footer_endereco'] ?? '';
         $c['footerEmail'] = $row['footer_email'] ?? ''; $c['footerPhone'] = $row['footer_telefone'] ?? '';
@@ -307,7 +308,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                     <a id="locMapLink" href="<?= $h($c['locMapLink']) ?>" target="_blank" class="btn btn-outline" style="margin-top: 1.5rem;"><i class="ph ph-share"></i> Ver no Google Maps</a>
                 </div>
                 <div class="location-map glass-card">
-                    <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3278.830115899477!2d-41.44795370953981!3d-4.39112913571505!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x7939b5096c0689f%3A0xc6e93e1d2c21a1cf!2sRecanto%20da%20Serra%20Eco%20Park!5e1!3m2!1spt-BR!2sbr!4v1772387925954!5m2!1spt-BR!2sbr" width="100%" height="400" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                    <div id="map-container"><?= $c['locMapEmbed'] ?></div>
                 </div>
             </div>
         </div>
@@ -535,7 +536,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.autoplay.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
-    <script src="script.js?v=13"></script>
+    <script src="script.js?v=14"></script>
 </body>
 
 </html>

@@ -75,6 +75,7 @@ switch ($method) {
                             'locAddress' => $row['loc_endereco'] ?? '',
                             'locCar' => $row['loc_carro'] ?? '',
                             'locMapLink' => $row['loc_map_link'] ?? '',
+                            'locMapEmbed' => $row['loc_map_embed'] ?? '',
                             'waNumber' => $row['wa_numero'] ?? '',
                             'waMessage' => $row['wa_mensagem'] ?? '',
                             'footerDesc' => $row['footer_desc'] ?? '',

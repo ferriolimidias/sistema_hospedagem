@@ -1620,6 +1620,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if ($('locAddress') && custom.locAddress) $('locAddress').innerHTML = custom.locAddress;
                 if ($('locCar') && custom.locCar) $('locCar').innerHTML = custom.locCar;
                 if ($('locMapLink') && custom.locMapLink) $('locMapLink').href = custom.locMapLink;
+                if ($('map-container')) $('map-container').innerHTML = custom.locMapEmbed || '';
 
                 // Floating WhatsApp
                 if (custom.waNumber) {

@@ -1866,6 +1866,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <label>Link Direto para o Google Maps (Botão)</label>
                             <input type="url" class="form-control" id="customLocMapLink" placeholder="https://www.google.com/maps/...">
                         </div>
+                        <div class="form-group">
+                            <label>Código Embed do Google Maps (iframe)</label>
+                            <textarea class="form-control" id="customLocMapEmbed" rows="4" placeholder="<iframe src=&quot;...&quot; width=&quot;100%&quot; height=&quot;400&quot; style=&quot;border:0;&quot; allowfullscreen loading=&quot;lazy&quot;></iframe>"></textarea>
+                        </div>
                     </form>
                         </div>
                     </div>
@@ -3211,6 +3215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             set('customLocAddress', custom.locAddress);
             set('customLocCar', custom.locCar);
             set('customLocMapLink', custom.locMapLink);
+            set('customLocMapEmbed', custom.locMapEmbed);
             set('customWaNumber', custom.waNumber);
             set('customWaMessage', custom.waMessage);
             set('customFooterDesc', custom.footerDesc);
@@ -3430,6 +3435,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('customLocAddress').value = custom.locAddress || '';
                 document.getElementById('customLocCar').value = custom.locCar || '';
                 document.getElementById('customLocMapLink').value = custom.locMapLink || '';
+                document.getElementById('customLocMapEmbed').value = custom.locMapEmbed || '';
 
                 // WhatsApp Flutuante
                 document.getElementById('customWaNumber').value = custom.waNumber || '';
@@ -3562,6 +3568,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             locAddress: document.getElementById('customLocAddress').value,
             locCar: document.getElementById('customLocCar').value,
             locMapLink: document.getElementById('customLocMapLink').value,
+            locMapEmbed: document.getElementById('customLocMapEmbed').value,
             waNumber: document.getElementById('customWaNumber').value,
             waMessage: document.getElementById('customWaMessage').value,
             footerDesc: document.getElementById('customFooterDesc').value,
