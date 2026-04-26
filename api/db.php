@@ -193,7 +193,7 @@ function jsonResponse($data, int $statusCode = 200): void
 /**
  * Configuração global da Evolution (modelo SaaS gerenciado).
  *
- * @return array{enabled:bool,url:string,key:string}
+ * @return array{enabled:bool,url:string,key:string,env_found:bool}
  */
 function be_evolution_global_config(): array
 {
@@ -203,7 +203,8 @@ function be_evolution_global_config(): array
     }
     $env = [];
     $envPath = __DIR__ . '/../.env';
-    if (is_file($envPath)) {
+    $envFound = is_file($envPath);
+    if ($envFound) {
         // parse_ini_file ignora comentários (# e ;) e linhas vazias.
         // @ evita vazamento de detalhes em warning quando o arquivo estiver incompleto.
         $parsed = @parse_ini_file($envPath, false, INI_SCANNER_TYPED);
@@ -218,6 +219,7 @@ function be_evolution_global_config(): array
         'enabled' => $enabled,
         'url' => $url,
         'key' => $key,
+        'env_found' => $envFound,
     ];
     return $cache;
 }

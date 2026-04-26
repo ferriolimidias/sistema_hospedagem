@@ -104,7 +104,7 @@ function evoi_call(string $method, string $endpoint, string $apikey, ?array $pay
         CURLOPT_URL => $endpoint,
         CURLOPT_CUSTOMREQUEST => strtoupper($method),
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CONNECTTIMEOUT => 20,
+        CURLOPT_CONNECTTIMEOUT => 5,
         CURLOPT_TIMEOUT => 20,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_HTTPHEADER => $headers,
@@ -201,6 +201,12 @@ function evoi_extract_status(array $decoded): string
 
 try {
     $global = be_evolution_global_config();
+    if (empty($global['env_found'])) {
+        jsonResponse([
+            'ok' => false,
+            'error' => '.env não encontrado na raiz do projeto'
+        ], 412);
+    }
     $debug = evoi_debug_enabled();
     $globalUrl = trim((string) ($global['url'] ?? ''));
     $globalKey = trim((string) ($global['key'] ?? ''));
@@ -219,6 +225,22 @@ try {
     }
 
     $baseUrl = rtrim($globalUrl, '/');
+    $host = (string) (parse_url($baseUrl, PHP_URL_HOST) ?? '');
+    if ($host === '') {
+        jsonResponse([
+            'ok' => false,
+            'error' => 'URL da Evolution inválida no .env'
+        ], 422);
+    }
+    $resolved = gethostbyname($host);
+    if ($resolved === $host) {
+        error_log('[evolution_instance] DNS não resolvido para host Evolution: ' . $host);
+        jsonResponse([
+            'ok' => false,
+            'error' => 'Falha de DNS ao resolver host da Evolution API'
+        ], 502);
+    }
+
     $body = evoi_json_body();
     $action = strtolower(trim((string) ($body['action'] ?? 'check_status')));
 
@@ -228,6 +250,10 @@ try {
 
         if ($instance === '') {
             $instance = evoi_instance_name($pdo);
+            if ($instance === '') {
+                $instance = 'pousada_sistema';
+            }
+            error_log('Tentando criar instancia: ' . $instance);
             $createPayload = [
                 'instanceName' => $instance,
                 'token' => $token !== '' ? $token : substr(hash('sha1', $instance . microtime(true)), 0, 32),
