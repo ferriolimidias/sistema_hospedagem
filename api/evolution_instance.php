@@ -284,11 +284,7 @@ try {
             ];
             $createResp = evoi_call('POST', $baseUrl . '/instance/create', $globalKey, $createPayload);
             if (!$createResp['ok']) {
-                $payload = [
-                    'ok' => false,
-                    'error' => evoi_compose_error_message('Falha na Evolution', $createResp)
-                ];
-                if ($debug) $payload['details'] = $createResp;
+                $payload = ['ok' => false, 'error' => 'A Evolution recusou a criação: ' . (string)($createResp['body'] ?? '')];
                 jsonResponse($payload, 400);
             }
             $createDecoded = json_decode($createResp['body'], true);
