@@ -1496,14 +1496,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </h3>
                     <p style="margin-bottom: 1.5rem; color: #666; font-size: 0.9rem;">Configure a integração nativa da Evolution API e escolha em quais eventos o PMS deve disparar mensagens automáticas.</p>
                     <form id="evolutionForm">
-                        <div id="evoLegacyConfigWrap" style="display:grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 0.75rem;">
+                        <div id="evoLegacyConfigWrap" style="display:grid; grid-template-columns: 1.5fr 1fr; gap: 0.75rem;">
                             <div class="form-group" id="evoUrlWrap">
                                 <label>URL Base da Evolution API</label>
                                 <input type="url" class="form-control" id="evoUrl" placeholder="https://api.seudominio.com">
-                            </div>
-                            <div class="form-group">
-                                <label>Instância</label>
-                                <input type="text" class="form-control" id="evoInstance" placeholder="nome-da-instancia">
                             </div>
                             <div class="form-group" id="evoApikeyWrap">
                                 <label>API Key</label>
@@ -3408,14 +3404,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const managedPanel = document.getElementById('evoManagedPanel');
         if (managedPanel) managedPanel.style.display = evolutionGlobalManaged ? 'block' : 'none';
         if (legacyWrap) {
-            legacyWrap.style.gridTemplateColumns = evolutionGlobalManaged ? '1fr' : '1.5fr 1fr 1fr';
+            legacyWrap.style.gridTemplateColumns = evolutionGlobalManaged ? '1fr' : '1.5fr 1fr';
         }
         if (urlWrap) urlWrap.style.display = evolutionGlobalManaged ? 'none' : '';
         if (keyWrap) keyWrap.style.display = evolutionGlobalManaged ? 'none' : '';
         const saveBtn = document.getElementById('saveEvolutionBtn');
         if (saveBtn) {
             saveBtn.innerHTML = evolutionGlobalManaged
-                ? '<i class="ph ph-floppy-disk"></i> Salvar Integração (Instância/Alertas)'
+                ? '<i class="ph ph-floppy-disk"></i> Salvar Integração (Alertas)'
                 : '<i class="ph ph-floppy-disk"></i> Salvar Comunicação e Integrações';
         }
     }
@@ -3518,7 +3514,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function saveEvolutionSettings() {
         const evoApikey = (document.getElementById('evoApikey')?.value || '').trim();
         const settings = {
-            evo_instance: (document.getElementById('evoInstance')?.value || '').trim(),
             owner_whatsapp: (document.getElementById('ownerWhatsapp')?.value || '').trim(),
             evo_notify_reserva: document.getElementById('evoNotifyReserva')?.checked ? '1' : '0',
             evo_notify_checkin: document.getElementById('evoNotifyCheckin')?.checked ? '1' : '0',
@@ -3957,7 +3952,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return s === '1' || s === 'true' || s === 'on' || s === 'yes';
             };
             if (document.getElementById('evoUrl')) document.getElementById('evoUrl').value = data.evo_url || '';
-            if (document.getElementById('evoInstance')) document.getElementById('evoInstance').value = data.evo_instance || '';
             if (document.getElementById('ownerWhatsapp')) document.getElementById('ownerWhatsapp').value = data.owner_whatsapp || '';
             if (document.getElementById('evoApikey')) {
                 const hasEvoKey = typeof data.evo_apikey === 'string' && data.evo_apikey.trim() !== '';

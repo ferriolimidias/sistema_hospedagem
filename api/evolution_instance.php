@@ -40,9 +40,48 @@ function evoi_save_setting(PDO $pdo, string $key, string $value): void
     $stmt->execute([$key, $value]);
 }
 
-function evoi_instance_name(): string
+function evoi_slugify_instance(string $raw): string
 {
-    return 'p_' . substr(hash('sha256', uniqid((string) mt_rand(), true)), 0, 18);
+    $value = trim(function_exists('mb_strtolower') ? mb_strtolower($raw, 'UTF-8') : strtolower($raw));
+    if (function_exists('iconv')) {
+        $normalized = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if (is_string($normalized) && $normalized !== '') {
+            $value = strtolower($normalized);
+        }
+    }
+    $value = preg_replace('/[^a-z0-9]+/i', '_', $value) ?? '';
+    $value = preg_replace('/_+/', '_', $value) ?? '';
+    $value = trim($value, '_');
+    if ($value === '') {
+        $value = 'pousada_sistema';
+    }
+    return $value;
+}
+
+function evoi_setting_value(PDO $pdo, string $key): string
+{
+    $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1');
+    $stmt->execute([$key]);
+    $v = $stmt->fetchColumn();
+    return is_string($v) ? trim($v) : '';
+}
+
+function evoi_instance_name(PDO $pdo): string
+{
+    $companyName = evoi_setting_value($pdo, 'company_name');
+    $siteTitle = evoi_setting_value($pdo, 'site_title');
+    $baseName = $companyName !== '' ? $companyName : ($siteTitle !== '' ? $siteTitle : 'pousada_sistema');
+    return evoi_slugify_instance($baseName);
+}
+
+function evoi_debug_enabled(): bool
+{
+    $q = strtolower(trim((string) ($_GET['debug'] ?? '')));
+    if (in_array($q, ['1', 'true', 'yes', 'on'], true)) {
+        return true;
+    }
+    $env = strtolower(trim((string) getenv('APP_DEBUG')));
+    return in_array($env, ['1', 'true', 'yes', 'on'], true);
 }
 
 /**
@@ -65,8 +104,9 @@ function evoi_call(string $method, string $endpoint, string $apikey, ?array $pay
         CURLOPT_URL => $endpoint,
         CURLOPT_CUSTOMREQUEST => strtoupper($method),
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CONNECTTIMEOUT => 4,
-        CURLOPT_TIMEOUT => 8,
+        CURLOPT_CONNECTTIMEOUT => 20,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_HTTPHEADER => $headers,
     ];
     if ($payload !== null) {
@@ -77,7 +117,19 @@ function evoi_call(string $method, string $endpoint, string $apikey, ?array $pay
     $error = curl_error($ch);
     $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    $ok = ($error === '' && $httpCode >= 200 && $httpCode < 300);
+    $ok = ($error === '' && in_array($httpCode, [200, 201], true));
+    if (!$ok) {
+        $logBody = is_string($body) ? $body : '';
+        if (function_exists('mb_substr')) {
+            $logBody = mb_substr($logBody, 0, 1200);
+        } else {
+            $logBody = substr($logBody, 0, 1200);
+        }
+        error_log('[evolution_instance] HTTP/CURL falha endpoint=' . $endpoint
+            . ' code=' . $httpCode
+            . ' curl_error=' . $error
+            . ' body=' . $logBody);
+    }
     return [
         'ok' => $ok,
         'http_code' => $httpCode,
@@ -149,15 +201,24 @@ function evoi_extract_status(array $decoded): string
 
 try {
     $global = be_evolution_global_config();
-    if (empty($global['enabled']) || trim((string) ($global['url'] ?? '')) === '' || trim((string) ($global['key'] ?? '')) === '') {
-        jsonResponse([
+    $debug = evoi_debug_enabled();
+    $globalUrl = trim((string) ($global['url'] ?? ''));
+    $globalKey = trim((string) ($global['key'] ?? ''));
+    if ($globalUrl === '' || $globalKey === '') {
+        $payload = [
             'ok' => false,
-            'error' => 'Configuração global da Evolution não encontrada no .env (EVOLUTION_GLOBAL_URL/EVOLUTION_GLOBAL_KEY).'
-        ], 412);
+            'error' => 'Credenciais globais não configuradas no .env'
+        ];
+        if ($debug) {
+            $payload['debug'] = [
+                'url_loaded' => $globalUrl !== '',
+                'key_loaded' => $globalKey !== '',
+            ];
+        }
+        jsonResponse($payload, 412);
     }
 
-    $baseUrl = rtrim((string) $global['url'], '/');
-    $globalKey = (string) $global['key'];
+    $baseUrl = rtrim($globalUrl, '/');
     $body = evoi_json_body();
     $action = strtolower(trim((string) ($body['action'] ?? 'check_status')));
 
@@ -166,7 +227,7 @@ try {
         $token = trim(evoi_setting($pdo, 'evo_apikey', ''));
 
         if ($instance === '') {
-            $instance = evoi_instance_name();
+            $instance = evoi_instance_name($pdo);
             $createPayload = [
                 'instanceName' => $instance,
                 'token' => $token !== '' ? $token : substr(hash('sha1', $instance . microtime(true)), 0, 32),
@@ -174,7 +235,9 @@ try {
             ];
             $createResp = evoi_call('POST', $baseUrl . '/instance/create', $globalKey, $createPayload);
             if (!$createResp['ok']) {
-                jsonResponse(['ok' => false, 'error' => 'Falha ao criar instância na Evolution', 'details' => $createResp], 502);
+                $payload = ['ok' => false, 'error' => 'Falha ao criar instância na Evolution'];
+                if ($debug) $payload['details'] = $createResp;
+                jsonResponse($payload, 502);
             }
             $createDecoded = json_decode($createResp['body'], true);
             if (!is_array($createDecoded)) {
@@ -204,7 +267,9 @@ try {
             );
         }
         if (!$connectResp['ok']) {
-            jsonResponse(['ok' => false, 'error' => 'Falha ao obter QR Code da instância', 'details' => $connectResp], 502);
+            $payload = ['ok' => false, 'error' => 'Falha ao obter QR Code da instância'];
+            if ($debug) $payload['details'] = $connectResp;
+            jsonResponse($payload, 502);
         }
 
         $connectDecoded = json_decode($connectResp['body'], true);
@@ -229,7 +294,9 @@ try {
         }
         $stateResp = evoi_call('GET', $baseUrl . '/instance/connectionState/' . rawurlencode($instance), $globalKey);
         if (!$stateResp['ok']) {
-            jsonResponse(['ok' => false, 'error' => 'Falha ao consultar status da instância', 'details' => $stateResp], 502);
+            $payload = ['ok' => false, 'error' => 'Falha ao consultar status da instância'];
+            if ($debug) $payload['details'] = $stateResp;
+            jsonResponse($payload, 502);
         }
         $decoded = json_decode($stateResp['body'], true);
         if (!is_array($decoded)) {
@@ -259,6 +326,11 @@ try {
 
     jsonResponse(['ok' => false, 'error' => 'Ação inválida'], 400);
 } catch (Throwable $e) {
-    jsonResponse(['ok' => false, 'error' => $e->getMessage()], 500);
+    error_log('[evolution_instance] exceção: ' . $e->getMessage());
+    $payload = ['ok' => false, 'error' => 'Erro interno ao processar integração Evolution'];
+    if (evoi_debug_enabled()) {
+        $payload['details'] = $e->getMessage();
+    }
+    jsonResponse($payload, 500);
 }
 
