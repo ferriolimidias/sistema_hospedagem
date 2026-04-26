@@ -752,11 +752,17 @@ img {
 }
 
 .stars {
-    color: var(--clr-secondary);
+    color: #FFC107 !important;
     margin-bottom: 1.5rem;
     display: flex;
     gap: 0.25rem;
     font-size: 1.25rem;
+}
+
+.stars i,
+.stars svg {
+    color: #FFC107 !important;
+    fill: #FFC107 !important;
 }
 
 .review-text {
@@ -776,11 +782,19 @@ img {
     padding-top: 1.5rem;
 }
 
-.reviewer img {
+.testimonial-avatar {
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    object-fit: cover;
+    background: var(--clr-primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
 }
 
 .reviewer h4 {

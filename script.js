@@ -276,6 +276,16 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     }
 
+    function buildInitials(name) {
+        const raw = String(name || '').trim();
+        if (!raw) return 'HG';
+        const parts = raw.split(/\s+/).filter(Boolean);
+        const first = parts[0] ? parts[0].charAt(0) : '';
+        const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : (parts[0] ? parts[0].charAt(1) : '');
+        const initials = `${first}${last}`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        return initials || 'HG';
+    }
+
     /* =========================================
        NAVBAR SCROLL EFFECT
        ========================================= */
@@ -1644,17 +1654,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 if ($('testi1Name') && custom.testi1Name) $('testi1Name').innerHTML = custom.testi1Name;
                 if ($('testi1Location') && custom.testi1Location) $('testi1Location').innerHTML = custom.testi1Location;
                 if ($('testi1Text') && custom.testi1Text) $('testi1Text').innerHTML = `"${custom.testi1Text}"`;
-                if ($('testi1Img') && custom.testi1Image) $('testi1Img').src = custom.testi1Image;
+                if ($('testi1Avatar')) $('testi1Avatar').textContent = buildInitials(custom.testi1Name || $('testi1Name')?.textContent || '');
 
                 if ($('testi2Name') && custom.testi2Name) $('testi2Name').innerHTML = custom.testi2Name;
                 if ($('testi2Location') && custom.testi2Location) $('testi2Location').innerHTML = custom.testi2Location;
                 if ($('testi2Text') && custom.testi2Text) $('testi2Text').innerHTML = `"${custom.testi2Text}"`;
-                if ($('testi2Img') && custom.testi2Image) $('testi2Img').src = custom.testi2Image;
+                if ($('testi2Avatar')) $('testi2Avatar').textContent = buildInitials(custom.testi2Name || $('testi2Name')?.textContent || '');
 
                 if ($('testi3Name') && custom.testi3Name) $('testi3Name').innerHTML = custom.testi3Name;
                 if ($('testi3Location') && custom.testi3Location) $('testi3Location').innerHTML = custom.testi3Location;
                 if ($('testi3Text') && custom.testi3Text) $('testi3Text').innerHTML = `"${custom.testi3Text}"`;
-                if ($('testi3Img') && custom.testi3Image) $('testi3Img').src = custom.testi3Image;
+                if ($('testi3Avatar')) $('testi3Avatar').textContent = buildInitials(custom.testi3Name || $('testi3Name')?.textContent || '');
 
                 // Location
                 if ($('locAddress') && custom.locAddress) $('locAddress').innerHTML = custom.locAddress;

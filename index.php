@@ -113,6 +113,15 @@ try {
 
 // Helper
 $h = function($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); };
+$initials = function($name) {
+    $n = trim((string)($name ?? ''));
+    if ($n === '') return 'HG';
+    $parts = preg_split('/\s+/', $n) ?: [];
+    $first = mb_substr($parts[0] ?? '', 0, 1, 'UTF-8');
+    $last = mb_substr($parts[count($parts) - 1] ?? '', 0, 1, 'UTF-8');
+    $ini = strtoupper(trim($first . $last));
+    return $ini !== '' ? $ini : 'HG';
+};
 $aboutHtml = implode('', array_map(fn($p) => '<p>' . $h(trim($p)) . '</p>', array_filter(explode("\n", $c['aboutText'] ?? ''))));
 if (empty($aboutHtml)) $aboutHtml = '<p>' . $h($c['aboutText']) . '</p>';
 $c['heroImages'] = array_values(array_filter(array_map(
@@ -154,7 +163,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
 </head>
 
 <body>
@@ -287,7 +296,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                     <div class="stars"><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i></div>
                     <p class="review-text" id="testi1Text">"<?= $h($c['testi1Text']) ?>"</p>
                     <div class="reviewer">
-                        <img id="testi1Img" src="<?= $h($c['testi1Image']) ?>" alt="<?= $h($c['testi1Name']) ?>">
+                        <div id="testi1Avatar" class="testimonial-avatar"><?= $h($initials($c['testi1Name'])) ?></div>
                         <div><h4 id="testi1Name"><?= $h($c['testi1Name']) ?></h4><span id="testi1Location"><?= $h($c['testi1Location']) ?></span></div>
                     </div>
                 </div>
@@ -295,7 +304,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                     <div class="stars"><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i></div>
                     <p class="review-text" id="testi2Text">"<?= $h($c['testi2Text']) ?>"</p>
                     <div class="reviewer">
-                        <img id="testi2Img" src="<?= $h($c['testi2Image']) ?>" alt="<?= $h($c['testi2Name']) ?>">
+                        <div id="testi2Avatar" class="testimonial-avatar"><?= $h($initials($c['testi2Name'])) ?></div>
                         <div><h4 id="testi2Name"><?= $h($c['testi2Name']) ?></h4><span id="testi2Location"><?= $h($c['testi2Location']) ?></span></div>
                     </div>
                 </div>
@@ -303,7 +312,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                     <div class="stars"><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i></div>
                     <p class="review-text" id="testi3Text">"<?= $h($c['testi3Text']) ?>"</p>
                     <div class="reviewer">
-                        <img id="testi3Img" src="<?= $h($c['testi3Image']) ?>" alt="<?= $h($c['testi3Name']) ?>">
+                        <div id="testi3Avatar" class="testimonial-avatar"><?= $h($initials($c['testi3Name'])) ?></div>
                         <div><h4 id="testi3Name"><?= $h($c['testi3Name']) ?></h4><span id="testi3Location"><?= $h($c['testi3Location']) ?></span></div>
                     </div>
                 </div>
