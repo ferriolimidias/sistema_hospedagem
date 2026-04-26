@@ -85,6 +85,7 @@ switch ($method) {
                             'footerEmail' => $row['footer_email'] ?? '',
                             'footerPhone' => $row['footer_telefone'] ?? '',
                             'footerCopyright' => $row['footer_copyright'] ?? '',
+                            'logoImg' => $row['logo_imagem'] ?? '',
                             'favicon' => $row['favicon'] ?? ''
                         ];
                     }

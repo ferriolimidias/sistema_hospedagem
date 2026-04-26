@@ -40,6 +40,7 @@ $c = [
     'locAddress' => '', 'locCar' => '', 'locMapLink' => '', 'locMapEmbed' => '',
     'waNumber' => '', 'waMessage' => '',
     'footerDesc' => '', 'footerAddress' => '', 'footerEmail' => '', 'footerPhone' => '', 'footerCopyright' => '',
+    'logoImg' => '',
     'favicon' => ''
 ];
 try {
@@ -77,6 +78,7 @@ try {
         $c['footerDesc'] = $row['footer_desc'] ?? ''; $c['footerAddress'] = $row['footer_endereco'] ?? '';
         $c['footerEmail'] = $row['footer_email'] ?? ''; $c['footerPhone'] = $row['footer_telefone'] ?? '';
         $c['footerCopyright'] = $row['footer_copyright'] ?? '';
+        $c['logoImg'] = $row['logo_imagem'] ?? '';
         $c['favicon'] = $row['favicon'] ?? '';
     }
 } catch (Exception $e) { }
@@ -170,7 +172,9 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
 
     <header class="navbar" id="navbar">
         <div class="container nav-container">
-            <?php if ($companyLogo): ?>
+            <?php if (!empty($c['logoImg'])): ?>
+            <a href="#" class="logo"><img src="<?= $h($c['logoImg']) ?>" alt="<?= $h($siteTitle) ?>" style="max-height: 45px; object-fit: contain; margin-right: 10px;" data-light="<?= $h($c['logoImg']) ?>" data-dark="<?= $h($c['logoImg']) ?>"></a>
+            <?php elseif ($companyLogo): ?>
             <a href="#" class="logo"><img src="<?= $h($companyLogoLight ?: $companyLogo) ?>" alt="<?= $h($siteTitle) ?>" style="height: 40px;" data-light="<?= $h($companyLogoLight ?: $companyLogo) ?>" data-dark="<?= $h($companyLogo) ?>"></a>
             <?php else: ?>
             <a href="#" class="logo"><i class="ph ph-mountains"></i><span><?= $h($siteTitle) ?></span></a>
@@ -546,6 +550,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     <script>
     window.__INITIAL_CUSTOMIZATION = <?= json_encode([
         'heroImages' => $c['heroImages'],
+        'logoImg' => $c['logoImg'],
         'videosEnabled' => $c['videosEnabled'],
         'videosJson' => $c['videosJson'],
         'waNumber' => $c['waNumber'],
@@ -558,7 +563,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.autoplay.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
-    <script src="script.js?v=18"></script>
+    <script src="script.js?v=19"></script>
 </body>
 
 </html>

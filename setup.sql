@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS `personalizacao` (
   `footer_email` varchar(255) DEFAULT NULL,
   `footer_telefone` varchar(50) DEFAULT NULL,
   `footer_copyright` varchar(255) DEFAULT NULL,
+  `logo_imagem` varchar(500) DEFAULT NULL,
   `favicon` varchar(500) DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
@@ -99,7 +100,7 @@ INSERT INTO `personalizacao` (
   `loc_endereco`, `loc_carro`, `loc_map_link`, `loc_map_embed`,
   `videos_enabled`, `videos_json`,
   `wa_numero`, `wa_mensagem`,
-  `footer_desc`, `footer_endereco`, `footer_email`, `footer_telefone`, `footer_copyright`
+  `footer_desc`, `footer_endereco`, `footer_email`, `footer_telefone`, `footer_copyright`, `logo_imagem`
 ) VALUES (
   'Bem-vindo ao Sistema Modelo',
   'Gestão completa para reservas, check-in e experiência digital de hospedagem.',
@@ -141,7 +142,8 @@ INSERT INTO `personalizacao` (
   'Cidade/UF',
   'contato@meuestabelecimento.com',
   '(00) 00000-0000',
-  '© 2026 Todos os direitos reservados.'
+  '© 2026 Todos os direitos reservados.',
+  ''
 );
 
 DELETE FROM `chalets`;

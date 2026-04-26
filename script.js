@@ -276,6 +276,16 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     }
 
+    function applyNavbarLogoFromCustomization(logoImg, brandAlt) {
+        const src = String(logoImg || '').trim();
+        if (!src) return false;
+        const headerLogo = document.querySelector('.navbar .logo');
+        if (!headerLogo) return false;
+        headerLogo.innerHTML = `<img src="${src}" alt="${brandAlt}" style="max-height: 45px; object-fit: contain; margin-right: 10px;" data-light="${src}" data-dark="${src}">`;
+        window.dispatchEvent(new Event('scroll'));
+        return true;
+    }
+
     function buildInitials(name) {
         const raw = String(name || '').trim();
         if (!raw) return 'HG';
@@ -1571,9 +1581,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 || (document.title && document.title.trim())
                 || 'Logo';
             const brandAlt = brandName.replace(/"/g, '&quot;');
+            const customLogoImg = data.customization && typeof data.customization === 'object'
+                ? String(data.customization.logoImg || '').trim()
+                : '';
+            const hasCustomNavbarLogo = applyNavbarLogoFromCustomization(customLogoImg, brandAlt);
             if (data.company_logo) {
                 const headerLogo = document.querySelector('.navbar .logo');
-                if (headerLogo) {
+                if (headerLogo && !hasCustomNavbarLogo) {
                     headerLogo.innerHTML = `<img src="${data.company_logo_light || data.company_logo}" alt="${brandAlt}" style="height: 40px;" data-light="${data.company_logo_light || data.company_logo}" data-dark="${data.company_logo}">`;
                     window.dispatchEvent(new Event('scroll'));
                 }

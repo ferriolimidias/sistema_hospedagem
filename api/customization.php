@@ -6,6 +6,11 @@
 require_once __DIR__ . '/db.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
+try {
+    $pdo->exec("ALTER TABLE personalizacao ADD COLUMN logo_imagem VARCHAR(500) NULL AFTER footer_copyright");
+} catch (Throwable $e) {
+    // Coluna já existe.
+}
 
 // Converte linha da tabela personalizacao para formato esperado pelo frontend
 function rowToCustomization($row) {
@@ -57,6 +62,7 @@ function rowToCustomization($row) {
         'footerEmail' => $row['footer_email'] ?? '',
         'footerPhone' => $row['footer_telefone'] ?? '',
         'footerCopyright' => $row['footer_copyright'] ?? '',
+        'logoImg' => $row['logo_imagem'] ?? '',
         'favicon' => $row['favicon'] ?? ''
     ];
 }
@@ -119,8 +125,26 @@ switch ($method) {
         $heroToDelete = array_values(array_filter(array_map(static fn($v) => trim((string)$v), $heroToDelete), static fn($v) => $v !== ''));
 
         $remainingHero = $currentHeroList;
+        $heroExistingProvided = false;
+        if (isset($_POST['hero_existing_images'])) {
+            $rawExisting = $_POST['hero_existing_images'];
+            $existingRequested = [];
+            if (is_string($rawExisting)) {
+                $decodedExisting = json_decode($rawExisting, true);
+                if (is_array($decodedExisting)) $existingRequested = $decodedExisting;
+            } elseif (is_array($rawExisting)) {
+                $existingRequested = $rawExisting;
+            }
+            $existingRequested = array_values(array_filter(array_map(static fn($v) => trim((string)$v), $existingRequested), static fn($v) => $v !== ''));
+            $heroExistingProvided = true;
+            $remainingHero = array_values(array_filter($currentHeroList, static fn($p) => in_array($p, $existingRequested, true)));
+            $omittedHero = array_values(array_filter($currentHeroList, static fn($p) => !in_array($p, $remainingHero, true)));
+            foreach ($omittedHero as $delPath) {
+                safeDeleteUploadedImage($delPath);
+            }
+        }
         if (!empty($heroToDelete)) {
-            $remainingHero = array_values(array_filter($currentHeroList, static fn($p) => !in_array($p, $heroToDelete, true)));
+            $remainingHero = array_values(array_filter($remainingHero, static fn($p) => !in_array($p, $heroToDelete, true)));
             foreach ($heroToDelete as $delPath) {
                 safeDeleteUploadedImage($delPath);
             }
@@ -157,13 +181,13 @@ switch ($method) {
         }
 
         $heroImgs = null;
-        $heroChanged = !empty($newHeroPaths) || !empty($heroToDelete) || $heroOrderChanged;
+        $heroChanged = !empty($newHeroPaths) || !empty($heroToDelete) || $heroOrderChanged || $heroExistingProvided;
         if ($heroChanged) {
             $mergedHero = array_values(array_unique(array_merge($orderedHero, $newHeroPaths)));
             $heroImgs = !empty($mergedHero) ? json_encode($mergedHero) : json_encode([]);
         }
 
-        $imageMap = ['about_image' => 'about_imagem', 'favicon_image' => 'favicon', 'testi1_image' => 'testi1_imagem', 'testi2_image' => 'testi2_imagem', 'testi3_image' => 'testi3_imagem'];
+        $imageMap = ['about_image' => 'about_imagem', 'favicon_image' => 'favicon', 'logoImg' => 'logo_imagem', 'testi1_image' => 'testi1_imagem', 'testi2_image' => 'testi2_imagem', 'testi3_image' => 'testi3_imagem'];
         $uploadedImages = [];
         foreach ($imageMap as $formKey => $col) {
             if (!empty($_FILES[$formKey]['tmp_name']) && $_FILES[$formKey]['error'] === UPLOAD_ERR_OK) {
@@ -179,16 +203,41 @@ switch ($method) {
         $existingImages = $existing ? [
             'about_imagem' => $existing['about_imagem'],
             'favicon' => $existing['favicon'],
+            'logo_imagem' => $existing['logo_imagem'],
             'testi1_imagem' => $existing['testi1_imagem'],
             'testi2_imagem' => $existing['testi2_imagem'],
             'testi3_imagem' => $existing['testi3_imagem'],
             'hero_imagens' => $existing['hero_imagens']
         ] : [];
 
+        $removeTesti1 = isset($_POST['remove_testi1Img']) && $_POST['remove_testi1Img'] === '1';
+        $removeTesti2 = isset($_POST['remove_testi2Img']) && $_POST['remove_testi2Img'] === '1';
+        $removeTesti3 = isset($_POST['remove_testi3Img']) && $_POST['remove_testi3Img'] === '1';
+        $removeLogo = isset($_POST['remove_logoImg']) && $_POST['remove_logoImg'] === '1';
+        if ($existing) {
+            if ($removeLogo && !isset($uploadedImages['logo_imagem'])) {
+                safeDeleteUploadedImage((string)($existingImages['logo_imagem'] ?? ''));
+                $existingImages['logo_imagem'] = '';
+            }
+            if ($removeTesti1 && !isset($uploadedImages['testi1_imagem'])) {
+                safeDeleteUploadedImage((string)($existingImages['testi1_imagem'] ?? ''));
+                $existingImages['testi1_imagem'] = '';
+            }
+            if ($removeTesti2 && !isset($uploadedImages['testi2_imagem'])) {
+                safeDeleteUploadedImage((string)($existingImages['testi2_imagem'] ?? ''));
+                $existingImages['testi2_imagem'] = '';
+            }
+            if ($removeTesti3 && !isset($uploadedImages['testi3_imagem'])) {
+                safeDeleteUploadedImage((string)($existingImages['testi3_imagem'] ?? ''));
+                $existingImages['testi3_imagem'] = '';
+            }
+        }
+
         $heroImgs = $heroImgs ?? $existingImages['hero_imagens'] ?? '["images/hero.png"]';
 
         $aboutImg = $uploadedImages['about_imagem'] ?? $existingImages['about_imagem'] ?? $customization['aboutImage'] ?? '';
         $favicon = $uploadedImages['favicon'] ?? $existingImages['favicon'] ?? $customization['favicon'] ?? '';
+        $logoImg = $uploadedImages['logo_imagem'] ?? $existingImages['logo_imagem'] ?? $customization['logoImg'] ?? '';
         $t1img = $uploadedImages['testi1_imagem'] ?? $existingImages['testi1_imagem'] ?? $customization['testi1Image'] ?? '';
         $t2img = $uploadedImages['testi2_imagem'] ?? $existingImages['testi2_imagem'] ?? $customization['testi2Image'] ?? '';
         $t3img = $uploadedImages['testi3_imagem'] ?? $existingImages['testi3_imagem'] ?? $customization['testi3Image'] ?? '';
@@ -258,15 +307,16 @@ switch ($method) {
             $customization['footerEmail'] ?? '',
             $customization['footerPhone'] ?? '',
             $customization['footerCopyright'] ?? '',
+            $logoImg,
             $favicon
         ];
 
         if ($existing) {
-            $stmt = $pdo->prepare("UPDATE personalizacao SET hero_titulo=?, hero_subtitulo=?, hero_imagens=?, about_titulo=?, about_texto=?, about_imagem=?, chalets_subtitulo=?, chalets_titulo=?, chalets_desc=?, feat1_titulo=?, feat1_desc=?, feat2_titulo=?, feat2_desc=?, feat3_titulo=?, feat3_desc=?, feat4_titulo=?, feat4_desc=?, feat5_titulo=?, feat5_desc=?, testi1_nome=?, testi1_local=?, testi1_texto=?, testi1_imagem=?, testi2_nome=?, testi2_local=?, testi2_texto=?, testi2_imagem=?, testi3_nome=?, testi3_local=?, testi3_texto=?, testi3_imagem=?, loc_endereco=?, loc_carro=?, loc_map_link=?, loc_map_embed=?, videos_enabled=?, videos_json=?, wa_numero=?, wa_mensagem=?, footer_desc=?, footer_endereco=?, footer_email=?, footer_telefone=?, footer_copyright=?, favicon=? WHERE id=?");
+            $stmt = $pdo->prepare("UPDATE personalizacao SET hero_titulo=?, hero_subtitulo=?, hero_imagens=?, about_titulo=?, about_texto=?, about_imagem=?, chalets_subtitulo=?, chalets_titulo=?, chalets_desc=?, feat1_titulo=?, feat1_desc=?, feat2_titulo=?, feat2_desc=?, feat3_titulo=?, feat3_desc=?, feat4_titulo=?, feat4_desc=?, feat5_titulo=?, feat5_desc=?, testi1_nome=?, testi1_local=?, testi1_texto=?, testi1_imagem=?, testi2_nome=?, testi2_local=?, testi2_texto=?, testi2_imagem=?, testi3_nome=?, testi3_local=?, testi3_texto=?, testi3_imagem=?, loc_endereco=?, loc_carro=?, loc_map_link=?, loc_map_embed=?, videos_enabled=?, videos_json=?, wa_numero=?, wa_mensagem=?, footer_desc=?, footer_endereco=?, footer_email=?, footer_telefone=?, footer_copyright=?, logo_imagem=?, favicon=? WHERE id=?");
             $params[] = $existing['id'];
             $stmt->execute($params);
         } else {
-            $stmt = $pdo->prepare("INSERT INTO personalizacao (hero_titulo, hero_subtitulo, hero_imagens, about_titulo, about_texto, about_imagem, chalets_subtitulo, chalets_titulo, chalets_desc, feat1_titulo, feat1_desc, feat2_titulo, feat2_desc, feat3_titulo, feat3_desc, feat4_titulo, feat4_desc, feat5_titulo, feat5_desc, testi1_nome, testi1_local, testi1_texto, testi1_imagem, testi2_nome, testi2_local, testi2_texto, testi2_imagem, testi3_nome, testi3_local, testi3_texto, testi3_imagem, loc_endereco, loc_carro, loc_map_link, loc_map_embed, videos_enabled, videos_json, wa_numero, wa_mensagem, footer_desc, footer_endereco, footer_email, footer_telefone, footer_copyright, favicon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt = $pdo->prepare("INSERT INTO personalizacao (hero_titulo, hero_subtitulo, hero_imagens, about_titulo, about_texto, about_imagem, chalets_subtitulo, chalets_titulo, chalets_desc, feat1_titulo, feat1_desc, feat2_titulo, feat2_desc, feat3_titulo, feat3_desc, feat4_titulo, feat4_desc, feat5_titulo, feat5_desc, testi1_nome, testi1_local, testi1_texto, testi1_imagem, testi2_nome, testi2_local, testi2_texto, testi2_imagem, testi3_nome, testi3_local, testi3_texto, testi3_imagem, loc_endereco, loc_carro, loc_map_link, loc_map_embed, videos_enabled, videos_json, wa_numero, wa_mensagem, footer_desc, footer_endereco, footer_email, footer_telefone, footer_copyright, logo_imagem, favicon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute($params);
         }
 

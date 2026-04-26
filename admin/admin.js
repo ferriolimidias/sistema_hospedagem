@@ -219,6 +219,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         hero: { current: [], toDelete: [] },
         chalet: { current: [], toDelete: [] }
     };
+    let activeHeroImages = [];
+    const testimonialRemovalState = { 1: false, 2: false, 3: false };
 
     function toAssetUrl(src) {
         const v = String(src || '').trim();
@@ -347,6 +349,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const scp = btn.getAttribute('data-gallery-scope');
                 if (!path || !scp || !galleryState[scp]) return;
                 if (!galleryState[scp].toDelete.includes(path)) galleryState[scp].toDelete.push(path);
+                if (scp === 'hero') {
+                    const idx = activeHeroImages.indexOf(path);
+                    if (idx !== -1) activeHeroImages.splice(idx, 1);
+                    galleryState.hero.current = activeHeroImages.slice();
+                }
                 renderGalleryManager(scp, containerEl, opts);
             });
         });
@@ -357,6 +364,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const scp = btn.getAttribute('data-gallery-scope');
                 if (!path || !scp || !galleryState[scp]) return;
                 galleryState[scp].toDelete = galleryState[scp].toDelete.filter((p) => p !== path);
+                if (scp === 'hero' && !activeHeroImages.includes(path)) {
+                    activeHeroImages.push(path);
+                    galleryState.hero.current = activeHeroImages.slice();
+                }
                 renderGalleryManager(scp, containerEl, opts);
             });
         });
@@ -428,6 +439,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (!dropBefore) toIdx += 1;
                 list.splice(toIdx, 0, draggedPath);
                 galleryState[scope].current = list;
+                if (scope === 'hero') {
+                    activeHeroImages = list.slice();
+                }
 
                 clearDropIndicators(containerEl);
                 draggedPath = null;
@@ -476,6 +490,80 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             renderGalleryManager(scope, containerEl, { previewFiles: files });
         });
+    }
+
+    function renderTestimonialImagePreview(slot, imagePath) {
+        const previewEl = document.getElementById(`currentTesti${slot}Preview`);
+        const hiddenEl = document.getElementById(`removeTesti${slot}Img`);
+        if (!previewEl) return;
+        const img = String(imagePath || '').trim();
+        if (!img || testimonialRemovalState[slot]) {
+            previewEl.innerHTML = '';
+            if (hiddenEl) hiddenEl.value = testimonialRemovalState[slot] ? '1' : '0';
+            return;
+        }
+        previewEl.innerHTML = `
+            <img src="${buildThumbAssetUrl(img)}" alt="Depoimento ${slot}" loading="lazy" style="max-height: 80px; max-width: 100%; border-radius: 50%;">
+            <button type="button" class="btn btn-sm btn-outline-danger mt-2" data-remove-testi-img="${slot}" style="margin-top:0.5rem;">
+                <i class="ph ph-trash"></i> Excluir foto
+            </button>
+        `;
+        const btn = previewEl.querySelector(`[data-remove-testi-img="${slot}"]`);
+        if (btn) {
+            btn.addEventListener('click', () => {
+                testimonialRemovalState[slot] = true;
+                if (hiddenEl) hiddenEl.value = '1';
+                previewEl.innerHTML = '';
+            });
+        }
+        if (hiddenEl) hiddenEl.value = '0';
+    }
+
+    function bindTestimonialImageInput(slot) {
+        const input = document.getElementById(`customTesti${slot}Image`);
+        const nameEl = document.getElementById(`testi${slot}ImgName`);
+        const hiddenEl = document.getElementById(`removeTesti${slot}Img`);
+        if (!input || input.dataset.removeBound === '1') return;
+        input.addEventListener('change', () => {
+            if (nameEl) nameEl.textContent = input.files && input.files[0] ? input.files[0].name : '';
+            testimonialRemovalState[slot] = false;
+            if (hiddenEl) hiddenEl.value = '0';
+        });
+        input.dataset.removeBound = '1';
+    }
+
+    function renderLogoSitePreview(imagePath) {
+        const previewEl = document.getElementById('currentLogoSitePreview');
+        const hiddenEl = document.getElementById('removeLogoImg');
+        if (!previewEl) return;
+        const img = String(imagePath || '').trim();
+        if (!img || (hiddenEl && hiddenEl.value === '1')) {
+            previewEl.innerHTML = '';
+            return;
+        }
+        previewEl.innerHTML = `
+            <img src="${buildThumbAssetUrl(img)}" alt="Logo do site" loading="lazy" style="max-height: 70px; max-width: 100%; border-radius: 4px;">
+            <button type="button" class="btn btn-sm btn-outline-danger mt-2" id="removeLogoSiteBtn" style="margin-top:0.5rem;">
+                <i class="ph ph-trash"></i> Excluir logo
+            </button>
+        `;
+        const removeBtn = document.getElementById('removeLogoSiteBtn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                if (hiddenEl) hiddenEl.value = '1';
+                previewEl.innerHTML = '';
+            });
+        }
+    }
+
+    function bindLogoSiteInput() {
+        const input = document.getElementById('customLogoImage');
+        const hiddenEl = document.getElementById('removeLogoImg');
+        if (!input || input.dataset.logoBound === '1') return;
+        input.addEventListener('change', () => {
+            if (hiddenEl) hiddenEl.value = '0';
+        });
+        input.dataset.logoBound = '1';
     }
 
     function normalizePaymentPolicies(rawPolicies) {
@@ -1642,6 +1730,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                 </div>
 
+                <!-- Logo do Site -->
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
+                        <h3><i class="ph ph-image-square" style="color: var(--primary);"></i> Logo do Site</h3>
+                        <i class="ph ph-caret-down accordion-icon"></i>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="accordion-body-inner">
+                            <p style="margin-bottom: 1rem; color: #666; font-size:0.9rem;">A logo enviada aqui substitui o ícone genérico no cabeçalho do site público.</p>
+                            <div style="text-align: center; border: 2px dashed var(--border-color); padding: 1.5rem; border-radius: 8px; background: var(--bg-light);">
+                                <h4 style="margin-bottom: 1rem; color: var(--text-dark);">Logo da Navbar</h4>
+                                <input type="file" id="customLogoImage" accept="image/*" style="display:none;" onchange="document.getElementById('logoImgName').textContent = this.files[0]?.name || 'Nenhum arquivo selecionado';">
+                                <label for="customLogoImage" class="btn btn-outline" style="cursor: pointer; margin-bottom: 1rem;"><i class="ph ph-upload"></i> Escolher Logo</label>
+                                <div id="logoImgName" style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">Nenhum arquivo selecionado</div>
+                                <div id="currentLogoSitePreview" style="margin-top: 1rem;"></div>
+                                <input type="hidden" id="removeLogoImg" value="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Hero Section -->
                 <div class="accordion-item open">
                     <div class="accordion-header" onclick="this.parentElement.classList.toggle('open')">
@@ -1662,8 +1771,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <div class="form-group" style="text-align: center; border: 2px dashed var(--border-color); padding: 1.5rem; border-radius: 8px; background: var(--bg-light);">
                             <h4 style="margin-bottom: 1rem; color: var(--text-dark);">Imagens de Fundo (Hero) - Slideshow</h4>
                             <p style="font-size: 0.85rem; color: #666; margin-bottom: 1rem;">Selecione várias imagens para o slideshow. As imagens passam automaticamente na página inicial.</p>
-                            <input type="file" id="customHeroImages" accept="image/*" multiple style="display:none;">
-                            <label for="customHeroImages" class="btn btn-outline" style="cursor: pointer; margin-bottom: 1rem;"><i class="ph ph-upload"></i> Escolher Imagens</label>
+                            <input type="file" id="heroImagensInput" accept="image/*" multiple style="display:none;">
+                            <label for="heroImagensInput" class="btn btn-outline" style="cursor: pointer; margin-bottom: 1rem;"><i class="ph ph-upload"></i> Escolher Imagens</label>
                             <div id="heroImgName" style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">Nenhum arquivo selecionado</div>
                             <div id="currentHeroPreview" class="gallery-manager" style="margin-top: 1rem;"></div>
                             <small style="display:block; margin-top:0.5rem; color:#666;">Passe o rato sobre uma miniatura e use o ícone para remover. As remoções só são aplicadas ao clicar em "Salvar Alterações".</small>
@@ -1828,6 +1937,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <label for="customTesti1Image" class="btn btn-outline btn-sm" style="cursor: pointer; margin-bottom: 0.5rem;"><i class="ph ph-upload"></i> Escolher Arquivo</label>
                                 <div id="testi1ImgName" style="color: #666; font-size: 0.8rem;">Se nenhuma foto for enviada, o sistema usará a foto atual ou um avatar padrão.</div>
                                 <div id="currentTesti1Preview" style="margin-top: 0.5rem;"></div>
+                                <input type="hidden" id="removeTesti1Img" value="0">
                             </div>
                         </div>
                         
@@ -1852,6 +1962,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <label for="customTesti2Image" class="btn btn-outline btn-sm" style="cursor: pointer; margin-bottom: 0.5rem;"><i class="ph ph-upload"></i> Escolher Arquivo</label>
                                 <div id="testi2ImgName" style="color: #666; font-size: 0.8rem;">Se nenhuma foto for enviada, o sistema usará a foto atual ou um avatar padrão.</div>
                                 <div id="currentTesti2Preview" style="margin-top: 0.5rem;"></div>
+                                <input type="hidden" id="removeTesti2Img" value="0">
                             </div>
                         </div>
 
@@ -1876,6 +1987,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <label for="customTesti3Image" class="btn btn-outline btn-sm" style="cursor: pointer; margin-bottom: 0.5rem;"><i class="ph ph-upload"></i> Escolher Arquivo</label>
                                 <div id="testi3ImgName" style="color: #666; font-size: 0.8rem;">Se nenhuma foto for enviada, o sistema usará a foto atual ou um avatar padrão.</div>
                                 <div id="currentTesti3Preview" style="margin-top: 0.5rem;"></div>
+                                <input type="hidden" id="removeTesti3Img" value="0">
                             </div>
                         </div>
                     </div>
@@ -3282,6 +3394,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             set('customLocCar', custom.locCar);
             set('customLocMapLink', custom.locMapLink);
             set('customLocMapEmbed', custom.locMapEmbed);
+            set('removeLogoImg', '0');
+            bindLogoSiteInput();
+            renderLogoSitePreview(custom.logoImg || '');
             const videosEnabledEl = document.getElementById('customVideosEnabled');
             if (videosEnabledEl) videosEnabledEl.checked = Number(custom.videosEnabled || 0) === 1;
             renderVideoLinksManager(Array.isArray(custom.videosJson)
@@ -3299,11 +3414,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const imgSrc = (src) => (src && !src.startsWith('http')) ? `../${src}` : (src || '');
             const heroImgs = custom.heroImages || (custom.heroImage ? [custom.heroImage] : []);
             const heroPreview = document.getElementById('currentHeroPreview');
-            galleryState.hero.current = Array.isArray(heroImgs) ? heroImgs.filter(Boolean) : [];
+            activeHeroImages = Array.isArray(heroImgs) ? heroImgs.filter(Boolean) : [];
+            galleryState.hero.current = activeHeroImages.slice();
             galleryState.hero.toDelete = [];
             if (heroPreview) {
                 renderGalleryManager('hero', heroPreview, { previewFiles: [] });
-                const heroInput = document.getElementById('customHeroImages');
+                const heroInput = document.getElementById('heroImagensInput');
                 const heroNameEl = document.getElementById('heroImgName');
                 if (heroInput && !heroInput.dataset.galleryBound) {
                     wireGalleryFileInput('hero', heroInput, heroPreview, heroNameEl);
@@ -3318,9 +3434,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (faviconPreview && custom.favicon) faviconPreview.innerHTML = `<img src="${buildThumbAssetUrl(custom.favicon)}" alt="Favicon" loading="lazy" style="width: 32px; height: 32px; object-fit: contain; border-radius: 4px;">`;
 
             [1, 2, 3].forEach((i) => {
-                const img = custom[`testi${i}Image`];
-                const el = document.getElementById(`currentTesti${i}Preview`);
-                if (el && img) el.innerHTML = `<img src="${buildThumbAssetUrl(img)}" alt="Depoimento ${i}" loading="lazy" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
+                testimonialRemovalState[i] = false;
+                bindTestimonialImageInput(i);
+                renderTestimonialImagePreview(i, custom[`testi${i}Image`]);
             });
         } catch (e) {
             console.warn('Erro ao carregar personalização:', e);
@@ -3443,11 +3559,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const heroImgs = custom.heroImages || (custom.heroImage ? [custom.heroImage] : []);
                 const heroPreviewEl = document.getElementById('currentHeroPreview');
-                galleryState.hero.current = Array.isArray(heroImgs) ? heroImgs.filter(Boolean) : [];
+                activeHeroImages = Array.isArray(heroImgs) ? heroImgs.filter(Boolean) : [];
+                galleryState.hero.current = activeHeroImages.slice();
                 galleryState.hero.toDelete = [];
                 if (heroPreviewEl) {
                     renderGalleryManager('hero', heroPreviewEl, { previewFiles: [] });
-                    const heroInputEl = document.getElementById('customHeroImages');
+                    const heroInputEl = document.getElementById('heroImagensInput');
                     const heroNameEl = document.getElementById('heroImgName');
                     if (heroInputEl && !heroInputEl.dataset.galleryBound) {
                         wireGalleryFileInput('hero', heroInputEl, heroPreviewEl, heroNameEl);
@@ -3463,6 +3580,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         ? `<img src="${buildThumbAssetUrl(custom.favicon)}" alt="Favicon" loading="lazy" style="width: 32px; height: 32px; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">`
                         : '';
                 }
+                const removeLogoEl = document.getElementById('removeLogoImg');
+                if (removeLogoEl) removeLogoEl.value = '0';
+                bindLogoSiteInput();
+                renderLogoSitePreview(custom.logoImg || '');
 
                 document.getElementById('customChaletsSubtitle').value = custom.chaletsSubtitle || '';
                 document.getElementById('customChaletsTitle').value = custom.chaletsTitle || '';
@@ -3485,23 +3606,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('customTesti1Name').value = custom.testi1Name || '';
                 document.getElementById('customTesti1Location').value = custom.testi1Location || '';
                 document.getElementById('customTesti1Text').value = custom.testi1Text || '';
-                if (custom.testi1Image) {
-                    document.getElementById('currentTesti1Preview').innerHTML = `<img src="${buildThumbAssetUrl(custom.testi1Image)}" alt="Testimonial 1" loading="lazy" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
-                }
+                testimonialRemovalState[1] = false;
+                bindTestimonialImageInput(1);
+                renderTestimonialImagePreview(1, custom.testi1Image);
 
                 document.getElementById('customTesti2Name').value = custom.testi2Name || '';
                 document.getElementById('customTesti2Location').value = custom.testi2Location || '';
                 document.getElementById('customTesti2Text').value = custom.testi2Text || '';
-                if (custom.testi2Image) {
-                    document.getElementById('currentTesti2Preview').innerHTML = `<img src="${buildThumbAssetUrl(custom.testi2Image)}" alt="Testimonial 2" loading="lazy" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
-                }
+                testimonialRemovalState[2] = false;
+                bindTestimonialImageInput(2);
+                renderTestimonialImagePreview(2, custom.testi2Image);
 
                 document.getElementById('customTesti3Name').value = custom.testi3Name || '';
                 document.getElementById('customTesti3Location').value = custom.testi3Location || '';
                 document.getElementById('customTesti3Text').value = custom.testi3Text || '';
-                if (custom.testi3Image) {
-                    document.getElementById('currentTesti3Preview').innerHTML = `<img src="${buildThumbAssetUrl(custom.testi3Image)}" alt="Testimonial 3" loading="lazy" style="max-height: 80px; max-width: 100%; border-radius: 50%;">`;
-                }
+                testimonialRemovalState[3] = false;
+                bindTestimonialImageInput(3);
+                renderTestimonialImagePreview(3, custom.testi3Image);
 
                 // Location
                 document.getElementById('customLocAddress').value = custom.locAddress || '';
@@ -3589,7 +3710,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function saveCustomizationSettings() {
-        const fileHeroInput = document.getElementById('customHeroImages');
+        const fileHeroInput = document.getElementById('heroImagensInput');
         const fileAboutInput = document.getElementById('customAboutImage');
         const fileTesti1Input = document.getElementById('customTesti1Image');
         const fileTesti2Input = document.getElementById('customTesti2Image');
@@ -3604,16 +3725,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const heroToDelete = Array.isArray(galleryState.hero.toDelete) ? galleryState.hero.toDelete : [];
         heroToDelete.forEach((p) => formData.append('hero_images_to_delete[]', p));
-        const heroCurrent = Array.isArray(galleryState.hero.current) ? galleryState.hero.current : [];
+        const heroCurrent = Array.isArray(activeHeroImages) ? activeHeroImages.slice() : [];
+        formData.append('hero_existing_images', JSON.stringify(heroCurrent));
         if (heroCurrent.length > 0) {
             formData.append('hero_images_order', JSON.stringify(heroCurrent));
         }
         if (fileAboutInput.files[0]) await appendCompressedImage(formData, 'about_image', fileAboutInput.files[0], { maxWidth: 1920, quality: 0.8, forceLossy: true });
         const fileFaviconInput = document.getElementById('customFaviconImage');
+        const fileLogoInput = document.getElementById('customLogoImage');
         if (fileFaviconInput && fileFaviconInput.files[0]) await appendCompressedImage(formData, 'favicon_image', fileFaviconInput.files[0], { maxWidth: 512, quality: 0.9, forceLossy: false });
+        if (fileLogoInput && fileLogoInput.files[0]) await appendCompressedImage(formData, 'logoImg', fileLogoInput.files[0], { maxWidth: 1200, quality: 0.9, forceLossy: true });
         if (fileTesti1Input.files[0]) await appendCompressedImage(formData, 'testi1_image', fileTesti1Input.files[0], { maxWidth: 1200, quality: 0.82, forceLossy: true });
         if (fileTesti2Input.files[0]) await appendCompressedImage(formData, 'testi2_image', fileTesti2Input.files[0], { maxWidth: 1200, quality: 0.82, forceLossy: true });
         if (fileTesti3Input.files[0]) await appendCompressedImage(formData, 'testi3_image', fileTesti3Input.files[0], { maxWidth: 1200, quality: 0.82, forceLossy: true });
+        formData.append('remove_logoImg', (document.getElementById('removeLogoImg')?.value === '1') ? '1' : '0');
+        formData.append('remove_testi1Img', (document.getElementById('removeTesti1Img')?.value === '1') ? '1' : '0');
+        formData.append('remove_testi2Img', (document.getElementById('removeTesti2Img')?.value === '1') ? '1' : '0');
+        formData.append('remove_testi3Img', (document.getElementById('removeTesti3Img')?.value === '1') ? '1' : '0');
 
         const customizationSettings = {
             heroTitle: document.getElementById('customHeroTitle').value,
@@ -3654,7 +3782,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             footerAddress: document.getElementById('customFooterAddress').value,
             footerEmail: document.getElementById('customFooterEmail').value,
             footerPhone: document.getElementById('customFooterPhone').value,
-            footerCopyright: document.getElementById('customFooterCopyright').value
+            footerCopyright: document.getElementById('customFooterCopyright').value,
+            logoImg: ''
         };
 
         formData.append('dummy', 'true');
