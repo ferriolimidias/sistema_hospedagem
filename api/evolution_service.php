@@ -48,7 +48,12 @@ function evo_fmt_money(float $n): string
 
 function evo_send_text(PDO $pdo, string $number, string $text): array
 {
-    $url = rtrim(trim(evo_setting($pdo, 'evo_url', '')), '/');
+    $global = function_exists('be_evolution_global_config')
+        ? be_evolution_global_config()
+        : ['enabled' => false, 'url' => '', 'key' => ''];
+    $url = !empty($global['enabled'])
+        ? rtrim(trim((string) ($global['url'] ?? '')), '/')
+        : rtrim(trim(evo_setting($pdo, 'evo_url', '')), '/');
     $instance = trim(evo_setting($pdo, 'evo_instance', ''));
     $apikey = trim(evo_setting($pdo, 'evo_apikey', ''));
     if ($url === '' || $instance === '' || $apikey === '') {

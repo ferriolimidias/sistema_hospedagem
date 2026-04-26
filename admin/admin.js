@@ -161,6 +161,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let chaletsData = [];
     let reservationsData = [];
     let internalApiKey = '';
+    let evolutionGlobalManaged = false;
 
     /* ------------------------------------------------------------------
      * CHAVE INTERNA (X-Internal-Key) — NÃO duplicar fora deste bloco.
@@ -1495,8 +1496,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </h3>
                     <p style="margin-bottom: 1.5rem; color: #666; font-size: 0.9rem;">Configure a integração nativa da Evolution API e escolha em quais eventos o PMS deve disparar mensagens automáticas.</p>
                     <form id="evolutionForm">
-                        <div style="display:grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 0.75rem;">
-                            <div class="form-group">
+                        <div id="evoLegacyConfigWrap" style="display:grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 0.75rem;">
+                            <div class="form-group" id="evoUrlWrap">
                                 <label>URL Base da Evolution API</label>
                                 <input type="url" class="form-control" id="evoUrl" placeholder="https://api.seudominio.com">
                             </div>
@@ -1504,9 +1505,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <label>Instância</label>
                                 <input type="text" class="form-control" id="evoInstance" placeholder="nome-da-instancia">
                             </div>
-                            <div class="form-group">
+                            <div class="form-group" id="evoApikeyWrap">
                                 <label>API Key</label>
                                 <input type="password" class="form-control" id="evoApikey" placeholder="apikey">
+                            </div>
+                        </div>
+                        <div id="evoManagedPanel" style="display:none; margin-top:0.85rem; border:1px solid var(--border-color); border-radius:10px; padding:0.85rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.65rem;">
+                                <div>
+                                    <strong>Conexão WhatsApp Gerenciada</strong>
+                                    <div id="evoConnectionStatus" style="margin-top:.3rem; color:#374151;">🔴 Desconectado</div>
+                                </div>
+                                <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+                                    <button type="button" class="btn" id="btn-evo-connect-qr" style="background:#0ea5e9;">📱 Conectar WhatsApp</button>
+                                    <button type="button" class="btn" id="btn-evo-check-status">🔄 Verificar Conexão</button>
+                                    <button type="button" class="btn" id="btn-evo-disconnect" style="background:#dc2626;">Desconectar</button>
+                                </div>
                             </div>
                         </div>
                         <div class="form-group" style="margin-top: 0.75rem;">
@@ -1537,6 +1551,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <button type="button" class="btn btn-primary" id="saveEvolutionBtn">
                                 <i class="ph ph-floppy-disk"></i> Salvar Comunicação e Integrações
                             </button>
+                        </div>
+                        <div id="evoQrModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:999999; align-items:center; justify-content:center; padding:1rem;">
+                            <div style="background:#fff; border-radius:12px; max-width:460px; width:100%; padding:1rem;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem;">
+                                    <h4 style="margin:0;">Conectar WhatsApp</h4>
+                                    <button type="button" id="btn-evo-qr-close" class="btn-icon"><i class="ph ph-x"></i></button>
+                                </div>
+                                <div id="evoQrStatusText" style="font-size:.88rem; color:#4b5563; margin-bottom:.75rem;">Gerando QR Code...</div>
+                                <div id="evoQrCodeBox" style="min-height:180px; display:flex; align-items:center; justify-content:center; border:1px dashed #d1d5db; border-radius:8px; padding:.75rem;"></div>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -2691,6 +2715,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('saveEvolutionBtn').addEventListener('click', saveEvolutionSettings);
                 const testEvolutionBtnEl = document.getElementById('btn-test-evo');
                 if (testEvolutionBtnEl) testEvolutionBtnEl.addEventListener('click', testEvolutionConnection);
+                const evoConnectBtnEl = document.getElementById('btn-evo-connect-qr');
+                if (evoConnectBtnEl) evoConnectBtnEl.addEventListener('click', openEvolutionQrModal);
+                const evoStatusBtnEl = document.getElementById('btn-evo-check-status');
+                if (evoStatusBtnEl) evoStatusBtnEl.addEventListener('click', refreshEvolutionConnectionStatus);
+                const evoDisconnectBtnEl = document.getElementById('btn-evo-disconnect');
+                if (evoDisconnectBtnEl) evoDisconnectBtnEl.addEventListener('click', disconnectEvolutionInstance);
+                const evoQrCloseBtnEl = document.getElementById('btn-evo-qr-close');
+                if (evoQrCloseBtnEl) evoQrCloseBtnEl.addEventListener('click', closeEvolutionQrModal);
                 const savePaymentMethodsBtnEl = document.getElementById('savePaymentMethodsBtn');
                 if (savePaymentMethodsBtnEl) savePaymentMethodsBtnEl.addEventListener('click', savePaymentMethodsSettings);
                 const saveFnrhBtnEl = document.getElementById('saveFnrhSettingsBtn');
@@ -3368,17 +3400,134 @@ document.addEventListener('DOMContentLoaded', async () => {
     /* =========================================
        SETTINGS LOGIC (Evolution & MercadoPago via API)
        ========================================= */
+    function renderEvolutionManagedUi(isManaged) {
+        evolutionGlobalManaged = !!isManaged;
+        const legacyWrap = document.getElementById('evoLegacyConfigWrap');
+        const urlWrap = document.getElementById('evoUrlWrap');
+        const keyWrap = document.getElementById('evoApikeyWrap');
+        const managedPanel = document.getElementById('evoManagedPanel');
+        if (managedPanel) managedPanel.style.display = evolutionGlobalManaged ? 'block' : 'none';
+        if (legacyWrap) {
+            legacyWrap.style.gridTemplateColumns = evolutionGlobalManaged ? '1fr' : '1.5fr 1fr 1fr';
+        }
+        if (urlWrap) urlWrap.style.display = evolutionGlobalManaged ? 'none' : '';
+        if (keyWrap) keyWrap.style.display = evolutionGlobalManaged ? 'none' : '';
+        const saveBtn = document.getElementById('saveEvolutionBtn');
+        if (saveBtn) {
+            saveBtn.innerHTML = evolutionGlobalManaged
+                ? '<i class="ph ph-floppy-disk"></i> Salvar Integração (Instância/Alertas)'
+                : '<i class="ph ph-floppy-disk"></i> Salvar Comunicação e Integrações';
+        }
+    }
+
+    function renderEvolutionConnectionStatus(status) {
+        const statusEl = document.getElementById('evoConnectionStatus');
+        if (!statusEl) return;
+        const normalized = String(status || '').trim().toLowerCase();
+        if (normalized === 'open' || normalized === 'connected') {
+            statusEl.textContent = '🟢 Conectado';
+            statusEl.style.color = '#047857';
+            return;
+        }
+        if (normalized === 'connecting') {
+            statusEl.textContent = '🟡 Conectando...';
+            statusEl.style.color = '#b45309';
+            return;
+        }
+        statusEl.textContent = '🔴 Desconectado';
+        statusEl.style.color = '#b91c1c';
+    }
+
+    async function callEvolutionInstanceApi(action) {
+        const req = await fetch('../api/evolution_instance.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Internal-Key': window.internalKey || internalApiKey
+            },
+            body: JSON.stringify({ action })
+        });
+        const data = await req.json().catch(() => ({}));
+        if (!req.ok || !data.ok) {
+            throw new Error(data.error || ('HTTP ' + req.status));
+        }
+        return data;
+    }
+
+    function closeEvolutionQrModal() {
+        const modal = document.getElementById('evoQrModal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    async function openEvolutionQrModal() {
+        const modal = document.getElementById('evoQrModal');
+        const statusText = document.getElementById('evoQrStatusText');
+        const qrBox = document.getElementById('evoQrCodeBox');
+        if (!modal || !statusText || !qrBox) return;
+        if (!modal.dataset.boundClose) {
+            modal.addEventListener('click', (ev) => {
+                if (ev.target === modal) closeEvolutionQrModal();
+            });
+            modal.dataset.boundClose = '1';
+        }
+        modal.style.display = 'flex';
+        statusText.textContent = 'Gerando QR Code...';
+        qrBox.innerHTML = '<span style="color:#6b7280; font-size:.9rem;">Aguarde...</span>';
+        try {
+            const data = await callEvolutionInstanceApi('get_qr');
+            renderEvolutionConnectionStatus(data.status || 'connecting');
+            const qr = String(data.qr_base64 || '').trim();
+            if (!qr) {
+                statusText.textContent = 'QR não retornado. Tente novamente em alguns segundos.';
+                qrBox.innerHTML = '<span style="color:#b91c1c; font-size:.9rem;">QR indisponível</span>';
+                return;
+            }
+            const src = qr.startsWith('data:image') ? qr : `data:image/png;base64,${qr}`;
+            qrBox.innerHTML = `<img src="${src}" alt="QR Code WhatsApp" style="max-width:100%; width:280px; height:auto; border-radius:8px;">`;
+            statusText.textContent = 'Escaneie o QR no WhatsApp da hospedagem. Depois clique em "Verificar Conexão".';
+        } catch (error) {
+            statusText.textContent = 'Falha ao gerar QR Code.';
+            qrBox.innerHTML = `<span style="color:#b91c1c; font-size:.9rem;">${error.message || 'Erro inesperado'}</span>`;
+        }
+    }
+
+    async function refreshEvolutionConnectionStatus() {
+        if (!evolutionGlobalManaged) return;
+        try {
+            const data = await callEvolutionInstanceApi('check_status');
+            renderEvolutionConnectionStatus(data.status || 'close');
+        } catch (error) {
+            renderEvolutionConnectionStatus('close');
+            showAdminInfoToast('Não foi possível consultar o status da conexão Evolution.');
+        }
+    }
+
+    async function disconnectEvolutionInstance() {
+        if (!evolutionGlobalManaged) return;
+        if (!confirm('Deseja desconectar esta instância do WhatsApp?')) return;
+        try {
+            await callEvolutionInstanceApi('disconnect');
+            renderEvolutionConnectionStatus('close');
+            closeEvolutionQrModal();
+            showAdminInfoToast('Instância desconectada com sucesso.');
+        } catch (error) {
+            showAdminInfoToast('Falha ao desconectar a instância Evolution.');
+        }
+    }
+
     async function saveEvolutionSettings() {
         const evoApikey = (document.getElementById('evoApikey')?.value || '').trim();
         const settings = {
-            evo_url: (document.getElementById('evoUrl')?.value || '').trim(),
             evo_instance: (document.getElementById('evoInstance')?.value || '').trim(),
             owner_whatsapp: (document.getElementById('ownerWhatsapp')?.value || '').trim(),
             evo_notify_reserva: document.getElementById('evoNotifyReserva')?.checked ? '1' : '0',
             evo_notify_checkin: document.getElementById('evoNotifyCheckin')?.checked ? '1' : '0',
             evo_notify_checkout: document.getElementById('evoNotifyCheckout')?.checked ? '1' : '0'
         };
-        if (evoApikey !== '') settings.evo_apikey = evoApikey;
+        if (!evolutionGlobalManaged) {
+            settings.evo_url = (document.getElementById('evoUrl')?.value || '').trim();
+            if (evoApikey !== '') settings.evo_apikey = evoApikey;
+        }
         await saveSettingsToAPI(settings);
         alert('Configuração de Comunicação e Integrações salva com sucesso!');
     }
@@ -3815,6 +3964,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const el = document.getElementById('evoApikey');
                 el.value = '';
                 el.placeholder = hasEvoKey ? 'Chave armazenada — deixe em branco para manter' : 'apikey';
+            }
+            renderEvolutionManagedUi(!!data.evolution_global_managed);
+            if (data.evolution_global_managed && document.getElementById('evoManagedPanel')) {
+                renderEvolutionConnectionStatus('close');
+                try {
+                    await refreshEvolutionConnectionStatus();
+                } catch (_) { /* noop */ }
             }
             if (document.getElementById('evoNotifyReserva')) document.getElementById('evoNotifyReserva').checked = asBoolFlag(data.evo_notify_reserva);
             if (document.getElementById('evoNotifyCheckin')) document.getElementById('evoNotifyCheckin').checked = asBoolFlag(data.evo_notify_checkin);

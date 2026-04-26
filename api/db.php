@@ -190,6 +190,38 @@ function jsonResponse($data, int $statusCode = 200): void
     exit;
 }
 
+/**
+ * Configuração global da Evolution (modelo SaaS gerenciado).
+ *
+ * @return array{enabled:bool,url:string,key:string}
+ */
+function be_evolution_global_config(): array
+{
+    static $cache = null;
+    if (is_array($cache)) {
+        return $cache;
+    }
+    $env = [];
+    $envPath = __DIR__ . '/../.env';
+    if (is_file($envPath)) {
+        // parse_ini_file ignora comentários (# e ;) e linhas vazias.
+        // @ evita vazamento de detalhes em warning quando o arquivo estiver incompleto.
+        $parsed = @parse_ini_file($envPath, false, INI_SCANNER_TYPED);
+        if (is_array($parsed)) {
+            $env = $parsed;
+        }
+    }
+    $url = trim((string) ($env['EVOLUTION_GLOBAL_URL'] ?? ''));
+    $key = trim((string) ($env['EVOLUTION_GLOBAL_KEY'] ?? ''));
+    $enabled = ($url !== '' && $key !== '');
+    $cache = [
+        'enabled' => $enabled,
+        'url' => $url,
+        'key' => $key,
+    ];
+    return $cache;
+}
+
 $configPath = __DIR__ . '/../config/database.php';
 if (!file_exists($configPath)) {
     jsonResponse([

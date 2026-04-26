@@ -36,6 +36,12 @@ switch ($method) {
                 $decoded = json_decode($v, true);
                 $parsedSettings[$k] = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $v;
             }
+            $evoGlobal = function_exists('be_evolution_global_config')
+                ? be_evolution_global_config()
+                : ['enabled' => false, 'url' => '', 'key' => ''];
+            $parsedSettings['evolution_global_managed'] = !empty($evoGlobal['enabled']);
+            $parsedSettings['evolution_global_url_configured'] = trim((string)($evoGlobal['url'] ?? '')) !== '';
+            $parsedSettings['evolution_global_key_configured'] = trim((string)($evoGlobal['key'] ?? '')) !== '';
 
             // Personalização vem da tabela personalizacao (prioridade sobre settings)
             try {
