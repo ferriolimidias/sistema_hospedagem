@@ -133,6 +133,8 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="author" content="Ferrioli Mídias e Desenvolvimento LTDA">
+    <meta name="generator" content="Consultoria de tecnologia e implementação de IA">
     <title><?= $h($siteTitle) ?></title>
     <meta name="description" content="<?= $h($metaDescription) ?>">
     <link rel="icon" type="image/x-icon" id="clientFavicon" href="<?= $h($faviconHref) ?>">
@@ -424,12 +426,6 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
         <div class="footer-bottom">
             <div class="container" style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
                 <p id="footerCopyright"><?= $h($c['footerCopyright']) ?></p>
-                <div class="developer-signature" style="font-size: 0.85rem; color: #888; display: flex; align-items: center; gap: 0.5rem;">
-                    Desenvolvido com <i class="ph-fill ph-heart" style="color: var(--primary);"></i> por
-                    <a href="<?= !empty($c['waNumber']) ? 'https://wa.me/' . $h($c['waNumber']) . (!empty($c['waMessage']) ? '?text=' . urlencode($c['waMessage']) : '') : '#' ?>" target="_blank" style="display: inline-flex; align-items: center;">
-                        <img src="images/logoazevedo.png" alt="Azevedo" style="height: 35px; filter: brightness(0.8); transition: filter 0.3s;" onmouseover="this.style.filter='brightness(1)'" onmouseout="this.style.filter='brightness(0.8)'">
-                    </a>
-                </div>
             </div>
         </div>
     </footer>
