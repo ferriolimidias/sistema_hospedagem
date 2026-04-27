@@ -488,12 +488,13 @@ try {
 } catch (PDOException $e) { /* chave já existe */ }
 
 // Comunicação e Integrações (Evolution API nativa)
-try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_url', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_instance', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_apikey', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_reserva', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_checkin', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_checkout', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+// Limpeza automática de legado: URL da Evolution não é mais persistida no banco.
+try { $pdo->prepare("DELETE FROM settings WHERE setting_key = 'evo_url'")->execute(); } catch (PDOException $e) { /* ignora em ambientes sem tabela/settings */ }
 
 // Coluna payment_method identifica se a reserva veio do MP (automática) ou manual (PIX/WhatsApp).
 try {

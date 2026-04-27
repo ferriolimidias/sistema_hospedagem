@@ -657,7 +657,6 @@ function runInitialSchema(PDO $pdo): void
     } catch (PDOException $e) { /* existe */ }
 
     // Comunicação e Integrações (Evolution API nativa)
-    try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_url', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* existe */ }
     try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_instance', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* existe */ }
     try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_apikey', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* existe */ }
     try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_reserva', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* existe */ }

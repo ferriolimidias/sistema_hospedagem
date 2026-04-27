@@ -1496,16 +1496,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </h3>
                     <p style="margin-bottom: 1.5rem; color: #666; font-size: 0.9rem;">Configure a integração nativa da Evolution API e escolha em quais eventos o PMS deve disparar mensagens automáticas.</p>
                     <form id="evolutionForm">
-                        <div id="evoLegacyConfigWrap" style="display:grid; grid-template-columns: 1.5fr 1fr; gap: 0.75rem;">
-                            <div class="form-group" id="evoUrlWrap">
-                                <label>URL Base da Evolution API</label>
-                                <input type="url" class="form-control" id="evoUrl" placeholder="https://api.seudominio.com">
-                            </div>
-                            <div class="form-group" id="evoApikeyWrap">
-                                <label>API Key</label>
-                                <input type="password" class="form-control" id="evoApikey" placeholder="apikey">
-                            </div>
-                        </div>
+                        <div id="evoLegacyConfigWrap" style="display:none;"></div>
                         <div id="evoManagedPanel" style="display:none; margin-top:0.85rem; border:1px solid var(--border-color); border-radius:10px; padding:0.85rem;">
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.65rem;">
                                 <div>
@@ -3405,15 +3396,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderEvolutionManagedUi(isManaged) {
         evolutionGlobalManaged = !!isManaged;
         const legacyWrap = document.getElementById('evoLegacyConfigWrap');
-        const urlWrap = document.getElementById('evoUrlWrap');
-        const keyWrap = document.getElementById('evoApikeyWrap');
         const managedPanel = document.getElementById('evoManagedPanel');
         if (managedPanel) managedPanel.style.display = evolutionGlobalManaged ? 'block' : 'none';
-        if (legacyWrap) {
-            legacyWrap.style.gridTemplateColumns = evolutionGlobalManaged ? '1fr' : '1.5fr 1fr';
-        }
-        if (urlWrap) urlWrap.style.display = evolutionGlobalManaged ? 'none' : '';
-        if (keyWrap) keyWrap.style.display = evolutionGlobalManaged ? 'none' : '';
+        if (legacyWrap) legacyWrap.style.display = 'none';
         const saveBtn = document.getElementById('saveEvolutionBtn');
         if (saveBtn) {
             saveBtn.innerHTML = evolutionGlobalManaged
@@ -3543,17 +3528,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function saveEvolutionSettings() {
-        const evoApikey = (document.getElementById('evoApikey')?.value || '').trim();
         const settings = {
             owner_whatsapp: (document.getElementById('ownerWhatsapp')?.value || '').trim(),
             evo_notify_reserva: document.getElementById('evoNotifyReserva')?.checked ? '1' : '0',
             evo_notify_checkin: document.getElementById('evoNotifyCheckin')?.checked ? '1' : '0',
             evo_notify_checkout: document.getElementById('evoNotifyCheckout')?.checked ? '1' : '0'
         };
-        if (!evolutionGlobalManaged) {
-            settings.evo_url = (document.getElementById('evoUrl')?.value || '').trim();
-            if (evoApikey !== '') settings.evo_apikey = evoApikey;
-        }
         await saveSettingsToAPI(settings);
         alert('Configuração de Comunicação e Integrações salva com sucesso!');
     }
@@ -3980,14 +3960,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const s = String(v == null ? '' : v).trim().toLowerCase();
                 return s === '1' || s === 'true' || s === 'on' || s === 'yes';
             };
-            if (document.getElementById('evoUrl')) document.getElementById('evoUrl').value = data.evo_url || '';
             if (document.getElementById('ownerWhatsapp')) document.getElementById('ownerWhatsapp').value = data.owner_whatsapp || '';
-            if (document.getElementById('evoApikey')) {
-                const hasEvoKey = typeof data.evo_apikey === 'string' && data.evo_apikey.trim() !== '';
-                const el = document.getElementById('evoApikey');
-                el.value = '';
-                el.placeholder = hasEvoKey ? 'Chave armazenada — deixe em branco para manter' : 'apikey';
-            }
             renderEvolutionManagedUi(!!data.evolution_global_managed);
             if (data.evolution_global_managed && document.getElementById('evoManagedPanel')) {
                 renderEvolutionConnectionStatus('close');

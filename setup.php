@@ -133,7 +133,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $installChecklist['fnrh']['detail'] = 'Colunas FNRH validadas em reservations.';
 
             $evolutionKeys = [
-                'evo_url',
                 'evo_instance',
                 'evo_apikey',
                 'evo_notify_reserva',

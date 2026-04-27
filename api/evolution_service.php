@@ -86,13 +86,14 @@ function evo_http_config(PDO $pdo): array
 {
     $global = function_exists('be_evolution_global_config')
         ? be_evolution_global_config()
-        : ['enabled' => false, 'url' => '', 'key' => ''];
-    $url = !empty($global['enabled'])
-        ? rtrim(trim((string) ($global['url'] ?? '')), '/')
-        : rtrim(trim(evo_setting($pdo, 'evo_url', '')), '/');
+        : ['enabled' => false, 'url' => '', 'key' => '', 'env_found' => false];
+    $url = rtrim(trim((string) ($global['url'] ?? '')), '/');
+    $globalKey = trim((string) ($global['key'] ?? ''));
     $instance = trim(evo_setting($pdo, 'evo_instance', ''));
-    $apikey = trim(evo_setting($pdo, 'evo_apikey', ''));
-    return ['url' => $url, 'instance' => $instance, 'apikey' => $apikey];
+    // Token da instância no banco tem prioridade; fallback para chave global do .env.
+    $instanceApiKey = trim(evo_setting($pdo, 'evo_apikey', ''));
+    $apikey = $instanceApiKey !== '' ? $instanceApiKey : $globalKey;
+    return ['url' => $url, 'instance' => $instance, 'apikey' => $apikey, 'global_key' => $globalKey];
 }
 
 function evo_send_text(PDO $pdo, string $number, string $text): array
@@ -102,7 +103,7 @@ function evo_send_text(PDO $pdo, string $number, string $text): array
     $instance = (string) ($cfg['instance'] ?? '');
     $apikey = (string) ($cfg['apikey'] ?? '');
     if ($url === '' || $instance === '' || $apikey === '') {
-        return ['ok' => false, 'error' => 'Evolution API não configurada (url/instance/apikey).'];
+        return ['ok' => false, 'error' => 'Evolution API não configurada (.env URL/KEY global e instância ativa são obrigatórios).'];
     }
     $number = preg_replace('/[^0-9]/', '', (string)$number) ?? '';
     if ($number === '' || trim($text) === '') {
@@ -167,7 +168,7 @@ function evo_send_media(
     $instance = (string) ($cfg['instance'] ?? '');
     $apikey = (string) ($cfg['apikey'] ?? '');
     if ($url === '' || $instance === '' || $apikey === '') {
-        return ['ok' => false, 'error' => 'Evolution API não configurada (url/instance/apikey).'];
+        return ['ok' => false, 'error' => 'Evolution API não configurada (.env URL/KEY global e instância ativa são obrigatórios).'];
     }
     $number = preg_replace('/[^0-9]/', '', (string)$number) ?? '';
     $media = trim($base64Data);
