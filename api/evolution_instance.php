@@ -261,7 +261,7 @@ try {
         jsonResponse([
             'ok' => false,
             'error' => 'Falha de DNS ao resolver host da Evolution API'
-        ], 502);
+        ], 400);
     }
 
     $body = evoi_json_body();

@@ -46,6 +46,41 @@ function evo_fmt_money(float $n): string
     return 'R$ ' . number_format($n, 2, ',', '.');
 }
 
+function evo_extract_remote_error(string $body): string
+{
+    $raw = trim($body);
+    if ($raw === '') return '';
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) return '';
+    $candidate = $decoded['error'] ?? $decoded['message'] ?? ($decoded['response']['message'] ?? '');
+    if (is_string($candidate) && trim($candidate) !== '') {
+        return trim($candidate);
+    }
+    if (is_array($candidate)) {
+        $flat = [];
+        array_walk_recursive($candidate, static function ($v) use (&$flat) {
+            if (is_scalar($v)) $flat[] = (string)$v;
+        });
+        return trim(implode('; ', array_filter($flat)));
+    }
+    return '';
+}
+
+function evo_compose_send_error(int $httpCode, string $curlError, string $body): string
+{
+    $parts = ['Falha na Evolution (HTTP ' . $httpCode . ')'];
+    if (trim($curlError) !== '') {
+        $parts[] = 'cURL: ' . trim($curlError);
+    }
+    $remote = evo_extract_remote_error($body);
+    if ($remote !== '') {
+        $parts[] = 'Evolution: ' . $remote;
+    } elseif (trim($body) !== '') {
+        $parts[] = 'Body: ' . trim($body);
+    }
+    return implode(' ', $parts);
+}
+
 function evo_send_text(PDO $pdo, string $number, string $text): array
 {
     $global = function_exists('be_evolution_global_config')
@@ -59,6 +94,7 @@ function evo_send_text(PDO $pdo, string $number, string $text): array
     if ($url === '' || $instance === '' || $apikey === '') {
         return ['ok' => false, 'error' => 'Evolution API não configurada (url/instance/apikey).'];
     }
+    $number = preg_replace('/[^0-9]/', '', (string)$number) ?? '';
     if ($number === '' || trim($text) === '') {
         return ['ok' => false, 'error' => 'Número ou texto inválido.'];
     }
@@ -94,10 +130,18 @@ function evo_send_text(PDO $pdo, string $number, string $text): array
         return ['ok' => true, 'skipped' => true, 'reason' => 'fail_fast_exception'];
     }
     $ok = ($err === '' && $code >= 200 && $code < 300);
+    $bodyText = is_string($body) ? $body : '';
     if (!$ok) {
-        error_log('[evolution_service] fail http=' . $code . ' err=' . $err . ' body=' . (is_string($body) ? mb_substr($body, 0, 300) : ''));
+        $logBody = function_exists('mb_substr') ? mb_substr($bodyText, 0, 1200) : substr($bodyText, 0, 1200);
+        error_log('[evolution_service] fail http=' . $code . ' err=' . $err . ' body=' . $logBody);
+        return [
+            'ok' => false,
+            'http_code' => $code,
+            'error' => evo_compose_send_error($code, $err, $bodyText),
+            'body' => $bodyText
+        ];
     }
-    return ['ok' => $ok, 'http_code' => $code, 'error' => $err, 'body' => is_string($body) ? $body : ''];
+    return ['ok' => true, 'http_code' => $code, 'error' => '', 'body' => $bodyText];
 }
 
 function evo_build_portal_url(string $token): string
