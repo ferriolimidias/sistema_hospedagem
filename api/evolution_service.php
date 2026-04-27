@@ -256,16 +256,18 @@ function evo_send_pix(
     if (!function_exists('curl_init')) {
         return ['ok' => false, 'error' => 'cURL indisponível no servidor.'];
     }
-    $endpoint = $url . '/message/sendPayment/' . rawurlencode($instance);
+    $endpoint = $url . '/message/sendButtons/' . rawurlencode($instance);
+    error_log('URL Final: ' . $endpoint);
     $payload = json_encode([
         'number' => $number,
-        'body' => $messageText,
-        'payment' => [
-            'type' => 'pix',
-            'pix' => [
-                'key' => $pixKey,
-                'keyType' => $pixKeyType,
-                'name' => $pixName
+        'title' => ($pixName !== '' ? $pixName : 'Pagamento PIX'),
+        'description' => $messageText,
+        'footer' => 'Clique abaixo para copiar a chave',
+        'buttons' => [
+            [
+                'type' => 'copy',
+                'displayText' => 'Copiar Chave PIX',
+                'copyCode' => $pixKey
             ]
         ]
     ], JSON_UNESCAPED_UNICODE);
@@ -695,7 +697,7 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
             jsonResponse(['ok' => false, 'error' => 'O número de telefone (phone) é obrigatório para teste PIX.'], 400);
         }
         $brand = evo_brand_name($pdo);
-        $pixKey = trim((string)($data['manual_pix_key'] ?? ''));
+        $pixKey = trim((string)($data['pix_key'] ?? ($data['manual_pix_key'] ?? '')));
         $pixReceiverName = trim((string)($data['pix_receiver_name'] ?? ''));
         $pixKeyType = strtolower(trim((string)($data['pix_key_type'] ?? '')));
         $template = trim((string)($data['manual_pix_instructions'] ?? ''));

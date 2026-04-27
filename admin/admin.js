@@ -3712,6 +3712,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             phone: testPhone,
             manual_pix_instructions: (document.getElementById('manualPixInstructions')?.value || '').trim(),
             manual_pix_key: (document.getElementById('manualPixKey')?.value || '').trim(),
+            pix_key: (document.getElementById('manualPixKey')?.value || '').trim(),
             pix_receiver_name: (document.getElementById('pixReceiverName')?.value || '').trim(),
             pix_key_type: (document.getElementById('pixKeyType')?.value || 'random').trim()
         };
