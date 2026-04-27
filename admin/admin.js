@@ -1515,6 +1515,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
                                     <button type="button" class="btn" id="btn-evo-connect-qr" style="background:#0ea5e9;">📱 Conectar WhatsApp</button>
                                     <button type="button" class="btn" id="btn-evo-check-status">🔄 Verificar Conexão</button>
+                                    <button type="button" class="btn" id="btn-evo-test-contract-media" style="background:#7c3aed;">Testar Envio de Contrato</button>
+                                    <button type="button" class="btn" id="btn-evo-test-receipt-media" style="background:#0f766e;">Testar Envio de Recibo</button>
                                     <button type="button" class="btn" id="btn-evo-disconnect" style="background:#dc2626;">Desconectar</button>
                                 </div>
                             </div>
@@ -2717,6 +2719,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (evoStatusBtnEl) evoStatusBtnEl.addEventListener('click', refreshEvolutionConnectionStatus);
                 const evoDisconnectBtnEl = document.getElementById('btn-evo-disconnect');
                 if (evoDisconnectBtnEl) evoDisconnectBtnEl.addEventListener('click', disconnectEvolutionInstance);
+                const evoTestContractMediaBtnEl = document.getElementById('btn-evo-test-contract-media');
+                if (evoTestContractMediaBtnEl) evoTestContractMediaBtnEl.addEventListener('click', () => testEvolutionMedia('contract'));
+                const evoTestReceiptMediaBtnEl = document.getElementById('btn-evo-test-receipt-media');
+                if (evoTestReceiptMediaBtnEl) evoTestReceiptMediaBtnEl.addEventListener('click', () => testEvolutionMedia('receipt'));
                 const evoQrCloseBtnEl = document.getElementById('btn-evo-qr-close');
                 if (evoQrCloseBtnEl) evoQrCloseBtnEl.addEventListener('click', closeEvolutionQrModal);
                 const savePaymentMethodsBtnEl = document.getElementById('savePaymentMethodsBtn');
@@ -3508,6 +3514,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             showAdminInfoToast('Instância desconectada com sucesso.');
         } catch (error) {
             showAdminInfoToast('Falha ao desconectar a instância Evolution.');
+        }
+    }
+
+    async function testEvolutionMedia(kind = 'contract') {
+        const raw = prompt('Informe o número de WhatsApp para teste (com DDD):');
+        const number = String(raw || '').replace(/\D/g, '');
+        if (!number) return;
+        const action = kind === 'receipt' ? 'test_receipt_media' : 'test_contract_media';
+        try {
+            const req = await fetch('../api/evolution_service.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Internal-Key': window.internalKey || internalApiKey
+                },
+                body: JSON.stringify({ action, number })
+            });
+            const data = await req.json().catch(() => ({}));
+            if (!req.ok || !data.ok) {
+                alert(data.error || 'Falha ao enviar mídia de teste.');
+                return;
+            }
+            alert('Mídia de teste enviada com sucesso.');
+        } catch (error) {
+            alert('Falha ao enviar mídia de teste.');
         }
     }
 
@@ -5474,6 +5505,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <i class="ph ph-whatsapp-logo"></i> Enviar Extrato por WhatsApp
                     </button>
                 </div>
+                <button type="button" id="folioResendContractBtn" class="btn btn-outline" style="width:100%; justify-content:center; margin-bottom:.5rem; color:#2563eb; border-color:#93c5fd;">
+                    <i class="ph ph-file-pdf"></i> Reenviar Contrato via WhatsApp
+                </button>
                 <button type="button" id="folioCheckoutBtn" class="btn btn-primary" style="background:#16a34a; border-color:#16a34a; width:100%; justify-content:center;">
                     <i class="ph ph-check-circle"></i> Finalizar Conta e Fazer Check-out
                 </button>
@@ -5481,6 +5515,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const checkoutBtn = document.getElementById('folioCheckoutBtn');
             const printBtn = document.getElementById('folioPrintStatementBtn');
             const sendBtn = document.getElementById('folioSendStatementBtn');
+            const resendContractBtn = document.getElementById('folioResendContractBtn');
             const checkEl = document.getElementById('checkoutConfirmMoney');
             if (checkoutBtn && checkEl) {
                 checkoutBtn.disabled = !checkEl.checked;
@@ -5515,6 +5550,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const data = await req.json().catch(() => ({}));
                     if (!req.ok || !data.ok) return alert(data.error || 'Falha ao enviar extrato via WhatsApp.');
                     alert('Extrato enviado via WhatsApp com sucesso.');
+                });
+            }
+            if (resendContractBtn) {
+                resendContractBtn.addEventListener('click', async () => {
+                    const ok = await ensureInternalApiKey();
+                    if (!ok) return alert('Não foi possível validar sessão interna.');
+                    const req = await fetch('../api/evolution_service.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                        body: JSON.stringify({
+                            action: 'resend_contract_media',
+                            reservation_id: Number(res.id)
+                        })
+                    });
+                    const data = await req.json().catch(() => ({}));
+                    if (!req.ok || !data.ok) return alert(data.error || 'Falha ao reenviar contrato via WhatsApp.');
+                    alert('Contrato reenviado via WhatsApp com sucesso.');
                 });
             }
             if (checkoutBtn) {

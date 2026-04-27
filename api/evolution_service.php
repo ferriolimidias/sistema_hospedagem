@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/booking_extras.php';
+require_once __DIR__ . '/contract_service.php';
 
 function evo_setting(PDO $pdo, string $key, string $default = ''): string
 {
@@ -81,7 +82,7 @@ function evo_compose_send_error(int $httpCode, string $curlError, string $body):
     return implode(' ', $parts);
 }
 
-function evo_send_text(PDO $pdo, string $number, string $text): array
+function evo_http_config(PDO $pdo): array
 {
     $global = function_exists('be_evolution_global_config')
         ? be_evolution_global_config()
@@ -91,6 +92,15 @@ function evo_send_text(PDO $pdo, string $number, string $text): array
         : rtrim(trim(evo_setting($pdo, 'evo_url', '')), '/');
     $instance = trim(evo_setting($pdo, 'evo_instance', ''));
     $apikey = trim(evo_setting($pdo, 'evo_apikey', ''));
+    return ['url' => $url, 'instance' => $instance, 'apikey' => $apikey];
+}
+
+function evo_send_text(PDO $pdo, string $number, string $text): array
+{
+    $cfg = evo_http_config($pdo);
+    $url = (string) ($cfg['url'] ?? '');
+    $instance = (string) ($cfg['instance'] ?? '');
+    $apikey = (string) ($cfg['apikey'] ?? '');
     if ($url === '' || $instance === '' || $apikey === '') {
         return ['ok' => false, 'error' => 'Evolution API não configurada (url/instance/apikey).'];
     }
@@ -142,6 +152,166 @@ function evo_send_text(PDO $pdo, string $number, string $text): array
         ];
     }
     return ['ok' => true, 'http_code' => $code, 'error' => '', 'body' => $bodyText];
+}
+
+function evo_send_media(
+    PDO $pdo,
+    string $number,
+    string $base64Data,
+    string $fileName,
+    string $mimetype = 'application/pdf',
+    string $caption = ''
+): array {
+    $cfg = evo_http_config($pdo);
+    $url = (string) ($cfg['url'] ?? '');
+    $instance = (string) ($cfg['instance'] ?? '');
+    $apikey = (string) ($cfg['apikey'] ?? '');
+    if ($url === '' || $instance === '' || $apikey === '') {
+        return ['ok' => false, 'error' => 'Evolution API não configurada (url/instance/apikey).'];
+    }
+    $number = preg_replace('/[^0-9]/', '', (string)$number) ?? '';
+    $media = trim($base64Data);
+    if (strpos($media, ',') !== false && preg_match('/^data:[^;]+;base64,/i', $media) === 1) {
+        $parts = explode(',', $media, 2);
+        $media = trim((string)($parts[1] ?? ''));
+    }
+    if ($number === '' || $media === '' || trim($fileName) === '') {
+        return ['ok' => false, 'error' => 'Parâmetros inválidos para envio de mídia.'];
+    }
+    if (!function_exists('curl_init')) {
+        return ['ok' => false, 'error' => 'cURL indisponível no servidor.'];
+    }
+    $endpoint = $url . '/message/sendMedia/' . rawurlencode($instance);
+    $payload = json_encode([
+        'number' => $number,
+        'mediatype' => 'document',
+        'mimetype' => trim($mimetype) !== '' ? $mimetype : 'application/pdf',
+        'media' => $media,
+        'fileName' => trim($fileName),
+        'caption' => (string)$caption,
+    ], JSON_UNESCAPED_UNICODE);
+    try {
+        $ch = curl_init();
+        if ($ch === false) {
+            throw new RuntimeException('Falha ao inicializar cURL.');
+        }
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $endpoint,
+            CURLOPT_POST => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'apikey: ' . $apikey,
+            ],
+            CURLOPT_POSTFIELDS => $payload,
+        ]);
+        $body = curl_exec($ch);
+        $err = curl_error($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+    } catch (Throwable $e) {
+        error_log('[evolution_service] sendMedia exception: ' . $e->getMessage());
+        return ['ok' => false, 'http_code' => 0, 'error' => 'Falha cURL: ' . $e->getMessage(), 'body' => ''];
+    }
+    $bodyText = is_string($body) ? $body : '';
+    $ok = ($err === '' && $code >= 200 && $code < 300);
+    if (!$ok) {
+        $logBody = function_exists('mb_substr') ? mb_substr($bodyText, 0, 1200) : substr($bodyText, 0, 1200);
+        error_log('[evolution_service] sendMedia fail http=' . $code . ' err=' . $err . ' body=' . $logBody);
+        return [
+            'ok' => false,
+            'http_code' => $code,
+            'error' => evo_compose_send_error($code, $err, $bodyText),
+            'body' => $bodyText
+        ];
+    }
+    return ['ok' => true, 'http_code' => $code, 'error' => '', 'body' => $bodyText];
+}
+
+function evo_build_folio_receipt_pdf_base64(array $data): array
+{
+    $autoloadPath = __DIR__ . '/../vendor/autoload.php';
+    if (!is_file($autoloadPath)) {
+        return ['ok' => false, 'error' => 'Dependências PHP não instaladas (vendor/autoload.php ausente).'];
+    }
+    require_once $autoloadPath;
+    if (!class_exists(\Dompdf\Dompdf::class) || !class_exists(\Dompdf\Options::class)) {
+        return ['ok' => false, 'error' => 'Dompdf indisponível para gerar recibo PDF.'];
+    }
+    $brand = htmlspecialchars((string)($data['brand'] ?? 'Hospedagem'), ENT_QUOTES, 'UTF-8');
+    $guestName = htmlspecialchars((string)($data['guest_name'] ?? 'Hóspede'), ENT_QUOTES, 'UTF-8');
+    $reservationId = (int)($data['reservation_id'] ?? 0);
+    $totalDiarias = (float)($data['total_diarias'] ?? 0);
+    $consumoExtra = (float)($data['consumo_extra'] ?? 0);
+    $totalFinal = (float)($data['total_final'] ?? 0);
+    $fmt = static fn(float $v): string => 'R$ ' . number_format($v, 2, ',', '.');
+    $receiptNo = $reservationId > 0 ? ('RES-' . str_pad((string)$reservationId, 5, '0', STR_PAD_LEFT)) : 'RES-----';
+    $html = '<!doctype html><html><head><meta charset="utf-8"><style>
+        body{font-family:DejaVu Sans,sans-serif;font-size:12px;color:#111;margin:24px}
+        h1{font-size:18px;margin:0 0 8px}
+        .muted{color:#666;margin-bottom:16px}
+        table{width:100%;border-collapse:collapse}
+        td{padding:8px;border-bottom:1px solid #e5e7eb}
+        td:first-child{font-weight:bold;width:52%}
+        .total{font-size:14px;font-weight:bold}
+    </style></head><body>
+    <h1>Recibo / Extrato de Estadia</h1>
+    <div class="muted">' . $brand . ' · ' . date('d/m/Y H:i') . '</div>
+    <table>
+      <tr><td>Reserva</td><td>#' . htmlspecialchars($receiptNo, ENT_QUOTES, 'UTF-8') . '</td></tr>
+      <tr><td>Hóspede</td><td>' . $guestName . '</td></tr>
+      <tr><td>Hospedagem</td><td>' . $fmt($totalDiarias) . '</td></tr>
+      <tr><td>Consumo/Extras</td><td>' . $fmt($consumoExtra) . '</td></tr>
+      <tr><td class="total">Total Geral</td><td class="total">' . $fmt($totalFinal) . '</td></tr>
+    </table>
+    </body></html>';
+    $options = new \Dompdf\Options();
+    $options->set('isRemoteEnabled', true);
+    $options->set('defaultFont', 'DejaVu Sans');
+    $dompdf = new \Dompdf\Dompdf($options);
+    $dompdf->loadHtml($html, 'UTF-8');
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+    $pdfBytes = $dompdf->output();
+    if (!is_string($pdfBytes) || $pdfBytes === '') {
+        return ['ok' => false, 'error' => 'Falha ao gerar PDF do recibo.'];
+    }
+    return ['ok' => true, 'base64' => base64_encode($pdfBytes)];
+}
+
+function evo_build_dummy_pdf_base64(string $title, string $subtitle): array
+{
+    $autoloadPath = __DIR__ . '/../vendor/autoload.php';
+    if (!is_file($autoloadPath)) {
+        return ['ok' => false, 'error' => 'Dependências PHP não instaladas (vendor/autoload.php ausente).'];
+    }
+    require_once $autoloadPath;
+    if (!class_exists(\Dompdf\Dompdf::class) || !class_exists(\Dompdf\Options::class)) {
+        return ['ok' => false, 'error' => 'Dompdf indisponível para gerar PDF de teste.'];
+    }
+    $html = '<!doctype html><html><head><meta charset="utf-8"><style>
+        body{font-family:DejaVu Sans,sans-serif;margin:24px;color:#111}
+        h1{margin:0 0 8px;font-size:20px}
+        p{margin:6px 0;font-size:12px}
+    </style></head><body>
+    <h1>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h1>
+    <p>' . htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8') . '</p>
+    <p>Emitido em ' . date('d/m/Y H:i:s') . '</p>
+    </body></html>';
+    $options = new \Dompdf\Options();
+    $options->set('isRemoteEnabled', true);
+    $options->set('defaultFont', 'DejaVu Sans');
+    $dompdf = new \Dompdf\Dompdf($options);
+    $dompdf->loadHtml($html, 'UTF-8');
+    $dompdf->setPaper('A4', 'portrait');
+    $dompdf->render();
+    $bytes = $dompdf->output();
+    if (!is_string($bytes) || $bytes === '') {
+        return ['ok' => false, 'error' => 'Falha ao gerar PDF de teste.'];
+    }
+    return ['ok' => true, 'base64' => base64_encode($bytes)];
 }
 
 function evo_build_portal_url(string $token): string
@@ -386,6 +556,70 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
         ], $ok ? 200 : 400);
     }
 
+    if ($action === 'test_contract_media' || $action === 'test_receipt_media') {
+        $number = evo_phone_normalize((string)($data['number'] ?? ''));
+        if ($number === '') {
+            jsonResponse(['ok' => false, 'error' => 'number é obrigatório para teste de mídia.'], 400);
+        }
+        $brand = evo_brand_name($pdo);
+        $kind = $action === 'test_contract_media' ? 'Contrato' : 'Recibo';
+        $dummy = evo_build_dummy_pdf_base64(
+            "Teste de {$kind} - {$brand}",
+            "Documento de teste da integração Evolution API ({$kind})."
+        );
+        if (empty($dummy['ok'])) {
+            jsonResponse(['ok' => false, 'error' => (string)($dummy['error'] ?? 'Falha ao gerar PDF de teste')], 400);
+        }
+        $fileName = strtolower($action === 'test_contract_media' ? 'teste_contrato.pdf' : 'teste_recibo.pdf');
+        $caption = "Teste de envio de {$kind} em PDF via WhatsApp.";
+        $r = evo_send_media($pdo, $number, (string)$dummy['base64'], $fileName, 'application/pdf', $caption);
+        jsonResponse($r, !empty($r['ok']) ? 200 : 400);
+    }
+
+    if ($action === 'resend_contract_media') {
+        $reservationId = (int)($data['reservation_id'] ?? 0);
+        if ($reservationId <= 0) {
+            jsonResponse(['ok' => false, 'error' => 'reservation_id é obrigatório.'], 400);
+        }
+        $stmt = $pdo->prepare('SELECT id, guest_name, guest_phone, contract_filename FROM reservations WHERE id = ? LIMIT 1');
+        $stmt->execute([$reservationId]);
+        $resv = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$resv) {
+            jsonResponse(['ok' => false, 'error' => 'Reserva não encontrada.'], 404);
+        }
+        $guestPhone = evo_phone_normalize((string)($resv['guest_phone'] ?? ''));
+        if ($guestPhone === '') {
+            jsonResponse(['ok' => false, 'error' => 'Telefone do hóspede não informado na reserva.'], 400);
+        }
+        $contractFile = trim((string)($resv['contract_filename'] ?? ''));
+        $contractPath = '';
+        if ($contractFile !== '') {
+            $contractsDir = realpath(__DIR__ . '/../storage/contracts');
+            if ($contractsDir) {
+                $candidate = $contractsDir . DIRECTORY_SEPARATOR . basename($contractFile);
+                if (is_file($candidate)) {
+                    $contractPath = $candidate;
+                }
+            }
+        }
+        if ($contractPath === '') {
+            $gen = generateContractForReservation($pdo, $reservationId);
+            $contractPath = (string)($gen['path'] ?? '');
+            $contractFile = (string)($gen['filename'] ?? ('contrato_reserva_' . $reservationId . '.pdf'));
+        }
+        if (!is_file($contractPath)) {
+            jsonResponse(['ok' => false, 'error' => 'PDF do contrato não encontrado para reenvio.'], 400);
+        }
+        $bytes = @file_get_contents($contractPath);
+        if (!is_string($bytes) || $bytes === '') {
+            jsonResponse(['ok' => false, 'error' => 'Falha ao ler PDF do contrato para reenvio.'], 400);
+        }
+        $guestName = trim((string)($resv['guest_name'] ?? 'Hóspede'));
+        $caption = "Olá, {$guestName}! Segue o contrato da sua reserva em anexo.";
+        $r = evo_send_media($pdo, $guestPhone, base64_encode($bytes), $contractFile, 'application/pdf', $caption);
+        jsonResponse($r, !empty($r['ok']) ? 200 : 400);
+    }
+
     $number = evo_phone_normalize((string) ($data['number'] ?? ''));
     if ($number === '') jsonResponse(['error' => 'number é obrigatório'], 400);
     $text = trim((string) ($data['text'] ?? ''));
@@ -397,14 +631,21 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
         $totalDiarias = (float) ($data['total_diarias'] ?? 0);
         $consumoExtra = (float) ($data['consumo_extra'] ?? 0);
         $totalFinal = (float) ($data['total_final'] ?? 0);
-        $receiptNo = $reservationId > 0 ? ('#RES-' . str_pad((string) $reservationId, 3, '0', STR_PAD_LEFT)) : '#RES----';
-
-        $text = "📄 *Extrato de Estadia - {$brand}*\n"
-            . "Reserva: *{$receiptNo}*\n"
-            . "👤 Hóspede: *{$guestName}*\n"
-            . "🛏️ Diárias (Total): *" . evo_fmt_money($totalDiarias) . "*\n"
-            . "🍔 Consumo Extra: *" . evo_fmt_money($consumoExtra) . "*\n"
-            . "💰 *TOTAL A PAGAR:* *" . evo_fmt_money($totalFinal) . "*";
+        $pdf = evo_build_folio_receipt_pdf_base64([
+            'brand' => $brand,
+            'reservation_id' => $reservationId,
+            'guest_name' => $guestName,
+            'total_diarias' => $totalDiarias,
+            'consumo_extra' => $consumoExtra,
+            'total_final' => $totalFinal,
+        ]);
+        if (empty($pdf['ok'])) {
+            jsonResponse(['ok' => false, 'error' => (string)($pdf['error'] ?? 'Falha ao montar recibo PDF')], 400);
+        }
+        $fileName = 'recibo_reserva_' . ($reservationId > 0 ? $reservationId : 'sem_id') . '.pdf';
+        $caption = 'Segue o recibo/extrato da sua estadia em ' . $brand . '.';
+        $r = evo_send_media($pdo, $number, (string)$pdf['base64'], $fileName, 'application/pdf', $caption);
+        jsonResponse($r, !empty($r['ok']) ? 200 : 400);
     }
 
     if ($text === '') jsonResponse(['error' => 'text é obrigatório'], 400);

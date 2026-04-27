@@ -368,10 +368,10 @@ try {
     if ($action === 'disconnect') {
         $instance = trim(evoi_setting($pdo, 'evo_instance', ''));
         if ($instance !== '') {
-            $logoutResp = evoi_call('DELETE', $baseUrl . '/instance/logout/' . rawurlencode($instance), $globalKey);
-            if (!$logoutResp['ok']) {
+            $deleteResp = evoi_call('DELETE', $baseUrl . '/instance/delete/' . rawurlencode($instance), $globalKey);
+            if (!$deleteResp['ok']) {
                 // Não bloqueia limpeza local em caso de falha remota.
-                error_log('[evolution_instance] Falha no logout remoto: ' . json_encode($logoutResp));
+                error_log('[evolution_instance] Falha na exclusão remota da instância: ' . json_encode($deleteResp));
             }
         }
         evoi_save_setting($pdo, 'evo_instance', '');
