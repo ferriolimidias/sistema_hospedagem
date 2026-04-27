@@ -469,6 +469,12 @@ try {
 try {
     $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_key', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
 } catch (PDOException $e) { /* chave já existe */ }
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pix_receiver_name', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) { /* chave já existe */ }
+try {
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pix_key_type', 'random') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+} catch (PDOException $e) { /* chave já existe */ }
 
 try {
     $defaultInstructions = 'Olá! Realizei uma pré-reserva em {pousada}. Segue o comprovante do PIX para validação do pagamento. Obrigado(a).';

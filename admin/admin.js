@@ -1600,10 +1600,40 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <label>Chave PIX Principal</label>
                             <input type="text" class="form-control" id="manualPixKey" placeholder="CPF, e-mail, telefone ou chave aleatória">
                         </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
+                            <div class="form-group">
+                                <label>Nome do Recebedor</label>
+                                <input type="text" class="form-control" id="pixReceiverName" placeholder="Nome do recebedor do PIX">
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo de Chave</label>
+                                <select class="form-control" id="pixKeyType">
+                                    <option value="phone">phone</option>
+                                    <option value="email">email</option>
+                                    <option value="cpf">cpf</option>
+                                    <option value="cnpj">cnpj</option>
+                                    <option value="random">random</option>
+                                </select>
+                            </div>
+                        </div>
                         <div class="form-group">
                             <label>Template da Mensagem Automática de PIX/WhatsApp</label>
                             <textarea class="form-control" id="manualPixInstructions" rows="3" placeholder="Ex.: Olá! Acabei de pré-reservar pelo site. Segue o comprovante do PIX."></textarea>
-                            <small style="display:block; margin-top:0.35rem; color:#777;">Mensagem enviada automaticamente pelo servidor. Variáveis suportadas: {nome}, {pousada}, {checkin}, {checkout}, {total}, {id}, {chale}.</small>
+                            <div id="pixTemplateVars" style="display:flex; gap:.4rem; flex-wrap:wrap; margin-top:.45rem;">
+                                <button type="button" class="btn pix-var-pill" data-var="{nome}" style="padding:.2rem .45rem; font-size:.75rem; background:#eef2ff; color:#3730a3;">{nome}</button>
+                                <button type="button" class="btn pix-var-pill" data-var="{pousada}" style="padding:.2rem .45rem; font-size:.75rem; background:#eef2ff; color:#3730a3;">{pousada}</button>
+                                <button type="button" class="btn pix-var-pill" data-var="{checkin}" style="padding:.2rem .45rem; font-size:.75rem; background:#eef2ff; color:#3730a3;">{checkin}</button>
+                                <button type="button" class="btn pix-var-pill" data-var="{checkout}" style="padding:.2rem .45rem; font-size:.75rem; background:#eef2ff; color:#3730a3;">{checkout}</button>
+                                <button type="button" class="btn pix-var-pill" data-var="{total}" style="padding:.2rem .45rem; font-size:.75rem; background:#eef2ff; color:#3730a3;">{total}</button>
+                                <button type="button" class="btn pix-var-pill" data-var="{id}" style="padding:.2rem .45rem; font-size:.75rem; background:#eef2ff; color:#3730a3;">{id}</button>
+                                <button type="button" class="btn pix-var-pill" data-var="{chale}" style="padding:.2rem .45rem; font-size:.75rem; background:#eef2ff; color:#3730a3;">{chale}</button>
+                                <button type="button" class="btn pix-var-pill" data-var="{chave_pix}" style="padding:.2rem .45rem; font-size:.75rem; background:#dcfce7; color:#166534;">{chave_pix}</button>
+                            </div>
+                        </div>
+                        <div style="margin-top:0.6rem; text-align:right;">
+                            <button type="button" class="btn" id="testPixMessageBtn" style="background:#0f766e;">
+                                <i class="ph ph-paper-plane-tilt"></i> Testar Mensagem PIX
+                            </button>
                         </div>
                     </div>
 
@@ -2718,6 +2748,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (evoQrCloseBtnEl) evoQrCloseBtnEl.addEventListener('click', closeEvolutionQrModal);
                 const savePaymentMethodsBtnEl = document.getElementById('savePaymentMethodsBtn');
                 if (savePaymentMethodsBtnEl) savePaymentMethodsBtnEl.addEventListener('click', savePaymentMethodsSettings);
+                const testPixMessageBtnEl = document.getElementById('testPixMessageBtn');
+                if (testPixMessageBtnEl) testPixMessageBtnEl.addEventListener('click', testPixMessageNow);
+                initPixTemplateHelpers();
                 const saveFnrhBtnEl = document.getElementById('saveFnrhSettingsBtn');
                 if (saveFnrhBtnEl) saveFnrhBtnEl.addEventListener('click', saveFnrhSettings);
                 document.getElementById('saveSocialBtn').addEventListener('click', saveSocialSettings);
@@ -3517,13 +3550,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 body: JSON.stringify({ action, phone: testPhone })
             });
             const data = await req.json().catch(() => ({}));
-            if (!req.ok || !data.ok) {
-                alert('Erro: ' + (data.error || 'Falha ao enviar mídia de teste.'));
+            if (data && data.ok) {
+                alert('✅ Sucesso! A mensagem de teste foi enviada.');
+                return;
+            } else {
+                alert('Erro: ' + (data.error || 'Falha desconhecida.'));
                 return;
             }
-            alert('Mídia de teste enviada com sucesso.');
         } catch (error) {
-            alert('Erro: Falha ao enviar mídia de teste.');
+            console.error(error);
+            alert('Erro de comunicação. Verifique o console.');
         }
     }
 
@@ -3565,13 +3601,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 })
             });
             const result = await response.json().catch(() => ({}));
-            if (response.ok && result.ok) {
-                alert('Mensagem enviada!');
+            if (result && result.ok) {
+                alert('✅ Sucesso! A mensagem de teste foi enviada.');
+                return;
             } else {
-                alert('Erro: ' + (result.error || 'Falha ao enviar teste.'));
+                alert('Erro: ' + (result.error || 'Falha desconhecida.'));
             }
         } catch (error) {
-            alert('Erro: Falha ao enviar teste.');
+            console.error(error);
+            alert('Erro de comunicação. Verifique o console.');
         } finally {
             btn.disabled = false;
             btn.innerHTML = originalHtml;
@@ -3584,12 +3622,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const mpTokenEl = document.getElementById('mpAccessToken');
         const pixKeyEl = document.getElementById('manualPixKey');
         const pixInstrEl = document.getElementById('manualPixInstructions');
+        const pixReceiverNameEl = document.getElementById('pixReceiverName');
+        const pixKeyTypeEl = document.getElementById('pixKeyType');
 
         const mpActive = !!(mpActiveEl && mpActiveEl.checked);
         const manualActive = !!(manualActiveEl && manualActiveEl.checked);
         const mpToken = mpTokenEl ? mpTokenEl.value.trim() : '';
         const pixKey = pixKeyEl ? pixKeyEl.value.trim() : '';
         const pixInstr = pixInstrEl ? pixInstrEl.value.trim() : '';
+        const pixReceiverName = pixReceiverNameEl ? pixReceiverNameEl.value.trim() : '';
+        const pixKeyType = pixKeyTypeEl ? pixKeyTypeEl.value.trim() : 'random';
 
         if (!mpActive && !manualActive) {
             alert('Ative pelo menos um método de pagamento. Caso contrário, o checkout público ficará inoperante.');
@@ -3603,12 +3645,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             alert('Para ativar o PIX Manual, informe a Chave PIX Principal.');
             return;
         }
+        if (manualActive && pixReceiverName === '') {
+            alert('Para ativar o PIX Manual, informe o Nome do Recebedor.');
+            return;
+        }
+        if (manualActive && pixKeyType === '') {
+            alert('Para ativar o PIX Manual, informe o Tipo de Chave.');
+            return;
+        }
 
         const settings = {
             payment_mercadopago_active: mpActive ? '1' : '0',
             payment_manual_pix_active: manualActive ? '1' : '0',
             manual_pix_key: pixKey,
-            manual_pix_instructions: pixInstr
+            manual_pix_instructions: pixInstr,
+            pix_receiver_name: pixReceiverName,
+            pix_key_type: pixKeyType
         };
         // Só reescreve o token se o admin digitou algo novo (evita apagar accidentalmente).
         if (mpToken !== '') {
@@ -3617,6 +3669,71 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         await saveSettingsToAPI(settings);
         alert('Métodos de pagamento salvos com sucesso!');
+    }
+
+    function getDefaultPixTemplate() {
+        return `Olá, {nome}! Recebemos o seu pedido de pré-reserva na {pousada} (ID: {id}).
+🏠 Acomodação: {chale}
+📅 Check-in: {checkin}
+📅 Check-out: {checkout}
+💰 Total: R$ {total}
+Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e realize o pagamento! 👇`;
+    }
+
+    function initPixTemplateHelpers() {
+        const textarea = document.getElementById('manualPixInstructions');
+        if (!textarea) return;
+        const current = String(textarea.value || '').trim();
+        if (!current || current.startsWith('Olá! Acabei de pré-reservar')) {
+            textarea.value = getDefaultPixTemplate();
+        }
+        document.querySelectorAll('.pix-var-pill').forEach((btn) => {
+            if (btn.dataset.bound === '1') return;
+            btn.dataset.bound = '1';
+            btn.addEventListener('click', () => {
+                const token = btn.getAttribute('data-var') || '';
+                const start = textarea.selectionStart || 0;
+                const end = textarea.selectionEnd || 0;
+                const v = textarea.value || '';
+                textarea.value = v.slice(0, start) + token + v.slice(end);
+                const next = start + token.length;
+                textarea.focus();
+                textarea.setSelectionRange(next, next);
+            });
+        });
+    }
+
+    async function testPixMessageNow() {
+        let testPhone = prompt("Digite o número do WhatsApp com DDI e DDD (ex: 5511999999999) para receber o teste:");
+        testPhone = String(testPhone || '').replace(/\D/g, '');
+        if (!testPhone) return;
+        const payload = {
+            action: 'test_pix_message',
+            phone: testPhone,
+            manual_pix_instructions: (document.getElementById('manualPixInstructions')?.value || '').trim(),
+            manual_pix_key: (document.getElementById('manualPixKey')?.value || '').trim(),
+            pix_receiver_name: (document.getElementById('pixReceiverName')?.value || '').trim(),
+            pix_key_type: (document.getElementById('pixKeyType')?.value || 'random').trim()
+        };
+        try {
+            const req = await fetch('../api/evolution_service.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Internal-Key': window.internalKey || internalApiKey
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await req.json().catch(() => ({}));
+            if (data && data.ok) {
+                alert('✅ Sucesso! A mensagem PIX de teste foi enviada.');
+                return;
+            }
+            alert('Erro: ' + (data.error || 'Falha desconhecida.'));
+        } catch (err) {
+            console.error(err);
+            alert('Erro de comunicação. Verifique o console.');
+        }
     }
 
     /* =========================================
@@ -3990,6 +4107,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (pixKeyEl) pixKeyEl.value = typeof data.manual_pix_key === 'string' ? data.manual_pix_key : '';
             const pixInstrEl = document.getElementById('manualPixInstructions');
             if (pixInstrEl) pixInstrEl.value = typeof data.manual_pix_instructions === 'string' ? data.manual_pix_instructions : '';
+            const pixReceiverNameEl = document.getElementById('pixReceiverName');
+            if (pixReceiverNameEl) pixReceiverNameEl.value = typeof data.pix_receiver_name === 'string' ? data.pix_receiver_name : '';
+            const pixKeyTypeEl = document.getElementById('pixKeyType');
+            if (pixKeyTypeEl) pixKeyTypeEl.value = typeof data.pix_key_type === 'string' && data.pix_key_type.trim() !== '' ? data.pix_key_type : 'random';
+            initPixTemplateHelpers();
 
             // Popula Integração FNRH (Check-in 360º).
             const fnrhActiveEl = document.getElementById('fnrhActive');

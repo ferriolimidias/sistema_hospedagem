@@ -640,6 +640,12 @@ function runInitialSchema(PDO $pdo): void
         $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_key', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
     } catch (PDOException $e) { /* existe */ }
     try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pix_receiver_name', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) { /* existe */ }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pix_key_type', 'random') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) { /* existe */ }
+    try {
         $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_instructions', 'Olá! Realizei uma pré-reserva em {pousada}. Segue o comprovante do PIX para validação do pagamento. Obrigado(a).') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
     } catch (PDOException $e) { /* existe */ }
 

@@ -231,6 +231,82 @@ function evo_send_media(
     return ['ok' => true, 'http_code' => $code, 'error' => '', 'body' => $bodyText];
 }
 
+function evo_send_pix(
+    PDO $pdo,
+    string $number,
+    string $messageText,
+    string $pixName,
+    string $pixKeyType,
+    string $pixKey
+): array {
+    $cfg = evo_http_config($pdo);
+    $url = (string) ($cfg['url'] ?? '');
+    $instance = (string) ($cfg['instance'] ?? '');
+    $apikey = (string) ($cfg['apikey'] ?? '');
+    if ($url === '' || $instance === '' || $apikey === '') {
+        return ['ok' => false, 'error' => 'Evolution API não configurada (.env URL/KEY global e instância ativa são obrigatórios).'];
+    }
+    $number = preg_replace('/[^0-9]/', '', (string)$number) ?? '';
+    $pixName = trim($pixName);
+    $pixKeyType = strtolower(trim($pixKeyType));
+    $pixKey = trim($pixKey);
+    if ($number === '' || trim($messageText) === '' || $pixName === '' || $pixKeyType === '' || $pixKey === '') {
+        return ['ok' => false, 'error' => 'Parâmetros inválidos para envio de PIX.'];
+    }
+    if (!function_exists('curl_init')) {
+        return ['ok' => false, 'error' => 'cURL indisponível no servidor.'];
+    }
+    $endpoint = $url . '/message/sendPix/' . rawurlencode($instance);
+    $payload = json_encode([
+        'number' => $number,
+        'text' => $messageText,
+        'delay' => 1200,
+        'pix' => [
+            'type' => 'pix',
+            'currency' => 'BRL',
+            'name' => $pixName,
+            'keyType' => $pixKeyType,
+            'key' => $pixKey
+        ]
+    ], JSON_UNESCAPED_UNICODE);
+    try {
+        $ch = curl_init();
+        if ($ch === false) throw new RuntimeException('Falha ao inicializar cURL.');
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $endpoint,
+            CURLOPT_POST => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'apikey: ' . $apikey,
+            ],
+            CURLOPT_POSTFIELDS => $payload,
+        ]);
+        $body = curl_exec($ch);
+        $err = curl_error($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+    } catch (Throwable $e) {
+        error_log('[evolution_service] sendPix exception: ' . $e->getMessage());
+        return ['ok' => false, 'http_code' => 0, 'error' => 'Falha cURL: ' . $e->getMessage(), 'body' => ''];
+    }
+    $bodyText = is_string($body) ? $body : '';
+    $ok = ($err === '' && $code >= 200 && $code < 300);
+    if (!$ok) {
+        $logBody = function_exists('mb_substr') ? mb_substr($bodyText, 0, 1200) : substr($bodyText, 0, 1200);
+        error_log('[evolution_service] sendPix fail http=' . $code . ' err=' . $err . ' body=' . $logBody);
+        return [
+            'ok' => false,
+            'http_code' => $code,
+            'error' => evo_compose_send_error($code, $err, $bodyText),
+            'body' => $bodyText
+        ];
+    }
+    return ['ok' => true, 'http_code' => $code, 'error' => '', 'body' => $bodyText];
+}
+
 function evo_build_folio_receipt_pdf_base64(array $data): array
 {
     $autoloadPath = __DIR__ . '/../vendor/autoload.php';
@@ -393,6 +469,7 @@ function evo_message_for_recipient(PDO $pdo, array $reservation, string $event, 
             '{id}' => (string)($reservation['id'] ?? ''),
             '{chale}' => $chaletName,
             '{chalet}' => $chaletName,
+            '{chave_pix}' => trim(evo_setting($pdo, 'manual_pix_key', '')),
         ];
         $msg = strtr($manualTemplate, $replacements);
         if ($recipient === 'owner') {
@@ -495,6 +572,9 @@ function evo_notify_event(PDO $pdo, array $reservation, string $event): array
 
     $results = [];
     $overallOk = true;
+    $pixReceiverName = trim(evo_setting($pdo, 'pix_receiver_name', ''));
+    $pixKeyType = strtolower(trim(evo_setting($pdo, 'pix_key_type', '')));
+    $pixKey = trim(evo_setting($pdo, 'manual_pix_key', ''));
     foreach ($targets as $target) {
         $text = evo_message_for_recipient($pdo, $reservation, $event, $target['recipient']);
         if (trim($text) === '') {
@@ -506,7 +586,20 @@ function evo_notify_event(PDO $pdo, array $reservation, string $event): array
             $overallOk = false;
             continue;
         }
-        $sendResult = evo_send_text($pdo, $target['number'], $text);
+        $sendResult = null;
+        $isManualPixGuest = (
+            $event === 'reserva_pendente'
+            && $target['recipient'] === 'guest'
+            && $pixReceiverName !== ''
+            && $pixKeyType !== ''
+            && $pixKey !== ''
+        );
+        if ($isManualPixGuest) {
+            $textPix = strtr($text, ['{chave_pix}' => $pixKey]);
+            $sendResult = evo_send_pix($pdo, $target['number'], $textPix, $pixReceiverName, $pixKeyType, $pixKey);
+        } else {
+            $sendResult = evo_send_text($pdo, $target['number'], $text);
+        }
         $results[] = ['recipient' => $target['recipient']] + $sendResult;
         if (empty($sendResult['ok'])) {
             $overallOk = false;
@@ -544,13 +637,14 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
         $testMessage = "🚀 Teste de Sistema: A integração de {$brand} com a Evolution API está funcionando perfeitamente!";
 
         $ownerResult = evo_send_text($pdo, $ownerPhone, $testMessage);
-        $ok = !empty($ownerResult['ok']);
+        if (!empty($ownerResult['ok'])) {
+            jsonResponse(['ok' => true, 'message' => 'Teste enviado']);
+        }
         jsonResponse([
-            'ok' => $ok,
-            'results' => [
-                'owner' => $ownerResult,
-            ],
-        ], $ok ? 200 : 400);
+            'ok' => false,
+            'error' => (string)($ownerResult['error'] ?? 'Falha ao enviar teste'),
+            'details' => $ownerResult
+        ], 400);
     }
 
     if ($action === 'test_contract_media' || $action === 'test_receipt_media') {
@@ -571,7 +665,54 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
         $fileName = strtolower($action === 'test_contract_media' ? 'teste_contrato.pdf' : 'teste_recibo.pdf');
         $caption = "Teste de envio de {$kind} em PDF via WhatsApp.";
         $r = evo_send_media($pdo, $number, (string)$dummy['base64'], $fileName, 'application/pdf', $caption);
-        jsonResponse($r, !empty($r['ok']) ? 200 : 400);
+        if (!empty($r['ok'])) {
+            jsonResponse(['ok' => true, 'message' => 'Teste enviado']);
+        }
+        jsonResponse([
+            'ok' => false,
+            'error' => (string)($r['error'] ?? 'Falha ao enviar teste de mídia'),
+            'details' => $r
+        ], 400);
+    }
+
+    if ($action === 'test_pix_message') {
+        $targetPhone = trim((string)($data['phone'] ?? ''));
+        $number = evo_phone_normalize($targetPhone);
+        if ($number === '') {
+            jsonResponse(['ok' => false, 'error' => 'O número de telefone (phone) é obrigatório para teste PIX.'], 400);
+        }
+        $brand = evo_brand_name($pdo);
+        $pixKey = trim((string)($data['manual_pix_key'] ?? ''));
+        $pixReceiverName = trim((string)($data['pix_receiver_name'] ?? ''));
+        $pixKeyType = strtolower(trim((string)($data['pix_key_type'] ?? '')));
+        $template = trim((string)($data['manual_pix_instructions'] ?? ''));
+        if ($pixKey === '' || $pixReceiverName === '' || $pixKeyType === '') {
+            jsonResponse(['ok' => false, 'error' => 'Campos PIX incompletos para teste (chave, recebedor e tipo).'], 400);
+        }
+        if ($template === '') {
+            $template = "Olá, {nome}! Recebemos o seu pedido de pré-reserva na {pousada} (ID: {id}).\n"
+                . "🏠 Acomodação: {chale}\n📅 Check-in: {checkin}\n📅 Check-out: {checkout}\n"
+                . "💰 Total: R$ {total}\nPara garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e realize o pagamento! 👇";
+        }
+        $filled = strtr($template, [
+            '{nome}' => 'Hóspede Teste',
+            '{pousada}' => $brand,
+            '{id}' => 'TESTE-001',
+            '{chale}' => 'Suíte Teste',
+            '{checkin}' => date('d/m/Y', strtotime('+3 day')),
+            '{checkout}' => date('d/m/Y', strtotime('+5 day')),
+            '{total}' => '850,00',
+            '{chave_pix}' => $pixKey
+        ]);
+        $r = evo_send_pix($pdo, $number, $filled, $pixReceiverName, $pixKeyType, $pixKey);
+        if (!empty($r['ok'])) {
+            jsonResponse(['ok' => true, 'message' => 'Teste PIX enviado']);
+        }
+        jsonResponse([
+            'ok' => false,
+            'error' => (string)($r['error'] ?? 'Falha ao enviar teste PIX'),
+            'details' => $r
+        ], 400);
     }
 
     if ($action === 'resend_contract_media') {
