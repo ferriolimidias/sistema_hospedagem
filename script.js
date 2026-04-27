@@ -551,11 +551,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!btn) return;
         const method = getSelectedPaymentMethod();
         if (method === 'manual') {
-            btn.innerHTML = '<i class="ph ph-whatsapp-logo"></i> Continuar no WhatsApp';
-            if (hint) { hint.textContent = '*Você será redirecionado ao WhatsApp com a chave PIX. A reserva fica pendente até confirmarmos o pagamento.'; hint.style.color = ''; }
+            btn.innerHTML = '<i class="ph ph-check-circle"></i> Confirmar e receber PIX no WhatsApp';
+            if (hint) { hint.textContent = '*Após confirmar, enviaremos automaticamente a mensagem PIX no seu WhatsApp. Não é necessário abrir chat manualmente.'; hint.style.color = ''; }
         } else {
-            btn.textContent = 'Confirmar Reserva e Pagar';
-            if (hint) { hint.textContent = '*A reserva só será confirmada após o pagamento.'; hint.style.color = ''; }
+            btn.textContent = 'Pagar Agora com Mercado Pago';
+            if (hint) { hint.textContent = '*Você será redirecionado para o checkout seguro do Mercado Pago para concluir o pagamento.'; hint.style.color = ''; }
         }
     }
     window.getSelectedPaymentMethod = getSelectedPaymentMethod;
@@ -1278,7 +1278,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dbData = await resDb.json().catch(() => ({}));
                 if (!resDb.ok) {
                     alert(dbData.error || 'Não foi possível registrar a reserva. Verifique os dados e tente novamente.');
-                    submitBtn.textContent = 'Confirmar Reserva e Pagar';
+                    updateConfirmButtonForMethod();
                     submitBtn.disabled = false;
                     return;
                 }
@@ -1286,7 +1286,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {
                 console.error(e);
                 alert("Houve uma falha ao registrar sua reserva. Tente novamente.");
-                submitBtn.textContent = 'Confirmar Reserva';
+                updateConfirmButtonForMethod();
                 submitBtn.disabled = false;
                 return;
             }
@@ -1295,10 +1295,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (paymentMethod === 'manual') {
                 submitBtn.textContent = 'Reserva realizada';
                 submitBtn.disabled = false;
-                const attendantUrl = buildAttendantFallbackLink(reservationId);
                 showReservationFeedback(
-                    'Reserva realizada com sucesso! 🚀 Enviamos os detalhes e as instruções de pagamento agora mesmo para o seu WhatsApp.',
-                    attendantUrl
+                    'Reserva confirmada! Verifique seu WhatsApp agora mesmo para concluir o pagamento.'
                 );
                 if (bookingModal) bookingModal.classList.remove('show');
                 return;
@@ -1309,7 +1307,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!mpSuccess) {
                 // MercadoPago falhou ou não está configurado - NÃO confirmar reserva nem enviar notificações
-                submitBtn.textContent = 'Confirmar Reserva e Pagar';
+                updateConfirmButtonForMethod();
                 submitBtn.disabled = false;
                 // Alerta já exibido em createMercadoPagoPreference quando aplicável
             } else {
@@ -1467,15 +1465,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function buildAttendantFallbackLink(reservationId) {
-        const pm = (bookingOptions && bookingOptions.payment_methods) || {};
-        const rawNumber = String(pm.wa_number || '').replace(/[^\d]/g, '');
-        if (!rawNumber) return '';
-        const txt = encodeURIComponent(`Olá! Preciso de suporte para a reserva #${reservationId}.`);
-        return `https://wa.me/${rawNumber}?text=${txt}`;
-    }
-
-    function showReservationFeedback(message, attendantUrl) {
+    function showReservationFeedback(message) {
         const existing = document.getElementById('reservation-feedback-box');
         if (existing) existing.remove();
         const box = document.createElement('div');
@@ -1485,7 +1475,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="font-weight:700; margin-bottom:8px; color:#111827;">Reserva registrada</div>
             <div style="font-size:0.92rem; color:#374151; line-height:1.45;">${message}</div>
             <div style="display:flex; gap:8px; margin-top:12px; justify-content:flex-end;">
-                ${attendantUrl ? `<a href="${attendantUrl}" target="_blank" rel="noopener" style="text-decoration:none; padding:8px 12px; border-radius:8px; border:1px solid #d1d5db; color:#111827; font-size:0.86rem;">Falar com Atendente</a>` : ''}
                 <button type="button" id="reservation-feedback-close" style="padding:8px 12px; border-radius:8px; border:none; background:#2563eb; color:white; font-size:0.86rem; cursor:pointer;">Entendi</button>
             </div>
         `;
