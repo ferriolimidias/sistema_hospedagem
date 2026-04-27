@@ -4,9 +4,12 @@ require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/booking_extras.php';
 require_once __DIR__ . '/evolution_service.php';
 
-be_require_internal_key($pdo);
-
 $method = $_SERVER['REQUEST_METHOD'];
+// Fluxo público permitido: criação de reserva via POST (site público).
+// Demais operações continuam restritas ao painel administrativo.
+if ($method !== 'POST') {
+    be_require_internal_key($pdo);
+}
 
 function loadPaymentPoliciesReservation(PDO $pdo): array
 {
