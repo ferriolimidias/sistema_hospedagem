@@ -256,14 +256,17 @@ function evo_send_pix(
     if (!function_exists('curl_init')) {
         return ['ok' => false, 'error' => 'cURL indisponível no servidor.'];
     }
-    $endpoint = $url . '/message/sendPix/' . rawurlencode($instance);
+    $endpoint = $url . '/message/sendPayment/' . rawurlencode($instance);
     $payload = json_encode([
         'number' => $number,
-        'text' => $messageText,
-        'pix' => [
-            'key' => $pixKey,
-            'keyType' => $pixKeyType,
-            'name' => $pixName
+        'body' => $messageText,
+        'payment' => [
+            'type' => 'pix',
+            'pix' => [
+                'key' => $pixKey,
+                'keyType' => $pixKeyType,
+                'name' => $pixName
+            ]
         ]
     ], JSON_UNESCAPED_UNICODE);
     try {
