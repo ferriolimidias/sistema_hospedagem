@@ -188,6 +188,8 @@ function evo_send_media(
         'mediatype' => 'document',
         'mimetype' => trim($mimetype) !== '' ? $mimetype : 'application/pdf',
         'media' => $media,
+        // Compatibilidade entre versões/gateways da Evolution.
+        'mediaBase64' => $media,
         'fileName' => trim($fileName),
         'caption' => (string)$caption,
     ], JSON_UNESCAPED_UNICODE);
@@ -628,16 +630,16 @@ function evo_notify_event(PDO $pdo, array $reservation, string $event): array
 if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === basename(__FILE__)) {
     be_require_internal_key($pdo);
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
-        jsonResponse(['error' => 'Método não permitido'], 405);
+        jsonResponse(['ok' => false, 'error' => 'Método não permitido'], 405);
     }
     $data = json_decode((string) file_get_contents('php://input'), true);
-    if (!is_array($data)) jsonResponse(['error' => 'Payload inválido'], 400);
+    if (!is_array($data)) jsonResponse(['ok' => false, 'error' => 'Payload inválido'], 400);
     $action = strtolower(trim((string) ($data['action'] ?? 'send_text')));
     if ($action === 'notify_event') {
         $event = strtolower(trim((string) ($data['event'] ?? 'reserva')));
         $reservation = $data['reservation'] ?? [];
         if (!is_array($reservation)) {
-            jsonResponse(['error' => 'reservation inválida'], 400);
+            jsonResponse(['ok' => false, 'error' => 'reservation inválida'], 400);
         }
         $r = evo_notify_event($pdo, $reservation, $event);
         jsonResponse($r, !empty($r['ok']) ? 200 : 400);
@@ -780,7 +782,7 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
     }
 
     $number = evo_phone_normalize((string) ($data['number'] ?? ''));
-    if ($number === '') jsonResponse(['error' => 'number é obrigatório'], 400);
+    if ($number === '') jsonResponse(['ok' => false, 'error' => 'number é obrigatório'], 400);
     $text = trim((string) ($data['text'] ?? ''));
 
     if ($action === 'folio_receipt') {
@@ -807,7 +809,7 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
         jsonResponse($r, !empty($r['ok']) ? 200 : 400);
     }
 
-    if ($text === '') jsonResponse(['error' => 'text é obrigatório'], 400);
+    if ($text === '') jsonResponse(['ok' => false, 'error' => 'text é obrigatório'], 400);
     $r = evo_send_text($pdo, $number, $text);
     jsonResponse($r, $r['ok'] ? 200 : 400);
 }

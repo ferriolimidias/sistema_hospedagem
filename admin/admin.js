@@ -1241,7 +1241,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     <td>
                                         <button type="button" class="btn-icon" title="Editar" data-action="edit-reservation" data-index="${index}"><i class="ph ph-pencil-simple"></i></button>
                                         ${r.contract_filename
-                                            ? `<button type="button" class="btn-icon" title="Ver Contrato PDF" data-action="pdf-reservation" data-index="${index}"><i class="ph ph-file-pdf"></i></button>`
+                                            ? `<button type="button" class="btn-icon" title="Ver Contrato PDF" data-action="pdf-reservation" data-index="${index}"><i class="ph ph-file-pdf"></i></button>
+                                               <button type="button" class="btn-icon" title="Enviar Contrato no WhatsApp" data-action="send-contract-whatsapp" data-index="${index}" style="color:#16a34a"><i class="ph ph-whatsapp-logo"></i></button>`
                                             : `<button type="button" class="btn-icon" title="Gerar Contrato Manualmente" data-action="generate-contract" data-index="${index}" style="color:var(--primary-color, #2563eb)"><i class="ph ph-file-plus"></i></button>`
                                         }
                                         ${__balancePending
@@ -4444,7 +4445,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         }
     }
 
-    window._handleResend = async function handleResendNotification(index) {
+    window._handleResend = async function handleResendNotification(index, sourceBtn = null) {
         const r = reservationsData[index];
         if (!r) {
             alert("Dados da reserva não encontrados. Recarregue a página e tente novamente.");
@@ -4472,12 +4473,22 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             id: r.id || '---'
         };
 
+        const originalHtml = sourceBtn ? sourceBtn.innerHTML : '';
+        if (sourceBtn) {
+            sourceBtn.disabled = true;
+            sourceBtn.innerHTML = 'Enviando...';
+        }
         try {
             const result = await sendEvolutionWebhooks(webhookData);
             alert(result.success ? "✓ " + result.message : "✗ " + result.message);
         } catch (e) {
             console.error(e);
             alert("✗ Erro ao reenviar notificação: " + (e.message || "Erro desconhecido"));
+        } finally {
+            if (sourceBtn && document.body.contains(sourceBtn)) {
+                sourceBtn.disabled = false;
+                sourceBtn.innerHTML = originalHtml;
+            }
         }
     };
 
@@ -4526,6 +4537,14 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 }
             };
         });
+        appContainer.querySelectorAll('[data-action="send-contract-whatsapp"]').forEach(btn => {
+            btn.onclick = () => {
+                const idx = btn.getAttribute('data-index');
+                if (window.sendContractWhatsApp) {
+                    window.sendContractWhatsApp(idx !== null && idx !== '' ? parseInt(idx, 10) : 0, btn);
+                }
+            };
+        });
         appContainer.querySelectorAll('[data-action="pay-balance"]').forEach(btn => {
             btn.onclick = () => {
                 const idx = btn.getAttribute('data-index');
@@ -4537,7 +4556,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         appContainer.querySelectorAll('[data-action="notify-reservation"]').forEach(btn => {
             btn.onclick = () => {
                 const idx = btn.getAttribute('data-index');
-                if (window._handleResend) window._handleResend(parseInt(idx, 10));
+                if (window._handleResend) window._handleResend(parseInt(idx, 10), btn);
             };
         });
         appContainer.querySelectorAll('[data-action="delete-reservation"]').forEach(btn => {
@@ -4572,7 +4591,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         }
         try {
             const r = await fetch(`../api/checkin_link.php?id=${encodeURIComponent(reservationId)}`, {
-                headers: { 'X-Internal-Key': internalApiKey }
+                headers: { 'X-Internal-Key': window.internalKey || internalApiKey || '' }
             });
             const data = await r.json().catch(() => ({}));
             if (!r.ok) {
@@ -4631,11 +4650,34 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             template = "Olá, {nome}! Sua reserva na {pousada} está confirmada para {checkin} — {checkout}.\n\nPara agilizar sua chegada, preencha o pré-check-in online (FNRH) neste link seguro:\n{link}\n\nNos vemos em breve!";
         }
 
-        const text = renderPreCheckinMessage(template, info, brand);
-        // Formato internacional: WhatsApp aceita DDI 55 para Brasil sem +.
-        const normalized = phone.startsWith('55') ? phone : ('55' + phone);
-        const waUrl = `https://wa.me/${normalized}?text=${encodeURIComponent(text)}`;
-        window.open(waUrl, '_blank', 'noopener');
+        try {
+            const text = renderPreCheckinMessage(template, info, brand);
+            const ok = await ensureInternalApiKey();
+            if (!ok) {
+                alert('Chave interna indisponível. Abra Configurações e recarregue.');
+                return;
+            }
+            const trigger = await fetch('../api/evolution_service.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Internal-Key': window.internalKey || internalApiKey || ''
+                },
+                body: JSON.stringify({
+                    action: 'send_text',
+                    number: phone,
+                    text
+                })
+            });
+            const payload = await trigger.json().catch(() => ({}));
+            if (!trigger.ok || payload.ok === false) {
+                throw new Error(payload.error || `Falha HTTP ${trigger.status}`);
+            }
+            showInlineToast('Mensagem de pré-check-in enviada com sucesso pelo WhatsApp.');
+        } catch (e) {
+            console.error(e);
+            alert('Erro ao enviar pré-check-in pelo WhatsApp: ' + (e.message || 'Falha de comunicação.'));
+        }
     }
 
     async function openCheckinModal(reservationId) {
@@ -5641,45 +5683,65 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                     if (!phone) return alert('Telefone do hóspede não informado.');
                     const ok = await ensureInternalApiKey();
                     if (!ok) return alert('Não foi possível validar sessão interna.');
-                    const req = await fetch('../api/evolution_service.php', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
-                        body: JSON.stringify({
-                            action: 'folio_receipt',
-                            number: phone,
-                            reservation_id: Number(res.id),
-                            guest_name: res.guest_name || '',
-                            total_diarias: f.totalDiarias,
-                            consumo_extra: f.consumo,
-                            total_final: f.finalAgora
-                        })
-                    });
-                    const data = await req.json().catch(() => ({}));
-                    if (!req.ok || !data.ok) return alert(data.error || 'Falha ao enviar extrato via WhatsApp.');
-                    alert('Extrato enviado via WhatsApp com sucesso.');
+                    const previousHtml = sendBtn.innerHTML;
+                    sendBtn.disabled = true;
+                    sendBtn.innerHTML = 'Enviando...';
+                    try {
+                        const req = await fetch('../api/evolution_service.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': window.internalKey || internalApiKey || '' },
+                            body: JSON.stringify({
+                                action: 'folio_receipt',
+                                number: phone,
+                                reservation_id: Number(res.id),
+                                guest_name: res.guest_name || '',
+                                total_diarias: f.totalDiarias,
+                                consumo_extra: f.consumo,
+                                total_final: f.finalAgora
+                            })
+                        });
+                        const data = await req.json().catch(() => ({}));
+                        if (!req.ok || !data.ok) return alert(data.error || 'Falha ao enviar extrato via WhatsApp.');
+                        alert('Documento enviado com sucesso para o WhatsApp do cliente!');
+                    } finally {
+                        if (document.body.contains(sendBtn)) {
+                            sendBtn.disabled = false;
+                            sendBtn.innerHTML = previousHtml;
+                        }
+                    }
                 });
             }
             if (resendContractBtn) {
                 resendContractBtn.addEventListener('click', async () => {
                     const ok = await ensureInternalApiKey();
                     if (!ok) return alert('Não foi possível validar sessão interna.');
-                    const req = await fetch('../api/evolution_service.php', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
-                        body: JSON.stringify({
-                            action: 'resend_contract_media',
-                            reservation_id: Number(res.id)
-                        })
-                    });
-                    const data = await req.json().catch(() => ({}));
-                    if (!req.ok || !data.ok) return alert(data.error || 'Falha ao reenviar contrato via WhatsApp.');
-                    if (data.last_contract_sent_at) {
-                        res.last_contract_sent_at = data.last_contract_sent_at;
-                        if (lastContractInfo) {
-                            lastContractInfo.textContent = 'Último contrato enviado em: ' + formatDateTimeBr(data.last_contract_sent_at);
+                    const previousHtml = resendContractBtn.innerHTML;
+                    resendContractBtn.disabled = true;
+                    resendContractBtn.innerHTML = 'Enviando...';
+                    try {
+                        const req = await fetch('../api/evolution_service.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': window.internalKey || internalApiKey || '' },
+                            body: JSON.stringify({
+                                action: 'resend_contract_media',
+                                reservation_id: Number(res.id)
+                            })
+                        });
+                        const data = await req.json().catch(() => ({}));
+                        if (!req.ok || !data.ok) return alert(data.error || 'Falha ao reenviar contrato via WhatsApp.');
+                        if (data.last_contract_sent_at) {
+                            res.last_contract_sent_at = data.last_contract_sent_at;
+                            if (lastContractInfo) {
+                                lastContractInfo.textContent = 'Último contrato enviado em: ' + formatDateTimeBr(data.last_contract_sent_at);
+                            }
+                        }
+                        alert('Documento enviado com sucesso para o WhatsApp do cliente!');
+                    } finally {
+                        if (document.body.contains(resendContractBtn)) {
+                            resendContractBtn.disabled = false;
+                            resendContractBtn.innerHTML = previousHtml;
                         }
                     }
-                    alert('Contrato reenviado via WhatsApp com sucesso.');
                 });
             }
             if (checkoutBtn) {
@@ -5920,6 +5982,50 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         }
     }
 
+    window.sendContractWhatsApp = async function (index, sourceBtn = null) {
+        const res = reservationsData[index];
+        if (!res || !res.id) {
+            alert('Reserva inválida para envio de contrato.');
+            return;
+        }
+
+        const originalHtml = sourceBtn ? sourceBtn.innerHTML : '';
+        if (sourceBtn) {
+            sourceBtn.disabled = true;
+            sourceBtn.innerHTML = 'Enviando...';
+        }
+        try {
+            await ensureInternalApiKey();
+            const req = await fetch('../api/evolution_service.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Internal-Key': window.internalKey || internalApiKey || ''
+                },
+                body: JSON.stringify({
+                    action: 'resend_contract_media',
+                    reservation_id: res.id
+                })
+            });
+            const data = await req.json().catch(() => ({}));
+            if (!req.ok || !data.ok) {
+                throw new Error(data.error || 'Falha ao enviar contrato no WhatsApp');
+            }
+
+            showInlineToast('Documento enviado com sucesso para o WhatsApp do cliente!');
+            await fetchApiData();
+            renderView('reservations');
+        } catch (e) {
+            console.error(e);
+            alert('Erro ao enviar no WhatsApp: ' + (e.message || 'Falha de comunicação.'));
+        } finally {
+            if (sourceBtn && document.body.contains(sourceBtn)) {
+                sourceBtn.disabled = false;
+                sourceBtn.innerHTML = originalHtml;
+            }
+        }
+    }
+
     window.receiveReservationBalance = async function (index) {
         const res = reservationsData[index];
         if (!res || !res.id) {
@@ -5934,20 +6040,16 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             alert('Esta reserva já está com saldo quitado.');
             return;
         }
-        if (!internalApiKey) {
-            alert('Chave interna não disponível. Abra Configurações e recarregue os dados.');
-            return;
-        }
-
         const ok = confirm('Confirma o recebimento físico do saldo desta reserva?');
         if (!ok) return;
 
         try {
+            await ensureInternalApiKey();
             const req = await fetch('../api/pay_balance.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Internal-Key': internalApiKey
+                    'X-Internal-Key': window.internalKey || internalApiKey || ''
                 },
                 body: JSON.stringify({ reservation_id: res.id })
             });
