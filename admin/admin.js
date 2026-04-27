@@ -3705,7 +3705,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
 
     async function testPixMessageNow() {
         let testPhone = prompt("Digite o número do WhatsApp com DDI e DDD (ex: 5511999999999) para receber o teste:");
-        testPhone = String(testPhone || '').replace(/\D/g, '');
+        testPhone = String(testPhone || '').replace(/@s\.whatsapp\.net$/i, '').replace(/\D/g, '');
         if (!testPhone) return;
         const payload = {
             action: 'test_pix_message',

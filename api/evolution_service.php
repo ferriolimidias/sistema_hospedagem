@@ -248,7 +248,7 @@ function evo_send_pix(
     }
     $number = preg_replace('/[^0-9]/', '', (string)$number) ?? '';
     $pixName = trim($pixName);
-    $pixKeyType = strtolower(trim($pixKeyType));
+    $pixKeyType = strtoupper(trim($pixKeyType));
     $pixKey = trim($pixKey);
     if ($number === '' || trim($messageText) === '' || $pixName === '' || $pixKeyType === '' || $pixKey === '') {
         return ['ok' => false, 'error' => 'Parâmetros inválidos para envio de PIX.'];
@@ -260,13 +260,10 @@ function evo_send_pix(
     $payload = json_encode([
         'number' => $number,
         'text' => $messageText,
-        'delay' => 1200,
         'pix' => [
-            'type' => 'pix',
-            'currency' => 'BRL',
-            'name' => $pixName,
+            'key' => $pixKey,
             'keyType' => $pixKeyType,
-            'key' => $pixKey
+            'name' => $pixName
         ]
     ], JSON_UNESCAPED_UNICODE);
     try {
@@ -293,10 +290,23 @@ function evo_send_pix(
         return ['ok' => false, 'http_code' => 0, 'error' => 'Falha cURL: ' . $e->getMessage(), 'body' => ''];
     }
     $bodyText = is_string($body) ? $body : '';
-    $ok = ($err === '' && $code >= 200 && $code < 300);
+    $httpOk = ($err === '' && in_array($code, [200, 201], true));
+    $successOk = false;
+    if ($bodyText !== '') {
+        $decoded = json_decode($bodyText, true);
+        if (is_array($decoded)) {
+            if (array_key_exists('success', $decoded)) {
+                $successOk = ($decoded['success'] === true);
+            } else {
+                // Compatibilidade: alguns gateways retornam apenas HTTP 200/201.
+                $successOk = true;
+            }
+        }
+    }
+    $ok = ($httpOk && $successOk);
     if (!$ok) {
         $logBody = function_exists('mb_substr') ? mb_substr($bodyText, 0, 1200) : substr($bodyText, 0, 1200);
-        error_log('[evolution_service] sendPix fail http=' . $code . ' err=' . $err . ' body=' . $logBody);
+        error_log('[evolution_service] sendPix fail http=' . $code . ' err=' . $err . ' http_ok=' . ($httpOk ? '1' : '0') . ' success_ok=' . ($successOk ? '1' : '0') . ' body=' . $logBody);
         return [
             'ok' => false,
             'http_code' => $code,
