@@ -533,33 +533,30 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
         $r = evo_notify_event($pdo, $reservation, $event);
         jsonResponse($r, !empty($r['ok']) ? 200 : 400);
     }
-    if ($action === 'test_notify') {
-        $ownerPhoneRaw = trim((string) ($data['number'] ?? evo_setting($pdo, 'owner_whatsapp', '')));
-        $ownerPhone = evo_phone_normalize($ownerPhoneRaw);
+    if ($action === 'test_notify' || $action === 'test_notification') {
+        $targetPhone = trim((string)($data['phone'] ?? ''));
+        $ownerPhone = evo_phone_normalize($targetPhone);
         if ($ownerPhone === '') {
-            jsonResponse(['ok' => false, 'error' => 'owner_whatsapp não configurado para teste.'], 400);
+            jsonResponse(['ok' => false, 'error' => 'O número de telefone (phone) é obrigatório para teste.'], 400);
         }
-        $fakePhone = evo_phone_normalize('5511999999999');
         $brand = evo_brand_name($pdo);
         $testMessage = "🚀 Teste de Sistema: A integração de {$brand} com a Evolution API está funcionando perfeitamente!";
 
         $ownerResult = evo_send_text($pdo, $ownerPhone, $testMessage);
-        $fakeResult = evo_send_text($pdo, $fakePhone, $testMessage);
-
-        $ok = !empty($ownerResult['ok']) || !empty($fakeResult['ok']);
+        $ok = !empty($ownerResult['ok']);
         jsonResponse([
             'ok' => $ok,
             'results' => [
                 'owner' => $ownerResult,
-                'fake' => $fakeResult,
             ],
         ], $ok ? 200 : 400);
     }
 
     if ($action === 'test_contract_media' || $action === 'test_receipt_media') {
-        $number = evo_phone_normalize((string)($data['number'] ?? ''));
+        $targetPhone = trim((string)($data['phone'] ?? ''));
+        $number = evo_phone_normalize($targetPhone);
         if ($number === '') {
-            jsonResponse(['ok' => false, 'error' => 'number é obrigatório para teste de mídia.'], 400);
+            jsonResponse(['ok' => false, 'error' => 'O número de telefone (phone) é obrigatório para teste de mídia.'], 400);
         }
         $brand = evo_brand_name($pdo);
         $kind = $action === 'test_contract_media' ? 'Contrato' : 'Recibo';
@@ -617,6 +614,11 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
         $guestName = trim((string)($resv['guest_name'] ?? 'Hóspede'));
         $caption = "Olá, {$guestName}! Segue o contrato da sua reserva em anexo.";
         $r = evo_send_media($pdo, $guestPhone, base64_encode($bytes), $contractFile, 'application/pdf', $caption);
+        if (!empty($r['ok'])) {
+            $upd = $pdo->prepare('UPDATE reservations SET last_contract_sent_at = NOW() WHERE id = ?');
+            $upd->execute([$reservationId]);
+            $r['last_contract_sent_at'] = date('Y-m-d H:i:s');
+        }
         jsonResponse($r, !empty($r['ok']) ? 200 : 400);
     }
 

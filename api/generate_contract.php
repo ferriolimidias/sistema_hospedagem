@@ -32,6 +32,10 @@ try {
                 $fileName = (string)($result['filename'] ?? ('contrato_reserva_' . $reservationId . '.pdf'));
                 $caption = 'Olá, ' . $guestName . '! Segue em anexo o seu contrato de hospedagem.';
                 $mediaResult = evo_send_media($pdo, $guestPhone, $base64, $fileName, 'application/pdf', $caption);
+                if (!empty($mediaResult['ok'])) {
+                    $upd = $pdo->prepare('UPDATE reservations SET last_contract_sent_at = NOW() WHERE id = ?');
+                    $upd->execute([$reservationId]);
+                }
                 $notify = ['attempted' => true, 'ok' => !empty($mediaResult['ok']), 'result' => $mediaResult];
             } else {
                 $notify = ['attempted' => true, 'ok' => false, 'error' => 'Falha ao ler PDF do contrato para envio'];

@@ -3518,9 +3518,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function testEvolutionMedia(kind = 'contract') {
-        const raw = prompt('Informe o número de WhatsApp para teste (com DDD):');
-        const number = String(raw || '').replace(/\D/g, '');
-        if (!number) return;
+        let testPhone = prompt("Digite o número do WhatsApp com DDI e DDD (ex: 5511999999999) para receber o teste:");
+        testPhone = String(testPhone || '').replace(/\D/g, '');
+        if (!testPhone) return;
         const action = kind === 'receipt' ? 'test_receipt_media' : 'test_contract_media';
         try {
             const req = await fetch('../api/evolution_service.php', {
@@ -3529,16 +3529,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                     'Content-Type': 'application/json',
                     'X-Internal-Key': window.internalKey || internalApiKey
                 },
-                body: JSON.stringify({ action, number })
+                body: JSON.stringify({ action, phone: testPhone })
             });
             const data = await req.json().catch(() => ({}));
             if (!req.ok || !data.ok) {
-                alert(data.error || 'Falha ao enviar mídia de teste.');
+                alert('Erro: ' + (data.error || 'Falha ao enviar mídia de teste.'));
                 return;
             }
             alert('Mídia de teste enviada com sucesso.');
         } catch (error) {
-            alert('Falha ao enviar mídia de teste.');
+            alert('Erro: Falha ao enviar mídia de teste.');
         }
     }
 
@@ -3561,11 +3561,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function testEvolutionConnection() {
         const btn = document.getElementById('btn-test-evo');
         if (!btn) return;
-        const ownerWhatsapp = (document.getElementById('ownerWhatsapp')?.value || '').trim();
-        if (!ownerWhatsapp) {
-            alert('Informe o WhatsApp do Dono antes de testar a integração.');
-            return;
-        }
+        let testPhone = prompt("Digite o número do WhatsApp com DDI e DDD (ex: 5511999999999) para receber o teste:");
+        testPhone = String(testPhone || '').replace(/\D/g, '');
+        if (!testPhone) return;
         if (!confirm('Deseja enviar um teste de notificação da Evolution API agora?')) {
             return;
         }
@@ -3582,18 +3580,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                     'X-Internal-Key': window.internalKey || internalApiKey
                 },
                 body: JSON.stringify({
-                    action: 'test_notify',
-                    number: ownerWhatsapp
+                    action: 'test_notification',
+                    phone: testPhone
                 })
             });
             const result = await response.json().catch(() => ({}));
             if (response.ok && result.ok) {
                 alert('Mensagem enviada!');
             } else {
-                alert('Falha: Verifique URL/API Key');
+                alert('Erro: ' + (result.error || 'Falha ao enviar teste.'));
             }
         } catch (error) {
-            alert('Falha: Verifique URL/API Key');
+            alert('Erro: Falha ao enviar teste.');
         } finally {
             btn.disabled = false;
             btn.innerHTML = originalHtml;
@@ -5470,6 +5468,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             const summaryEl = document.getElementById('folioFinanceSummary');
             const actionEl = document.getElementById('folioFinanceAction');
             if (!summaryEl || !actionEl) return;
+            const formatDateTimeBr = (value) => {
+                if (!value) return '';
+                const s = String(value).trim();
+                const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+                if (m) return `${m[3]}/${m[2]}/${m[1]} às ${m[4]}:${m[5]}`;
+                return s;
+            };
             const f = buildFinanceNumbers();
             summaryEl.innerHTML = `
                 <div class="folio-fin-card">
@@ -5508,6 +5513,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <button type="button" id="folioResendContractBtn" class="btn btn-outline" style="width:100%; justify-content:center; margin-bottom:.5rem; color:#2563eb; border-color:#93c5fd;">
                     <i class="ph ph-file-pdf"></i> Reenviar Contrato via WhatsApp
                 </button>
+                <div id="folioLastContractSentInfo" style="margin:0 0 .6rem 0; font-size:.82rem; color:#6b7280;">
+                    ${res.last_contract_sent_at
+                    ? `Último contrato enviado em: ${formatDateTimeBr(res.last_contract_sent_at)}`
+                    : 'Contrato ainda não enviado via WhatsApp'}
+                </div>
                 <button type="button" id="folioCheckoutBtn" class="btn btn-primary" style="background:#16a34a; border-color:#16a34a; width:100%; justify-content:center;">
                     <i class="ph ph-check-circle"></i> Finalizar Conta e Fazer Check-out
                 </button>
@@ -5516,6 +5526,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const printBtn = document.getElementById('folioPrintStatementBtn');
             const sendBtn = document.getElementById('folioSendStatementBtn');
             const resendContractBtn = document.getElementById('folioResendContractBtn');
+            const lastContractInfo = document.getElementById('folioLastContractSentInfo');
             const checkEl = document.getElementById('checkoutConfirmMoney');
             if (checkoutBtn && checkEl) {
                 checkoutBtn.disabled = !checkEl.checked;
@@ -5566,6 +5577,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                     const data = await req.json().catch(() => ({}));
                     if (!req.ok || !data.ok) return alert(data.error || 'Falha ao reenviar contrato via WhatsApp.');
+                    if (data.last_contract_sent_at) {
+                        res.last_contract_sent_at = data.last_contract_sent_at;
+                        if (lastContractInfo) {
+                            lastContractInfo.textContent = 'Último contrato enviado em: ' + formatDateTimeBr(data.last_contract_sent_at);
+                        }
+                    }
                     alert('Contrato reenviado via WhatsApp com sucesso.');
                 });
             }

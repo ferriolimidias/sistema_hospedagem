@@ -316,6 +316,12 @@ try {
 }
 
 try {
+    $pdo->exec("ALTER TABLE reservations ADD COLUMN last_contract_sent_at DATETIME NULL AFTER contract_filename");
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
     $pdo->exec("ALTER TABLE reservations ADD COLUMN balance_paid_at DATETIME NULL AFTER balance_paid");
 } catch (PDOException $e) {
     // Coluna já existe.
