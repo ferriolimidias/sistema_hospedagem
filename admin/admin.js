@@ -4697,13 +4697,13 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         const fnrhBtnLabel = fnrhActive ? 'Efetivar Check-in e Enviar FNRH' : 'Efetivar Check-in (local)';
 
         const html = `
-            <div class="modal-overlay" id="checkinModalOverlay">
-                <div class="modal-container" style="max-width:640px;">
+            <div class="modal-overlay" id="checkinModalOverlay" style="background:rgba(0,0,0,0.5);">
+                <div class="modal-container" style="max-width:640px; background-color:#ffffff; border-radius:12px; box-shadow:0 20px 45px rgba(0,0,0,0.28); overflow:hidden;">
                     <div class="modal-header">
                         <h3><i class="ph ph-key" style="color:var(--primary);"></i> Check-in — Reserva #RES-${String(r.id).padStart(3, '0')}</h3>
                         <button type="button" class="btn-icon" id="checkinModalClose"><i class="ph ph-x"></i></button>
                     </div>
-                    <div class="modal-body">
+                    <div class="modal-body" style="padding:1.5rem;">
                         <div style="background:#f9fafb; border:1px solid var(--border-color); border-radius:10px; padding:.9rem 1rem; margin-bottom:1rem;">
                             <div style="font-weight:600; font-size:1.05rem; color:var(--secondary);">${escH(r.guest_name)}</div>
                             <div style="color:#6b7280; font-size:.9rem; margin-top:.15rem;">
@@ -5865,15 +5865,13 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             return;
         }
 
-        if (!internalApiKey) {
-            alert('Chave interna não disponível. Abra Configurações e recarregue os dados.');
-            return;
-        }
-
         try {
+            // Não bloqueia a ação se a chave interna não estiver em memória:
+            // download_contract.php aceita sessão admin por cookie.
+            await ensureInternalApiKey();
             const req = await fetch(`../api/download_contract.php?id=${encodeURIComponent(res.id)}`, {
                 method: 'GET',
-                headers: { 'X-Internal-Key': internalApiKey }
+                headers: { 'X-Internal-Key': window.internalKey || internalApiKey || '' }
             });
             if (!req.ok) {
                 const err = await req.json().catch(() => ({}));
@@ -5896,17 +5894,15 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             alert('Reserva inválida para geração de contrato.');
             return;
         }
-        if (!internalApiKey) {
-            alert('Chave interna não disponível. Abra Configurações e recarregue os dados.');
-            return;
-        }
-
         try {
+            // Não bloqueia por falta de chave em memória:
+            // generate_contract.php valida por sessão admin (cookie).
+            await ensureInternalApiKey();
             const req = await fetch('../api/generate_contract.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Internal-Key': internalApiKey
+                    'X-Internal-Key': window.internalKey || internalApiKey || ''
                 },
                 body: JSON.stringify({ reservation_id: res.id })
             });
