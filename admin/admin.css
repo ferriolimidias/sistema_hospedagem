@@ -477,6 +477,7 @@ button {
 
 /* Tables */
 .table-container {
+    width: 100%;
     overflow-x: auto;
 }
 
@@ -644,6 +645,79 @@ body.role-secretaria .page-header .btn[onclick*="openChaletModal"] {
 .btn-icon:hover {
     color: var(--primary);
     border-color: var(--primary);
+}
+
+.reservation-actions-cell {
+    min-width: 240px;
+}
+
+.reservation-actions-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-width: 250px;
+}
+
+.btn-icon.btn-icon-labeled {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    border-radius: 6px;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+.btn-icon.btn-icon-labeled i {
+    font-size: 0.95rem;
+}
+
+.btn-icon.btn-icon-labeled span {
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .reservation-actions-wrap {
+        max-width: 210px;
+    }
+
+    .btn-icon.btn-icon-labeled span {
+        font-size: 0;
+        line-height: 0;
+    }
+
+    .btn-icon.btn-icon-labeled span::after {
+        font-size: 0.68rem;
+        line-height: 1;
+    }
+
+    .btn-icon.btn-icon-labeled[data-action="send-precheckin"] span::after {
+        content: "Pré";
+    }
+
+    .btn-icon.btn-icon-labeled[data-action="send-contract-whatsapp"] span::after {
+        content: "Whats";
+    }
+
+    .btn-icon.btn-icon-labeled[data-action="notify-reservation"] span::after {
+        content: "Aviso";
+    }
+}
+
+@media (max-width: 480px) {
+    .reservation-actions-wrap {
+        max-width: 160px;
+    }
+
+    .btn-icon.btn-icon-labeled {
+        justify-content: center;
+        padding: 4px 6px;
+    }
+
+    .btn-icon.btn-icon-labeled span {
+        display: none;
+    }
 }
 
 /* Forms */

@@ -89,6 +89,61 @@ document.addEventListener('DOMContentLoaded', async () => {
         return res;
     };
 
+    // Padroniza feedback visual: todo alert(...) vira toast contextual.
+    const nativeAlert = window.alert ? window.alert.bind(window) : null;
+    function inferToastTypeFromMessage(message) {
+        const text = String(message || '').toLowerCase();
+        if (
+            text.includes('erro')
+            || text.includes('falha')
+            || text.includes('inválid')
+            || text.includes('nao foi possivel')
+            || text.includes('não foi possível')
+            || text.includes('dados da reserva não encontrados')
+        ) {
+            return 'error';
+        }
+        if (
+            text.includes('chave interna')
+            || text.includes('não tem permissão')
+            || text.includes('voce nao tem permissao')
+            || text.includes('você não tem permissão')
+            || text.includes('informe ')
+            || text.includes('defina ')
+            || text.includes('ative ')
+            || text.includes('não informado')
+            || text.includes('inoperante')
+            || text.includes('pendente')
+        ) {
+            return 'warning';
+        }
+        if (
+            text.includes('sucesso')
+            || text.includes('salvo')
+            || text.includes('salvas')
+            || text.includes('enviado')
+            || text.includes('enviada')
+            || text.includes('copiada')
+            || text.includes('excluíd')
+            || text.includes('gerado')
+            || text.includes('atualizada')
+            || text.includes('quitado')
+            || text.includes('finalizado')
+        ) {
+            return 'success';
+        }
+        return 'info';
+    }
+    window.alert = (message) => {
+        const text = String(message ?? '').trim();
+        if (text === '') return;
+        if (typeof showInlineToast === 'function') {
+            showInlineToast(text, inferToastTypeFromMessage(text));
+            return;
+        }
+        if (nativeAlert) nativeAlert(text);
+    };
+
     // Controle de menus por permissões
     const adminPermissions = (() => {
         try {
@@ -1238,21 +1293,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 const __fmtBR = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
                                 return `
                                 <tr${__rowStyle}>
-                                    <td>
-                                        <button type="button" class="btn-icon" title="Editar" data-action="edit-reservation" data-index="${index}"><i class="ph ph-pencil-simple"></i></button>
+                                    <td class="reservation-actions-cell">
+                                        <div class="reservation-actions-wrap">
+                                        <button type="button" class="btn-icon btn-icon-labeled" title="Editar" data-action="edit-reservation" data-index="${index}"><i class="ph ph-pencil-simple"></i><span>Editar</span></button>
                                         ${r.contract_filename
-                                            ? `<button type="button" class="btn-icon" title="Ver Contrato PDF" data-action="pdf-reservation" data-index="${index}"><i class="ph ph-file-pdf"></i></button>
-                                               <button type="button" class="btn-icon" title="Enviar Contrato no WhatsApp" data-action="send-contract-whatsapp" data-index="${index}" style="color:#16a34a"><i class="ph ph-whatsapp-logo"></i></button>`
-                                            : `<button type="button" class="btn-icon" title="Gerar Contrato Manualmente" data-action="generate-contract" data-index="${index}" style="color:var(--primary-color, #2563eb)"><i class="ph ph-file-plus"></i></button>`
+                                            ? `<button type="button" class="btn-icon btn-icon-labeled" title="Ver Contrato PDF" data-action="pdf-reservation" data-index="${index}"><i class="ph ph-file-pdf"></i><span>Contrato</span></button>
+                                               <button type="button" class="btn-icon btn-icon-labeled" title="Enviar Contrato no WhatsApp" data-action="send-contract-whatsapp" data-index="${index}" style="color:#16a34a"><i class="ph ph-whatsapp-logo"></i><span>WhatsApp</span></button>`
+                                            : `<button type="button" class="btn-icon btn-icon-labeled" title="Gerar Contrato Manualmente" data-action="generate-contract" data-index="${index}" style="color:var(--primary-color, #2563eb)"><i class="ph ph-file-plus"></i><span>Gerar</span></button>`
                                         }
                                         ${__balancePending
-                                            ? `<button type="button" class="btn-icon" title="Receber Saldo" data-action="pay-balance" data-index="${index}" style="color:#198754"><i class="ph ph-currency-circle-dollar"></i></button>`
+                                            ? `<button type="button" class="btn-icon btn-icon-labeled" title="Receber Saldo" data-action="pay-balance" data-index="${index}" style="color:#198754"><i class="ph ph-currency-circle-dollar"></i><span>Saldo</span></button>`
                                             : ''
                                         }
-                                        <button type="button" class="btn-icon" title="Notificar (Reenviar)" data-action="notify-reservation" data-index="${index}" style="color: #25D366"><i class="ph ph-whatsapp-logo"></i></button>
-                                        <button type="button" class="btn-icon" title="Enviar Pré-Check-in (WhatsApp)" data-action="send-precheckin" data-id="${r.id}" style="color:#0ea5e9"><i class="ph ph-paper-plane-tilt"></i></button>
-                                        <button type="button" class="btn-icon" title="Fazer Check-in" data-action="start-checkin" data-id="${r.id}" style="color:#16a34a"><i class="ph ph-key"></i></button>
-                                        <button type="button" class="btn-icon" title="Excluir" data-action="delete-reservation" data-id="${r.id}" style="color: var(--danger)"><i class="ph ph-trash"></i></button>
+                                        <button type="button" class="btn-icon btn-icon-labeled" title="Notificar (Reenviar)" data-action="notify-reservation" data-index="${index}" style="color: #25D366"><i class="ph ph-whatsapp-logo"></i><span>Notificar</span></button>
+                                        <button type="button" class="btn-icon btn-icon-labeled" title="Enviar Pré-Check-in (WhatsApp)" data-action="send-precheckin" data-id="${r.id}" style="color:#0ea5e9"><i class="ph ph-paper-plane-tilt"></i><span>Pré Check-in</span></button>
+                                        <button type="button" class="btn-icon btn-icon-labeled" title="Fazer Check-in" data-action="start-checkin" data-id="${r.id}" style="color:#16a34a"><i class="ph ph-key"></i><span>Check-in</span></button>
+                                        <button type="button" class="btn-icon btn-icon-labeled" title="Excluir" data-action="delete-reservation" data-id="${r.id}" style="color: var(--danger)"><i class="ph ph-trash"></i><span>Excluir</span></button>
+                                        </div>
                                     </td>
                                     <td><strong>#RES-${String(r.id).padStart(3, '0')}</strong></td>
                                     <td>${r.guest_name}<br><small style="color:#666">${r.guest_email || ''}</small><br><small style="color:#888">${(r.guests_adults || 0) + (r.guests_children || 0)} hóspede(s)</small></td>
@@ -2385,23 +2442,52 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     window.formatDateBRGlobal = formatDateBR;
 
-    function showAdminInfoToast(message) {
+    function showInlineToast(message, type = 'success') {
         const existing = document.getElementById('admin-inline-toast');
         if (existing) existing.remove();
         const toast = document.createElement('div');
         toast.id = 'admin-inline-toast';
-        toast.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:99999;max-width:460px;background:#1f2937;color:#fff;padding:12px 14px;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.25);font-size:.9rem;line-height:1.4;opacity:0;transform:translateY(8px);transition:all .2s ease;';
-        toast.textContent = message;
+        const icons = {
+            success: '✓',
+            error: '⚠️',
+            warning: '✋',
+            info: 'ℹ️'
+        };
+        const palette = {
+            success: 'var(--success-color, var(--bs-success, #16a34a))',
+            error: 'var(--danger-color, var(--bs-danger, #dc2626))',
+            warning: 'var(--warning-color, var(--bs-warning, #d97706))',
+            info: 'var(--primary-color, var(--bs-primary, #2563eb))'
+        };
+        const bg = palette[type] || palette.success;
+        const isMobile = window.matchMedia('(max-width: 768px)').matches;
+        const mobilePosition = isMobile
+            ? 'left:50%; right:auto; bottom:auto; top:12px; width:calc(100vw - 24px); max-width:560px; transform:translate(-50%, -10px);'
+            : 'right:20px; bottom:20px; left:auto; top:auto; width:auto; transform:translateY(8px);';
+        toast.style.cssText = `position:fixed; ${mobilePosition} z-index:99999; background:${bg}; color:#fff; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.22); box-shadow:0 12px 30px rgba(0,0,0,.20); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px); font-size:.9rem; line-height:1.4; font-family:inherit; font-weight:500; letter-spacing:.01em; opacity:0; transition:all .22s ease; display:flex; align-items:center; gap:8px;`;
+        const iconEl = document.createElement('span');
+        iconEl.className = 'toast-icon';
+        iconEl.textContent = icons[type] || icons.success;
+        iconEl.style.cssText = 'font-size:1rem; line-height:1; flex-shrink:0;';
+        const textEl = document.createElement('span');
+        textEl.className = 'toast-message';
+        textEl.textContent = String(message ?? '');
+        toast.appendChild(iconEl);
+        toast.appendChild(textEl);
         document.body.appendChild(toast);
         requestAnimationFrame(() => {
             toast.style.opacity = '1';
-            toast.style.transform = 'translateY(0)';
+            toast.style.transform = isMobile ? 'translate(-50%, 0)' : 'translateY(0)';
         });
         setTimeout(() => {
             toast.style.opacity = '0';
-            toast.style.transform = 'translateY(8px)';
+            toast.style.transform = isMobile ? 'translate(-50%, -10px)' : 'translateY(8px)';
             setTimeout(() => toast.remove(), 220);
-        }, 4200);
+        }, 3000);
+    }
+
+    function showAdminInfoToast(message) {
+        showInlineToast(message, 'info');
     }
     let reportChartInstance = null;
 
