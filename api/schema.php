@@ -430,8 +430,10 @@ function runInitialSchema(PDO $pdo): void
         "CREATE TABLE IF NOT EXISTS seasonal_rules (
             id INT AUTO_INCREMENT PRIMARY KEY,
             rule_name VARCHAR(255) NOT NULL,
-            start_date DATE NOT NULL,
-            end_date DATE NOT NULL,
+            rule_type ENUM('period','recurring') NOT NULL DEFAULT 'period',
+            start_date DATE NULL,
+            end_date DATE NULL,
+            recurring_days JSON NULL,
             min_nights INT NOT NULL,
             chalet_id INT NULL,
             CONSTRAINT fk_seasonal_rules_chalet FOREIGN KEY (chalet_id)
@@ -622,8 +624,10 @@ function runInitialSchema(PDO $pdo): void
         $pdo->exec("CREATE TABLE IF NOT EXISTS seasonal_rules (
             id INT AUTO_INCREMENT PRIMARY KEY,
             rule_name VARCHAR(255) NOT NULL,
-            start_date DATE NOT NULL,
-            end_date DATE NOT NULL,
+            rule_type ENUM('period','recurring') NOT NULL DEFAULT 'period',
+            start_date DATE NULL,
+            end_date DATE NULL,
+            recurring_days JSON NULL,
             min_nights INT NOT NULL,
             chalet_id INT NULL,
             CONSTRAINT fk_seasonal_rules_chalet FOREIGN KEY (chalet_id) REFERENCES chalets(id) ON DELETE CASCADE,
@@ -632,6 +636,26 @@ function runInitialSchema(PDO $pdo): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     } catch (PDOException $e) {
         // Tabela já existe.
+    }
+    try {
+        $pdo->exec("ALTER TABLE seasonal_rules ADD COLUMN rule_type ENUM('period','recurring') NOT NULL DEFAULT 'period' AFTER rule_name");
+    } catch (PDOException $e) {
+        // Coluna já existe.
+    }
+    try {
+        $pdo->exec("ALTER TABLE seasonal_rules MODIFY COLUMN start_date DATE NULL");
+    } catch (PDOException $e) {
+        // Coluna pode não existir ainda.
+    }
+    try {
+        $pdo->exec("ALTER TABLE seasonal_rules MODIFY COLUMN end_date DATE NULL");
+    } catch (PDOException $e) {
+        // Coluna pode não existir ainda.
+    }
+    try {
+        $pdo->exec("ALTER TABLE seasonal_rules ADD COLUMN recurring_days JSON NULL AFTER end_date");
+    } catch (PDOException $e) {
+        // Coluna já existe.
     }
 
     // Personalização (campos adicionados em versões mais recentes).

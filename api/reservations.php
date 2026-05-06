@@ -70,16 +70,21 @@ function validateSeasonalMinNights(PDO $pdo, int $chaletId, string $checkin, str
         ];
     }
 
-    $sql = "SELECT id, rule_name, start_date, end_date, min_nights, chalet_id
+    $checkinDow = (int)date('w', strtotime($checkin . ' 00:00:00'));
+
+    $sql = "SELECT id, rule_name, rule_type, start_date, end_date, recurring_days, min_nights, chalet_id
             FROM seasonal_rules
-            WHERE start_date <= DATE_SUB(?, INTERVAL 1 DAY)
-              AND end_date >= ?
+            WHERE (
+                    (rule_type = 'period' AND start_date IS NOT NULL AND end_date IS NOT NULL AND start_date <= DATE_SUB(?, INTERVAL 1 DAY) AND end_date >= ?)
+                    OR
+                    (rule_type = 'recurring' AND recurring_days IS NOT NULL AND JSON_CONTAINS(recurring_days, CAST(? AS JSON), '$'))
+                  )
               AND (chalet_id IS NULL OR chalet_id = ?)
             ORDER BY min_nights DESC, id ASC
             LIMIT 1";
     try {
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$checkout, $checkin, $chaletId]);
+        $stmt->execute([$checkout, $checkin, (string)$checkinDow, $chaletId]);
         $rule = $stmt->fetch(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
         return null;
@@ -100,8 +105,10 @@ function validateSeasonalMinNights(PDO $pdo, int $chaletId, string $checkin, str
         'rule' => [
             'id' => (int)$rule['id'],
             'rule_name' => (string)$rule['rule_name'],
-            'start_date' => (string)$rule['start_date'],
-            'end_date' => (string)$rule['end_date'],
+            'rule_type' => (string)($rule['rule_type'] ?? 'period'),
+            'start_date' => isset($rule['start_date']) && $rule['start_date'] !== null ? (string)$rule['start_date'] : null,
+            'end_date' => isset($rule['end_date']) && $rule['end_date'] !== null ? (string)$rule['end_date'] : null,
+            'recurring_days' => isset($rule['recurring_days']) && $rule['recurring_days'] !== null ? json_decode((string)$rule['recurring_days'], true) : null,
             'min_nights' => $required,
             'chalet_id' => isset($rule['chalet_id']) ? (is_null($rule['chalet_id']) ? null : (int)$rule['chalet_id']) : null,
         ],

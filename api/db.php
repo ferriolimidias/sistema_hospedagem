@@ -561,8 +561,10 @@ try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS seasonal_rules (
         id INT AUTO_INCREMENT PRIMARY KEY,
         rule_name VARCHAR(255) NOT NULL,
-        start_date DATE NOT NULL,
-        end_date DATE NOT NULL,
+        rule_type ENUM('period','recurring') NOT NULL DEFAULT 'period',
+        start_date DATE NULL,
+        end_date DATE NULL,
+        recurring_days JSON NULL,
         min_nights INT NOT NULL,
         chalet_id INT NULL,
         CONSTRAINT fk_seasonal_rules_chalet FOREIGN KEY (chalet_id) REFERENCES chalets(id) ON DELETE CASCADE,
@@ -572,6 +574,18 @@ try {
 } catch (PDOException $e) {
     // Tabela já existe ou erro de permissão.
 }
+try {
+    $pdo->exec("ALTER TABLE seasonal_rules ADD COLUMN rule_type ENUM('period','recurring') NOT NULL DEFAULT 'period' AFTER rule_name");
+} catch (PDOException $e) { /* coluna já existe */ }
+try {
+    $pdo->exec("ALTER TABLE seasonal_rules MODIFY COLUMN start_date DATE NULL");
+} catch (PDOException $e) { /* ignora */ }
+try {
+    $pdo->exec("ALTER TABLE seasonal_rules MODIFY COLUMN end_date DATE NULL");
+} catch (PDOException $e) { /* ignora */ }
+try {
+    $pdo->exec("ALTER TABLE seasonal_rules ADD COLUMN recurring_days JSON NULL AFTER end_date");
+} catch (PDOException $e) { /* coluna já existe */ }
 
 // FAQs — perguntas frequentes geríveis pelo admin.
 try {

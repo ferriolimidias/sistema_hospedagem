@@ -104,8 +104,10 @@ CREATE TABLE IF NOT EXISTS `faqs` (
 CREATE TABLE IF NOT EXISTS `seasonal_rules` (
   `id` int NOT NULL AUTO_INCREMENT,
   `rule_name` varchar(255) NOT NULL,
-  `start_date` date NOT NULL,
-  `end_date` date NOT NULL,
+  `rule_type` enum('period','recurring') NOT NULL DEFAULT 'period',
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  `recurring_days` json DEFAULT NULL,
   `min_nights` int NOT NULL,
   `chalet_id` int DEFAULT NULL,
   PRIMARY KEY (`id`),

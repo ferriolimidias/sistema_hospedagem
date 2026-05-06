@@ -103,13 +103,22 @@ try {
 
     $seasonalRules = [];
     try {
-        $stmtSeasonal = $pdo->query("SELECT id, rule_name, start_date, end_date, min_nights, chalet_id FROM seasonal_rules ORDER BY start_date ASC, end_date ASC, id ASC");
+        $stmtSeasonal = $pdo->query("SELECT id, rule_name, rule_type, start_date, end_date, recurring_days, min_nights, chalet_id FROM seasonal_rules ORDER BY start_date ASC, end_date ASC, id ASC");
         foreach ($stmtSeasonal->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $recurringDays = null;
+            if (isset($r['recurring_days']) && $r['recurring_days'] !== null && $r['recurring_days'] !== '') {
+                $decodedDays = json_decode((string)$r['recurring_days'], true);
+                if (is_array($decodedDays)) {
+                    $recurringDays = array_values(array_filter(array_map('intval', $decodedDays), static fn($d) => $d >= 0 && $d <= 6));
+                }
+            }
             $seasonalRules[] = [
                 'id' => (int)$r['id'],
                 'rule_name' => (string)$r['rule_name'],
-                'start_date' => (string)$r['start_date'],
-                'end_date' => (string)$r['end_date'],
+                'rule_type' => (string)($r['rule_type'] ?? 'period'),
+                'start_date' => isset($r['start_date']) && $r['start_date'] !== null ? (string)$r['start_date'] : null,
+                'end_date' => isset($r['end_date']) && $r['end_date'] !== null ? (string)$r['end_date'] : null,
+                'recurring_days' => $recurringDays,
                 'min_nights' => (int)$r['min_nights'],
                 'chalet_id' => isset($r['chalet_id']) ? (is_null($r['chalet_id']) ? null : (int)$r['chalet_id']) : null,
             ];

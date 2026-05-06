@@ -21,12 +21,21 @@ document.addEventListener('DOMContentLoaded', () => {
             .map((r) => ({
                 id: Number(r.id) || 0,
                 rule_name: String(r.rule_name || '').trim(),
-                start_date: String(r.start_date || '').trim(),
-                end_date: String(r.end_date || '').trim(),
+                rule_type: (String(r.rule_type || 'period').toLowerCase() === 'recurring') ? 'recurring' : 'period',
+                start_date: r.start_date ? String(r.start_date).trim() : '',
+                end_date: r.end_date ? String(r.end_date).trim() : '',
+                recurring_days: Array.isArray(r.recurring_days)
+                    ? r.recurring_days.map((d) => parseInt(d, 10)).filter((d) => d >= 0 && d <= 6)
+                    : [],
                 min_nights: Math.max(1, parseInt(r.min_nights, 10) || 1),
                 chalet_id: r.chalet_id == null || r.chalet_id === '' ? null : (Number(r.chalet_id) || null)
             }))
-            .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.start_date) && /^\d{4}-\d{2}-\d{2}$/.test(r.end_date) && r.start_date <= r.end_date);
+            .filter((r) => {
+                if (r.rule_type === 'recurring') {
+                    return Array.isArray(r.recurring_days) && r.recurring_days.length > 0;
+                }
+                return /^\d{4}-\d{2}-\d{2}$/.test(r.start_date) && /^\d{4}-\d{2}-\d{2}$/.test(r.end_date) && r.start_date <= r.end_date;
+            });
     }
 
     function getMaxRequiredMinNights(checkinStr, chaletId = null) {
@@ -34,10 +43,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const targetChaletId = chaletId == null ? null : Number(chaletId);
         let minRequired = 1;
         bookingOptions.seasonal_rules.forEach((rule) => {
-            if (!rule || !rule.start_date || !rule.end_date) return;
+            if (!rule) return;
             if (rule.chalet_id != null && targetChaletId != null && Number(rule.chalet_id) !== targetChaletId) return;
             if (rule.chalet_id != null && targetChaletId == null) return;
-            if (checkinStr >= rule.start_date && checkinStr <= rule.end_date) {
+            if (rule.rule_type === 'recurring') {
+                const dow = new Date(checkinStr + 'T00:00:00').getDay();
+                if (Array.isArray(rule.recurring_days) && rule.recurring_days.includes(dow)) {
+                    minRequired = Math.max(minRequired, Number(rule.min_nights) || 1);
+                }
+                return;
+            }
+            if (rule.start_date && rule.end_date && checkinStr >= rule.start_date && checkinStr <= rule.end_date) {
                 minRequired = Math.max(minRequired, Number(rule.min_nights) || 1);
             }
         });

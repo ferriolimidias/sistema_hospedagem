@@ -2344,11 +2344,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
             <div class="card" style="margin-bottom:1.5rem;">
                 <h3 style="margin-bottom: 1rem;"><i class="ph ph-plus-circle" style="color: var(--primary); vertical-align: bottom;"></i> Nova Regra</h3>
-                <form id="seasonalForm" style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.2fr auto; gap:0.75rem; align-items:end;">
+                <form id="seasonalForm" style="display:grid; grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr 1.2fr auto; gap:0.75rem; align-items:end;">
                     <input type="hidden" id="seasonalEditId" value="">
                     <div class="form-group" style="margin:0;">
                         <label>Nome da Regra</label>
                         <input type="text" id="seasonalRuleName" class="form-control" placeholder="Ex.: Natal e Ano Novo" required>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label>Tipo de Regra</label>
+                        <select id="seasonalRuleType" class="form-control">
+                            <option value="period">Período Específico</option>
+                            <option value="recurring">Dias da Semana</option>
+                        </select>
                     </div>
                     <div class="form-group" style="margin:0;">
                         <label>Início</label>
@@ -2361,6 +2368,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="form-group" style="margin:0;">
                         <label>Mín. Diárias</label>
                         <input type="number" id="seasonalMinNights" class="form-control" min="1" step="1" value="2" required>
+                    </div>
+                    <div class="form-group" id="seasonalRecurringDaysWrap" style="margin:0; display:none;">
+                        <label>Dias da Semana</label>
+                        <div style="display:flex; gap:.35rem; flex-wrap:wrap;">
+                            <label style="display:flex; align-items:center; gap:.25rem;"><input type="checkbox" class="seasonal-day" value="0">Dom</label>
+                            <label style="display:flex; align-items:center; gap:.25rem;"><input type="checkbox" class="seasonal-day" value="1">Seg</label>
+                            <label style="display:flex; align-items:center; gap:.25rem;"><input type="checkbox" class="seasonal-day" value="2">Ter</label>
+                            <label style="display:flex; align-items:center; gap:.25rem;"><input type="checkbox" class="seasonal-day" value="3">Qua</label>
+                            <label style="display:flex; align-items:center; gap:.25rem;"><input type="checkbox" class="seasonal-day" value="4">Qui</label>
+                            <label style="display:flex; align-items:center; gap:.25rem;"><input type="checkbox" class="seasonal-day" value="5">Sex</label>
+                            <label style="display:flex; align-items:center; gap:.25rem;"><input type="checkbox" class="seasonal-day" value="6">Sáb</label>
+                        </div>
                     </div>
                     <div class="form-group" style="margin:0;">
                         <label>Hospedagem</label>
@@ -3288,9 +3307,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const form = document.getElementById('seasonalForm');
         const idEl = document.getElementById('seasonalEditId');
         const nameEl = document.getElementById('seasonalRuleName');
+        const typeEl = document.getElementById('seasonalRuleType');
         const startEl = document.getElementById('seasonalStartDate');
         const endEl = document.getElementById('seasonalEndDate');
         const minEl = document.getElementById('seasonalMinNights');
+        const recurringWrapEl = document.getElementById('seasonalRecurringDaysWrap');
         const chaletEl = document.getElementById('seasonalChaletId');
         const saveBtn = document.getElementById('seasonalSaveBtn');
         const cancelBtn = document.getElementById('seasonalCancelBtn');
@@ -3306,14 +3327,58 @@ document.addEventListener('DOMContentLoaded', async () => {
             const [y, m, day] = s.split('-');
             return `${day}/${m}/${y}`;
         };
+        const dayMap = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+        function getSelectedRecurringDays() {
+            return Array.from(document.querySelectorAll('#seasonalRecurringDaysWrap .seasonal-day:checked'))
+                .map((cb) => parseInt(cb.value, 10))
+                .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+                .sort((a, b) => a - b);
+        }
+
+        function setSelectedRecurringDays(days) {
+            const set = new Set(Array.isArray(days) ? days.map((d) => parseInt(d, 10)) : []);
+            document.querySelectorAll('#seasonalRecurringDaysWrap .seasonal-day').forEach((cb) => {
+                cb.checked = set.has(parseInt(cb.value, 10));
+            });
+        }
+
+        function updateSeasonalTypeUI() {
+            const isRecurring = typeEl && typeEl.value === 'recurring';
+            if (recurringWrapEl) recurringWrapEl.style.display = isRecurring ? '' : 'none';
+            if (startEl) startEl.required = !isRecurring;
+            if (endEl) endEl.required = !isRecurring;
+            const startGroup = startEl && startEl.closest('.form-group');
+            const endGroup = endEl && endEl.closest('.form-group');
+            if (startGroup) startGroup.style.display = isRecurring ? 'none' : '';
+            if (endGroup) endGroup.style.display = isRecurring ? 'none' : '';
+        }
+
+        function formatRulePeriod(r) {
+            const ruleType = String(r.rule_type || 'period');
+            if (ruleType === 'recurring') {
+                let days = r.recurring_days;
+                if (typeof days === 'string') {
+                    try { days = JSON.parse(days); } catch (_) { days = []; }
+                }
+                const labels = Array.isArray(days)
+                    ? days.map((d) => dayMap[parseInt(d, 10)]).filter(Boolean)
+                    : [];
+                return labels.length ? `Recorrente: ${labels.join(', ')}` : 'Recorrente';
+            }
+            return `${fmtDate(r.start_date)} até ${fmtDate(r.end_date)}`;
+        }
 
         function resetForm() {
             if (idEl) idEl.value = '';
             if (nameEl) nameEl.value = '';
+            if (typeEl) typeEl.value = 'period';
             if (startEl) startEl.value = '';
             if (endEl) endEl.value = '';
             if (minEl) minEl.value = '2';
             if (chaletEl) chaletEl.value = '';
+            setSelectedRecurringDays([]);
+            updateSeasonalTypeUI();
             if (saveBtn) saveBtn.innerHTML = '<i class="ph ph-floppy-disk"></i> Salvar';
             if (cancelBtn) cancelBtn.style.display = 'none';
         }
@@ -3344,7 +3409,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 tbody.innerHTML = rows.map((r) => `
                     <tr>
                         <td><strong>${esc(r.rule_name)}</strong></td>
-                        <td>${fmtDate(r.start_date)} até ${fmtDate(r.end_date)}</td>
+                        <td>${formatRulePeriod(r)}</td>
                         <td>${Number(r.min_nights) || 1}</td>
                         <td>${r.chalet_id ? esc(r.chalet_name || ('#' + r.chalet_id)) : 'Todas'}</td>
                         <td>
@@ -3361,8 +3426,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (!item) return;
                         idEl.value = String(item.id);
                         nameEl.value = item.rule_name || '';
+                        typeEl.value = item.rule_type === 'recurring' ? 'recurring' : 'period';
+                        updateSeasonalTypeUI();
                         startEl.value = String(item.start_date || '').slice(0, 10);
                         endEl.value = String(item.end_date || '').slice(0, 10);
+                        setSelectedRecurringDays(item.recurring_days);
                         minEl.value = String(Math.max(1, parseInt(item.min_nights, 10) || 1));
                         chaletEl.value = item.chalet_id ? String(item.chalet_id) : '';
                         saveBtn.innerHTML = '<i class="ph ph-check"></i> Atualizar';
@@ -3392,18 +3460,34 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ev.preventDefault();
                 const payload = {
                     rule_name: (nameEl.value || '').trim(),
+                    rule_type: typeEl && typeEl.value === 'recurring' ? 'recurring' : 'period',
                     start_date: startEl.value,
                     end_date: endEl.value,
+                    recurring_days: getSelectedRecurringDays(),
                     min_nights: Math.max(1, parseInt(minEl.value, 10) || 1),
                     chalet_id: chaletEl.value ? parseInt(chaletEl.value, 10) : null
                 };
-                if (!payload.rule_name || !payload.start_date || !payload.end_date) {
-                    alert('Preencha nome da regra e período.');
+                if (!payload.rule_name) {
+                    alert('Preencha o nome da regra.');
                     return;
                 }
-                if (payload.start_date > payload.end_date) {
-                    alert('Data inicial não pode ser maior que a data final.');
-                    return;
+                if (payload.rule_type === 'period') {
+                    if (!payload.start_date || !payload.end_date) {
+                        alert('Preencha o período da regra.');
+                        return;
+                    }
+                    if (payload.start_date > payload.end_date) {
+                        alert('Data inicial não pode ser maior que a data final.');
+                        return;
+                    }
+                    payload.recurring_days = [];
+                } else {
+                    payload.start_date = null;
+                    payload.end_date = null;
+                    if (!Array.isArray(payload.recurring_days) || payload.recurring_days.length === 0) {
+                        alert('Selecione ao menos um dia da semana para regra recorrente.');
+                        return;
+                    }
                 }
                 if (idEl.value) payload.id = parseInt(idEl.value, 10);
 
@@ -3423,8 +3507,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (cancelBtn) cancelBtn.onclick = () => resetForm();
+        if (typeEl) typeEl.onchange = () => updateSeasonalTypeUI();
         if (refreshBtn) refreshBtn.onclick = () => loadRules();
 
+        updateSeasonalTypeUI();
         await loadChaletsSelect();
         await loadRules();
     }
