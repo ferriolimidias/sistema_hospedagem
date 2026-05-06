@@ -71,6 +71,7 @@ try {
 
     $mpActiveRaw = $readSetting($pdo, 'payment_mercadopago_active', '1');
     $manualActiveRaw = $readSetting($pdo, 'payment_manual_pix_active', '0');
+    $cancellationPolicy = $readSetting($pdo, 'cancellation_policy', '');
 
     // Valida se Mercado Pago tem Access Token configurado — se o admin marcou "ativo"
     // mas o token não foi gravado, desliga silenciosamente para não quebrar o checkout.
@@ -100,11 +101,30 @@ try {
         $mpActive = $mpConfigured;
     }
 
+    $seasonalRules = [];
+    try {
+        $stmtSeasonal = $pdo->query("SELECT id, rule_name, start_date, end_date, min_nights, chalet_id FROM seasonal_rules ORDER BY start_date ASC, end_date ASC, id ASC");
+        foreach ($stmtSeasonal->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $seasonalRules[] = [
+                'id' => (int)$r['id'],
+                'rule_name' => (string)$r['rule_name'],
+                'start_date' => (string)$r['start_date'],
+                'end_date' => (string)$r['end_date'],
+                'min_nights' => (int)$r['min_nights'],
+                'chalet_id' => isset($r['chalet_id']) ? (is_null($r['chalet_id']) ? null : (int)$r['chalet_id']) : null,
+            ];
+        }
+    } catch (Throwable $e) {
+        $seasonalRules = [];
+    }
+
     jsonResponse([
         'show_coupon_field' => $nCoupons > 0,
         'show_extras_section' => count($services) > 0,
         'extra_services' => $services,
         'payment_policies' => $paymentPolicies,
+        'cancellation_policy' => $cancellationPolicy,
+        'seasonal_rules' => $seasonalRules,
         'payment_methods' => [
             'mercadopago_active' => $mpActive,
             'manual_pix_active' => $manualActive,
@@ -123,6 +143,8 @@ try {
             ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50],
             ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100],
         ],
+        'cancellation_policy' => '',
+        'seasonal_rules' => [],
         'payment_methods' => [
             'mercadopago_active' => true,
             'manual_pix_active' => false,

@@ -14,6 +14,44 @@ document.addEventListener('DOMContentLoaded', () => {
         return diffDays > 0 ? diffDays : 1;
     }
 
+    function normalizeSeasonalRules(rules) {
+        if (!Array.isArray(rules)) return [];
+        return rules
+            .filter((r) => r && typeof r === 'object')
+            .map((r) => ({
+                id: Number(r.id) || 0,
+                rule_name: String(r.rule_name || '').trim(),
+                start_date: String(r.start_date || '').trim(),
+                end_date: String(r.end_date || '').trim(),
+                min_nights: Math.max(1, parseInt(r.min_nights, 10) || 1),
+                chalet_id: r.chalet_id == null || r.chalet_id === '' ? null : (Number(r.chalet_id) || null)
+            }))
+            .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.start_date) && /^\d{4}-\d{2}-\d{2}$/.test(r.end_date) && r.start_date <= r.end_date);
+    }
+
+    function getMaxRequiredMinNights(checkinStr, chaletId = null) {
+        if (!checkinStr || !bookingOptions || !Array.isArray(bookingOptions.seasonal_rules)) return 1;
+        const targetChaletId = chaletId == null ? null : Number(chaletId);
+        let minRequired = 1;
+        bookingOptions.seasonal_rules.forEach((rule) => {
+            if (!rule || !rule.start_date || !rule.end_date) return;
+            if (rule.chalet_id != null && targetChaletId != null && Number(rule.chalet_id) !== targetChaletId) return;
+            if (rule.chalet_id != null && targetChaletId == null) return;
+            if (checkinStr >= rule.start_date && checkinStr <= rule.end_date) {
+                minRequired = Math.max(minRequired, Number(rule.min_nights) || 1);
+            }
+        });
+        return minRequired;
+    }
+
+    function getCheckoutMinDateFromRule(checkinStr, minNights) {
+        if (!checkinStr) return '';
+        const d = new Date(checkinStr + 'T00:00:00');
+        if (isNaN(d.getTime())) return '';
+        d.setDate(d.getDate() + Math.max(1, minNights));
+        return d.toISOString().split('T')[0];
+    }
+
     /** Soma das diárias (feriados + preço por dia da semana), alinhado com api/pricing.php */
     function computeLodgingSubtotal(chalet, checkinStr, checkoutStr) {
         if (!chalet || !checkinStr || !checkoutStr) return 0;
@@ -425,7 +463,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const finalBookingForm = document.getElementById('finalBookingForm');
     const toast = document.getElementById('successToast');
 
-    let bookingOptions = { show_coupon_field: false, show_extras_section: false, extra_services: [], payment_policies: [] };
+    let bookingOptions = {
+        show_coupon_field: false,
+        show_extras_section: false,
+        extra_services: [],
+        payment_policies: [],
+        seasonal_rules: [],
+        cancellation_policy: ''
+    };
     window.__couponPreview = null;
     window.__lastModalSubtotalPreCoupon = 0;
 
@@ -630,6 +675,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 show_extras_section: !!data.show_extras_section,
                 extra_services: Array.isArray(data.extra_services) ? data.extra_services : [],
                 payment_policies: normalizePaymentPolicies(data.payment_policies),
+                seasonal_rules: normalizeSeasonalRules(data.seasonal_rules),
+                cancellation_policy: typeof data.cancellation_policy === 'string' ? data.cancellation_policy : '',
                 payment_methods: Object.assign({}, defaultMethods, data.payment_methods || {})
             };
         } catch {
@@ -638,10 +685,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 show_extras_section: false,
                 extra_services: [],
                 payment_policies: normalizePaymentPolicies([]),
+                seasonal_rules: [],
+                cancellation_policy: '',
                 payment_methods: defaultMethods
             };
         }
         renderBookingOptionsUI();
+        enforceCheckoutBySeasonalRule('checkin', 'checkout', null);
+        const chalet = findChaletByName(currentChalet);
+        enforceCheckoutBySeasonalRule('modalCheckin', 'modalCheckout', chalet && chalet.id ? chalet.id : null);
     }
 
     // Set minimum dates to today
@@ -650,6 +702,21 @@ document.addEventListener('DOMContentLoaded', () => {
     checkinInputs.forEach(input => {
         input.setAttribute('min', today);
     });
+
+    function enforceCheckoutBySeasonalRule(checkinInputId, checkoutInputId, chaletId = null) {
+        const checkinEl = document.getElementById(checkinInputId);
+        const checkoutEl = document.getElementById(checkoutInputId);
+        if (!checkinEl || !checkoutEl) return;
+        const checkin = checkinEl.value;
+        if (!checkin) return;
+        const minNights = getMaxRequiredMinNights(checkin, chaletId);
+        const minCheckout = getCheckoutMinDateFromRule(checkin, minNights);
+        if (!minCheckout) return;
+        checkoutEl.setAttribute('min', minCheckout);
+        if (!checkoutEl.value || checkoutEl.value < minCheckout) {
+            checkoutEl.value = minCheckout;
+        }
+    }
 
     // Make `openBooking` accessible globally for inline onclick
     window.openBooking = function (chaletName) {
@@ -699,6 +766,7 @@ document.addEventListener('DOMContentLoaded', () => {
             modalGuestsEl.innerHTML = '';
             renderGuestOptions(modalGuestsEl, maxG, preferredModal);
         }
+        enforceCheckoutBySeasonalRule('modalCheckin', 'modalCheckout', currentChaletObj && currentChaletObj.id ? currentChaletObj.id : null);
 
         document.querySelectorAll('#bookingExtrasList input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
         const hct = document.getElementById('hasCouponToggle');
@@ -773,7 +841,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 250);
     }
 
-    document.getElementById('modalCheckin').addEventListener('change', scheduleUpdateModalSummary);
+    document.getElementById('modalCheckin').addEventListener('change', () => {
+        const chalet = findChaletByName(currentChalet);
+        const chaletId = chalet && chalet.id ? chalet.id : null;
+        enforceCheckoutBySeasonalRule('modalCheckin', 'modalCheckout', chaletId);
+        scheduleUpdateModalSummary();
+    });
     document.getElementById('modalCheckout').addEventListener('change', scheduleUpdateModalSummary);
     const modalGuestsOptionEl = document.getElementById('modalGuestsOption');
     if (modalGuestsOptionEl) {
@@ -928,6 +1001,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const chaletId = chalet && chalet.id ? chalet.id : null;
 
         let nights = countNightsBetween(checkinStr, checkoutStr);
+        const requiredMinNights = getMaxRequiredMinNights(checkinStr, chaletId);
+        if (nights < requiredMinNights) {
+            const minCheckout = getCheckoutMinDateFromRule(checkinStr, requiredMinNights);
+            availMsg.className = 'availability-alert-unavailable';
+            availMsg.innerHTML = `<i class="ph ph-warning"></i> Este período exige mínimo de ${requiredMinNights} diárias. Selecione checkout a partir de ${formatDate(minCheckout)}.`;
+            availMsg.style.display = 'flex';
+            nightsEl.textContent = '0';
+            if (lodgingEl) lodgingEl.textContent = 'R$ 0,00';
+            if (extraEl) extraEl.textContent = 'R$ 0,00';
+            totalEl.textContent = 'R$ 0,00';
+            confirmBtn.disabled = true;
+            return;
+        }
 
         // Verify availability against backend (Confirmada + hold ativo)
         if (!chaletId) {
@@ -1053,6 +1139,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle Availability Button Click (from CTA section)
     const btnVerifyAvailability = document.getElementById('btnVerifyAvailability');
+    const topCheckinEl = document.getElementById('checkin');
+    if (topCheckinEl) {
+        topCheckinEl.addEventListener('change', () => {
+            enforceCheckoutBySeasonalRule('checkin', 'checkout', null);
+        });
+    }
     if (btnVerifyAvailability) {
         btnVerifyAvailability.addEventListener('click', () => {
             const checkin = document.getElementById('checkin').value;
@@ -2038,6 +2130,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
 
 
 

@@ -89,6 +89,31 @@ CREATE TABLE IF NOT EXISTS `settings` (
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `faqs` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `question` varchar(500) NOT NULL,
+  `answer` text NOT NULL,
+  `sort_order` int NOT NULL DEFAULT '0',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_faqs_order` (`is_active`,`sort_order`,`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `seasonal_rules` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `rule_name` varchar(255) NOT NULL,
+  `start_date` date NOT NULL,
+  `end_date` date NOT NULL,
+  `min_nights` int NOT NULL,
+  `chalet_id` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_seasonal_dates` (`start_date`,`end_date`),
+  KEY `idx_seasonal_chalet` (`chalet_id`),
+  CONSTRAINT `fk_seasonal_rules_chalet` FOREIGN KEY (`chalet_id`) REFERENCES `chalets` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 DELETE FROM `personalizacao`;
 INSERT INTO `personalizacao` (
   `hero_titulo`, `hero_subtitulo`, `hero_imagens`, `about_titulo`, `about_texto`, `about_imagem`,
@@ -203,8 +228,23 @@ INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES
 ('secondary_color', '#1e293b'),
 ('owner_whatsapp', ''),
 ('manual_pix_instructions', 'Para confirmar a reserva, realizamos o pagamento em PIX em 2 etapas: 50% no ato da contratação e 50% até o check-in. Após o envio do comprovante, o contrato digital é liberado para assinatura.'),
+('cancellation_policy', 'Cancelamentos com 14 dias ou mais de antecedência têm reembolso integral.\nEntre 13 e 7 dias, devolvemos 50% do valor pago.\nCom menos de 7 dias, não há reembolso, mas o valor pode ser convertido em crédito para nova hospedagem em até 12 meses (1 remarcação, sujeito à disponibilidade e eventual diferença tarifária).\nEm caso de no-show, o valor pago é retido.'),
 ('pre_checkin_message', 'Olá, {nome}! Sua reserva em {pousada} está confirmada para {checkin} a {checkout}. Para agilizar sua chegada, finalize o pré-check-in no link enviado pela equipe.'),
 ('wa_mensagem', 'Olá, gostaria de informações sobre disponibilidade e política de pagamento (PIX em 2x com contrato) da {pousada}.')
 ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`);
+
+INSERT INTO `faqs` (`question`, `answer`, `sort_order`, `is_active`)
+SELECT
+  'Qual a política de cancelamento?',
+  'Cancelamentos com 14 dias ou mais de antecedência têm reembolso integral. Entre 13 e 7 dias, devolvemos 50% do valor pago. Com menos de 7 dias, não há reembolso, mas o valor pode ser convertido em crédito para nova hospedagem em até 12 meses (1 remarcação, sujeito à disponibilidade e eventual diferença tarifária). Em caso de no-show, o valor pago é retido.',
+  30,
+  1
+WHERE NOT EXISTS (
+  SELECT 1 FROM `faqs` WHERE `question` = 'Qual a política de cancelamento?' LIMIT 1
+);
+
+UPDATE `faqs`
+SET `answer` = 'Cancelamentos com 14 dias ou mais de antecedência têm reembolso integral. Entre 13 e 7 dias, devolvemos 50% do valor pago. Com menos de 7 dias, não há reembolso, mas o valor pode ser convertido em crédito para nova hospedagem em até 12 meses (1 remarcação, sujeito à disponibilidade e eventual diferença tarifária). Em caso de no-show, o valor pago é retido.'
+WHERE `question` = 'Qual a política de cancelamento?';
 
 SET FOREIGN_KEY_CHECKS = 1;

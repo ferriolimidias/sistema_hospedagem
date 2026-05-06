@@ -173,11 +173,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const usersNav = document.querySelector('.nav-item[data-view="users"]');
         const financeiroNav = document.querySelector('.nav-item[data-view="financeiro"]');
         const couponsNav = document.querySelector('.nav-item[data-view="coupons"]');
+        const seasonalNav = document.querySelector('.nav-item[data-view="seasonalRules"]');
         if (settingsNav) settingsNav.style.display = 'none';
         if (customizationNav) customizationNav.style.display = 'none';
         if (usersNav) usersNav.style.display = 'none';
         if (financeiroNav) financeiroNav.style.display = 'none';
         if (couponsNav) couponsNav.style.display = 'none';
+        if (seasonalNav) seasonalNav.style.display = 'none';
     }
 
     /* =========================================
@@ -1487,6 +1489,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <input type="time" class="form-control" id="rulesCheckoutTime" value="12:00">
                             <small style="color:#666;">Salvo em <code>settings.checkout_time</code>.</small>
                         </div>
+                        <div class="form-group">
+                            <label>Política de Cancelamento (Global)</label>
+                            <textarea class="form-control" id="rulesCancellationPolicy" rows="5" placeholder="Descreva aqui as regras de cancelamento aplicadas à reserva."></textarea>
+                            <small style="color:#666;">Salvo em <code>settings.cancellation_policy</code>.</small>
+                        </div>
                         <div style="margin-top: 1rem; text-align: right;">
                             <button type="button" class="btn btn-primary" id="saveRulesBtn">
                                 <i class="ph ph-floppy-disk"></i> Salvar Horários
@@ -2327,6 +2334,66 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             </div>
         `,
+        seasonalRules: `
+            <div class="page-header">
+                <h1 class="page-title">Regras de Reserva (Mínimo de Diárias)</h1>
+                <button type="button" class="btn" id="seasonalRefreshBtn"><i class="ph ph-arrows-clockwise"></i> Atualizar</button>
+            </div>
+            <div id="seasonalKeyWarn" class="card" style="display:none; border:1px solid var(--danger); color:var(--danger); margin-bottom:1rem;">
+                Não foi possível carregar a chave interna. Abra <strong>Configurações</strong> neste painel e volte aqui.
+            </div>
+            <div class="card" style="margin-bottom:1.5rem;">
+                <h3 style="margin-bottom: 1rem;"><i class="ph ph-plus-circle" style="color: var(--primary); vertical-align: bottom;"></i> Nova Regra</h3>
+                <form id="seasonalForm" style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.2fr auto; gap:0.75rem; align-items:end;">
+                    <input type="hidden" id="seasonalEditId" value="">
+                    <div class="form-group" style="margin:0;">
+                        <label>Nome da Regra</label>
+                        <input type="text" id="seasonalRuleName" class="form-control" placeholder="Ex.: Natal e Ano Novo" required>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label>Início</label>
+                        <input type="date" id="seasonalStartDate" class="form-control" required>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label>Fim</label>
+                        <input type="date" id="seasonalEndDate" class="form-control" required>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label>Mín. Diárias</label>
+                        <input type="number" id="seasonalMinNights" class="form-control" min="1" step="1" value="2" required>
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label>Hospedagem</label>
+                        <select id="seasonalChaletId" class="form-control">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; gap:0.5rem;">
+                        <button type="submit" class="btn btn-primary" id="seasonalSaveBtn"><i class="ph ph-floppy-disk"></i> Salvar</button>
+                        <button type="button" class="btn btn-outline" id="seasonalCancelBtn" style="display:none;">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card">
+                <h3 style="margin-bottom:1rem;">Regras cadastradas</h3>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Regra</th>
+                                <th>Período</th>
+                                <th>Mín. Diárias</th>
+                                <th>Hospedagem</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="seasonalRulesTableBody">
+                            <tr><td colspan="5" style="text-align:center;">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `,
         faqs: `
             <div class="page-header">
                 <h1 class="page-title"><i class="ph ph-question"></i> Perguntas Frequentes</h1>
@@ -2792,7 +2859,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
         } else if (isSecretaryRole(adminRole)) {
-            const restrictedViews = ['settings', 'customization', 'users', 'financeiro', 'coupons', 'extras'];
+            const restrictedViews = ['settings', 'customization', 'users', 'financeiro', 'coupons', 'extras', 'seasonalRules'];
             if (restrictedViews.includes(viewName)) {
                 document.getElementById('app').innerHTML = `<div class="card"><h2 style="color:var(--danger)">Acesso Negado</h2><p>Você não tem permissão para acessar esta página.</p></div>`;
                 return;
@@ -2923,6 +2990,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (viewName === 'extras') {
                 void initExtrasView();
+            }
+            if (viewName === 'seasonalRules') {
+                void initSeasonalRulesView();
             }
             if (viewName === 'faqs') {
                 void initFaqsView();
@@ -3204,6 +3274,159 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (cancelBtn) cancelBtn.onclick = () => resetForm();
         if (refreshBtn) refreshBtn.onclick = () => loadExtras();
         await loadExtras();
+    }
+
+    /* =========================================
+       REGRAS SAZONAIS (MÍNIMO DE DIÁRIAS)
+       ========================================= */
+    async function initSeasonalRulesView() {
+        const warn = document.getElementById('seasonalKeyWarn');
+        const ok = await ensureInternalApiKey();
+        if (warn) warn.style.display = ok ? 'none' : 'block';
+        if (!ok) return;
+
+        const form = document.getElementById('seasonalForm');
+        const idEl = document.getElementById('seasonalEditId');
+        const nameEl = document.getElementById('seasonalRuleName');
+        const startEl = document.getElementById('seasonalStartDate');
+        const endEl = document.getElementById('seasonalEndDate');
+        const minEl = document.getElementById('seasonalMinNights');
+        const chaletEl = document.getElementById('seasonalChaletId');
+        const saveBtn = document.getElementById('seasonalSaveBtn');
+        const cancelBtn = document.getElementById('seasonalCancelBtn');
+        const refreshBtn = document.getElementById('seasonalRefreshBtn');
+        const tbody = document.getElementById('seasonalRulesTableBody');
+
+        let rulesCache = [];
+
+        const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const fmtDate = (d) => {
+            const s = String(d || '');
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s || '—';
+            const [y, m, day] = s.split('-');
+            return `${day}/${m}/${y}`;
+        };
+
+        function resetForm() {
+            if (idEl) idEl.value = '';
+            if (nameEl) nameEl.value = '';
+            if (startEl) startEl.value = '';
+            if (endEl) endEl.value = '';
+            if (minEl) minEl.value = '2';
+            if (chaletEl) chaletEl.value = '';
+            if (saveBtn) saveBtn.innerHTML = '<i class="ph ph-floppy-disk"></i> Salvar';
+            if (cancelBtn) cancelBtn.style.display = 'none';
+        }
+
+        async function loadChaletsSelect() {
+            if (!chaletEl) return;
+            try {
+                const res = await fetch('../api/chalets.php');
+                const chalets = await res.json();
+                if (!Array.isArray(chalets)) return;
+                chaletEl.innerHTML = '<option value="">Todas</option>' + chalets
+                    .map((c) => `<option value="${Number(c.id)}">${esc(c.name || ('Hospedagem #' + c.id))}</option>`)
+                    .join('');
+            } catch (_) { /* noop */ }
+        }
+
+        async function loadRules() {
+            if (!tbody) return;
+            try {
+                const res = await fetch('../api/seasonal_rules.php', { headers: { 'X-Internal-Key': internalApiKey } });
+                const rows = await res.json();
+                if (!Array.isArray(rows)) throw new Error('Resposta inválida');
+                rulesCache = rows;
+                if (rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#666;">Nenhuma regra sazonal cadastrada</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map((r) => `
+                    <tr>
+                        <td><strong>${esc(r.rule_name)}</strong></td>
+                        <td>${fmtDate(r.start_date)} até ${fmtDate(r.end_date)}</td>
+                        <td>${Number(r.min_nights) || 1}</td>
+                        <td>${r.chalet_id ? esc(r.chalet_name || ('#' + r.chalet_id)) : 'Todas'}</td>
+                        <td>
+                            <button type="button" class="btn-icon" data-seasonal-edit="${Number(r.id)}" title="Editar"><i class="ph ph-pencil-simple"></i></button>
+                            <button type="button" class="btn-icon" data-seasonal-del="${Number(r.id)}" title="Excluir" style="color:var(--danger)"><i class="ph ph-trash"></i></button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                tbody.querySelectorAll('[data-seasonal-edit]').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        const id = parseInt(btn.getAttribute('data-seasonal-edit'), 10);
+                        const item = rulesCache.find((x) => Number(x.id) === id);
+                        if (!item) return;
+                        idEl.value = String(item.id);
+                        nameEl.value = item.rule_name || '';
+                        startEl.value = String(item.start_date || '').slice(0, 10);
+                        endEl.value = String(item.end_date || '').slice(0, 10);
+                        minEl.value = String(Math.max(1, parseInt(item.min_nights, 10) || 1));
+                        chaletEl.value = item.chalet_id ? String(item.chalet_id) : '';
+                        saveBtn.innerHTML = '<i class="ph ph-check"></i> Atualizar';
+                        if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    });
+                });
+
+                tbody.querySelectorAll('[data-seasonal-del]').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        const id = parseInt(btn.getAttribute('data-seasonal-del'), 10);
+                        if (!id) return;
+                        if (!confirm('Excluir esta regra sazonal?')) return;
+                        await fetch(`../api/seasonal_rules.php?id=${id}`, { method: 'DELETE', headers: { 'X-Internal-Key': internalApiKey } });
+                        resetForm();
+                        await loadRules();
+                    });
+                });
+            } catch (e) {
+                console.error('Erro ao carregar regras sazonais:', e);
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--danger);">Erro ao carregar regras</td></tr>';
+            }
+        }
+
+        if (form) {
+            form.onsubmit = async (ev) => {
+                ev.preventDefault();
+                const payload = {
+                    rule_name: (nameEl.value || '').trim(),
+                    start_date: startEl.value,
+                    end_date: endEl.value,
+                    min_nights: Math.max(1, parseInt(minEl.value, 10) || 1),
+                    chalet_id: chaletEl.value ? parseInt(chaletEl.value, 10) : null
+                };
+                if (!payload.rule_name || !payload.start_date || !payload.end_date) {
+                    alert('Preencha nome da regra e período.');
+                    return;
+                }
+                if (payload.start_date > payload.end_date) {
+                    alert('Data inicial não pode ser maior que a data final.');
+                    return;
+                }
+                if (idEl.value) payload.id = parseInt(idEl.value, 10);
+
+                const res = await fetch('../api/seasonal_rules.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Internal-Key': internalApiKey },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.error || 'Falha ao salvar regra sazonal.');
+                    return;
+                }
+                resetForm();
+                await loadRules();
+            };
+        }
+
+        if (cancelBtn) cancelBtn.onclick = () => resetForm();
+        if (refreshBtn) refreshBtn.onclick = () => loadRules();
+
+        await loadChaletsSelect();
+        await loadRules();
     }
 
     /* =========================================
@@ -3869,10 +4092,12 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
     async function saveRulesSettings() {
         const checkinEl = document.getElementById('rulesCheckinTime');
         const checkoutEl = document.getElementById('rulesCheckoutTime');
+        const cancellationEl = document.getElementById('rulesCancellationPolicy');
         const checkin = normalizeTimeHHMM(checkinEl ? checkinEl.value : '', '14:00');
         const checkout = normalizeTimeHHMM(checkoutEl ? checkoutEl.value : '', '12:00');
-        await saveSettingsToAPI({ checkin_time: checkin, checkout_time: checkout });
-        alert('Horários salvos com sucesso!');
+        const cancellationPolicy = cancellationEl ? String(cancellationEl.value || '').trim() : '';
+        await saveSettingsToAPI({ checkin_time: checkin, checkout_time: checkout, cancellation_policy: cancellationPolicy });
+        alert('Regras globais salvas com sucesso!');
     }
 
     function renderPaymentPoliciesEditor() {
@@ -4228,8 +4453,10 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             }
             const rulesCheckin = document.getElementById('rulesCheckinTime');
             const rulesCheckout = document.getElementById('rulesCheckoutTime');
+            const rulesCancellation = document.getElementById('rulesCancellationPolicy');
             if (rulesCheckin) rulesCheckin.value = normalizeTimeHHMM(data.checkin_time, '14:00');
             if (rulesCheckout) rulesCheckout.value = normalizeTimeHHMM(data.checkout_time, '12:00');
+            if (rulesCancellation) rulesCancellation.value = typeof data.cancellation_policy === 'string' ? data.cancellation_policy : '';
             if (Array.isArray(data.payment_policies)) {
                 paymentPolicies = normalizePaymentPolicies(data.payment_policies);
             }
@@ -6292,6 +6519,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         { id: 'chalets', label: 'Hospedagens' },
         { id: 'financeiro', label: 'Financeiro' },
         { id: 'coupons', label: 'Cupons' },
+        { id: 'seasonalRules', label: 'Regras de Reserva' },
         { id: 'faqs', label: 'Perguntas Frequentes' },
         { id: 'settings', label: 'Configurações' },
         { id: 'customization', label: 'Personalização' },
@@ -6465,7 +6693,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
     // Initialize the admin app
     await loadAdminThemeFromSettings();
     const hashView = String(window.location.hash || '').replace(/^#/, '').trim();
-    const allowedViews = ['dashboard', 'reservations', 'chalets', 'financeiro', 'coupons', 'faqs', 'settings', 'customization', 'users'];
+    const allowedViews = ['dashboard', 'reservations', 'chalets', 'financeiro', 'coupons', 'seasonalRules', 'faqs', 'settings', 'customization', 'users'];
     const initialView = allowedViews.includes(hashView) ? hashView : 'dashboard';
     await renderView(initialView);
     removeAddChaletButtonsForSecretary(document);

@@ -88,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Sem transação: CREATE/ALTER TABLE no MySQL fazem commit implícito.
             runInitialSchema($pdo);
 
-            $requiredBaseTables = ['admins', 'chalets', 'reservations', 'settings', 'faqs'];
+            $requiredBaseTables = ['admins', 'chalets', 'reservations', 'settings', 'faqs', 'seasonal_rules'];
             $missingBaseTables = [];
             foreach ($requiredBaseTables as $tbl) {
                 $st = $pdo->query("SHOW TABLES LIKE " . $pdo->quote($tbl));

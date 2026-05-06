@@ -187,6 +187,14 @@ function runInitialDataSeed(PDO $pdo): void
                 ->execute(['company_logo_light', $logoLight]);
         }
     }
+    $stCancel = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+    $stCancel->execute(['cancellation_policy']);
+    $cancelPolicyRow = $stCancel->fetch(PDO::FETCH_ASSOC);
+    if (!$cancelPolicyRow || trim((string)($cancelPolicyRow['setting_value'] ?? '')) === '') {
+        $defaultCancellationPolicy = "Cancelamentos com 14 dias ou mais de antecedência têm reembolso integral.\nEntre 13 e 7 dias, devolvemos 50% do valor pago.\nCom menos de 7 dias, não há reembolso, mas o valor pode ser convertido em crédito para nova hospedagem em até 12 meses (1 remarcação, sujeito à disponibilidade e eventual diferença tarifária).\nEm caso de no-show, o valor pago é retido.";
+        $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)')
+            ->execute(['cancellation_policy', $defaultCancellationPolicy]);
+    }
 
     // Seed protegido: FAQs padrão apenas na primeira instalação (tabela vazia).
     try {
@@ -209,7 +217,7 @@ function runInitialDataSeed(PDO $pdo): void
             ],
             [
                 'Qual a política de cancelamento?',
-                'Cancelamentos feitos com mais de 7 dias de antecedência têm reembolso integral do sinal. Entre 7 e 3 dias, devolvemos 50%. Em cima da data, o sinal não é reembolsado, mas pode ser usado como crédito para uma nova estadia dentro de 90 dias.',
+                'Cancelamentos com 14 dias ou mais de antecedência têm reembolso integral. Entre 13 e 7 dias, devolvemos 50% do valor pago. Com menos de 7 dias, não há reembolso, mas o valor pode ser convertido em crédito para nova hospedagem em até 12 meses (1 remarcação, sujeito à disponibilidade e eventual diferença tarifária). Em caso de no-show, o valor pago é retido.',
                 30,
             ],
             [
@@ -331,8 +339,13 @@ function runInitialSchema(PDO $pdo): void
             expires_at DATETIME NULL,
             mp_init_point TEXT NULL,
             contract_filename VARCHAR(255) NULL,
+            last_contract_sent_at DATETIME NULL,
             balance_paid TINYINT(1) NOT NULL DEFAULT 0,
             balance_paid_at DATETIME NULL,
+            coupon_code VARCHAR(100) NULL,
+            discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            extras_json TEXT NULL,
+            extras_total DECIMAL(10,2) NOT NULL DEFAULT 0,
             fnrh_access_token VARCHAR(64) NULL,
             fnrh_data TEXT NULL,
             fnrh_status VARCHAR(32) NOT NULL DEFAULT 'pendente',
@@ -386,6 +399,9 @@ function runInitialSchema(PDO $pdo): void
             loc_endereco TEXT NULL,
             loc_carro TEXT NULL,
             loc_map_link VARCHAR(500) NULL,
+            loc_map_embed TEXT NULL,
+            videos_enabled TINYINT(1) NOT NULL DEFAULT 0,
+            videos_json TEXT NULL,
             wa_numero VARCHAR(20) NULL,
             wa_mensagem TEXT NULL,
             footer_desc TEXT NULL,
@@ -393,6 +409,8 @@ function runInitialSchema(PDO $pdo): void
             footer_email VARCHAR(255) NULL,
             footer_telefone VARCHAR(50) NULL,
             footer_copyright VARCHAR(255) NULL,
+            logo_principal VARCHAR(500) NULL,
+            logo_alternativa VARCHAR(500) NULL,
             favicon VARCHAR(500) NULL,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id)
@@ -407,6 +425,19 @@ function runInitialSchema(PDO $pdo): void
             CONSTRAINT fk_chalet_custom_prices_chalet FOREIGN KEY (chalet_id)
                 REFERENCES chalets(id) ON DELETE CASCADE,
             UNIQUE KEY unique_date_chalet (chalet_id, custom_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS seasonal_rules (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            rule_name VARCHAR(255) NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            min_nights INT NOT NULL,
+            chalet_id INT NULL,
+            CONSTRAINT fk_seasonal_rules_chalet FOREIGN KEY (chalet_id)
+                REFERENCES chalets(id) ON DELETE CASCADE,
+            KEY idx_seasonal_dates (start_date, end_date),
+            KEY idx_seasonal_chalet (chalet_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
         "CREATE TABLE IF NOT EXISTS coupons (
@@ -479,6 +510,11 @@ function runInitialSchema(PDO $pdo): void
 
     try {
         $pdo->exec("ALTER TABLE reservations ADD COLUMN contract_filename VARCHAR(255) NULL AFTER mp_init_point");
+    } catch (PDOException $e) {
+        // Coluna já existe.
+    }
+    try {
+        $pdo->exec("ALTER TABLE reservations ADD COLUMN last_contract_sent_at DATETIME NULL AFTER contract_filename");
     } catch (PDOException $e) {
         // Coluna já existe.
     }
@@ -582,6 +618,33 @@ function runInitialSchema(PDO $pdo): void
     } catch (PDOException $e) {
         // Coluna já existe.
     }
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS seasonal_rules (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            rule_name VARCHAR(255) NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            min_nights INT NOT NULL,
+            chalet_id INT NULL,
+            CONSTRAINT fk_seasonal_rules_chalet FOREIGN KEY (chalet_id) REFERENCES chalets(id) ON DELETE CASCADE,
+            KEY idx_seasonal_dates (start_date, end_date),
+            KEY idx_seasonal_chalet (chalet_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (PDOException $e) {
+        // Tabela já existe.
+    }
+
+    // Personalização (campos adicionados em versões mais recentes).
+    $__customizationCols = [
+        "ALTER TABLE personalizacao ADD COLUMN loc_map_embed TEXT NULL AFTER loc_map_link",
+        "ALTER TABLE personalizacao ADD COLUMN videos_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER loc_map_embed",
+        "ALTER TABLE personalizacao ADD COLUMN videos_json TEXT NULL AFTER videos_enabled",
+        "ALTER TABLE personalizacao ADD COLUMN logo_principal VARCHAR(500) NULL AFTER footer_copyright",
+        "ALTER TABLE personalizacao ADD COLUMN logo_alternativa VARCHAR(500) NULL AFTER logo_principal",
+    ];
+    foreach ($__customizationCols as $__sql) {
+        try { $pdo->exec($__sql); } catch (PDOException $e) { /* coluna já existe */ }
+    }
 
     try {
         $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('checkin_time', '14:00') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
@@ -647,6 +710,10 @@ function runInitialSchema(PDO $pdo): void
     } catch (PDOException $e) { /* existe */ }
     try {
         $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_instructions', 'Olá! Realizei uma pré-reserva em {pousada}. Segue o comprovante do PIX para validação do pagamento. Obrigado(a).') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) { /* existe */ }
+    try {
+        $defaultCancellationPolicy = "Cancelamentos com 14 dias ou mais de antecedência têm reembolso integral.\nEntre 13 e 7 dias, devolvemos 50% do valor pago.\nCom menos de 7 dias, não há reembolso, mas o valor pode ser convertido em crédito para nova hospedagem em até 12 meses (1 remarcação, sujeito à disponibilidade e eventual diferença tarifária).\nEm caso de no-show, o valor pago é retido.";
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('cancellation_policy', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute([$defaultCancellationPolicy]);
     } catch (PDOException $e) { /* existe */ }
 
     // Integração FNRH (Check-in 360º).

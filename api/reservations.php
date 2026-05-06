@@ -48,6 +48,66 @@ function findPaymentPolicyReservation(array $policies, string $code): array
         : ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100.0];
 }
 
+function nightsBetweenReservation(string $checkin, string $checkout): int
+{
+    $tsIn = strtotime($checkin . ' 00:00:00');
+    $tsOut = strtotime($checkout . ' 00:00:00');
+    if ($tsIn === false || $tsOut === false || $tsOut <= $tsIn) {
+        return 0;
+    }
+    return (int) floor(($tsOut - $tsIn) / 86400);
+}
+
+function validateSeasonalMinNights(PDO $pdo, int $chaletId, string $checkin, string $checkout): ?array
+{
+    $nights = nightsBetweenReservation($checkin, $checkout);
+    if ($nights <= 0) {
+        return [
+            'error' => 'Período inválido para cálculo de diárias.',
+            'required_min_nights' => 1,
+            'selected_nights' => 0,
+            'rule' => null,
+        ];
+    }
+
+    $sql = "SELECT id, rule_name, start_date, end_date, min_nights, chalet_id
+            FROM seasonal_rules
+            WHERE start_date <= DATE_SUB(?, INTERVAL 1 DAY)
+              AND end_date >= ?
+              AND (chalet_id IS NULL OR chalet_id = ?)
+            ORDER BY min_nights DESC, id ASC
+            LIMIT 1";
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$checkout, $checkin, $chaletId]);
+        $rule = $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        return null;
+    }
+    if (!$rule) {
+        return null;
+    }
+
+    $required = max(1, (int)($rule['min_nights'] ?? 1));
+    if ($nights >= $required) {
+        return null;
+    }
+
+    return [
+        'error' => "Período selecionado exige mínimo de {$required} diárias pela regra \"{$rule['rule_name']}\".",
+        'required_min_nights' => $required,
+        'selected_nights' => $nights,
+        'rule' => [
+            'id' => (int)$rule['id'],
+            'rule_name' => (string)$rule['rule_name'],
+            'start_date' => (string)$rule['start_date'],
+            'end_date' => (string)$rule['end_date'],
+            'min_nights' => $required,
+            'chalet_id' => isset($rule['chalet_id']) ? (is_null($rule['chalet_id']) ? null : (int)$rule['chalet_id']) : null,
+        ],
+    ];
+}
+
 function buildCheckoutSummaryForNotification(PDO $pdo, int $reservationId, array $reservationRow, ?array $explicitSummary = null): array
 {
     $totalAmount = round((float)($reservationRow['total_amount'] ?? 0), 2);
@@ -203,6 +263,11 @@ switch ($method) {
 
         $checkin = convertDate($data['checkin_date']);
         $checkout = convertDate($data['checkout_date']);
+
+        $seasonalValidation = validateSeasonalMinNights($pdo, (int)$chalet_id, $checkin, $checkout);
+        if ($seasonalValidation !== null) {
+            jsonResponse($seasonalValidation, 422);
+        }
 
         // Verifica sobreposição com reservas confirmadas ou com hold ativo.
         $stmt_conflict = $pdo->prepare("
@@ -365,6 +430,10 @@ switch ($method) {
 
         if (isset($data['guest_name']) && isset($data['chalet_id'])) {
             // Edição completa
+            $seasonalValidation = validateSeasonalMinNights($pdo, (int)$data['chalet_id'], (string)$data['checkin_date'], (string)$data['checkout_date']);
+            if ($seasonalValidation !== null) {
+                jsonResponse($seasonalValidation, 422);
+            }
             $guestsAdults = isset($data['guests_adults']) ? (int)$data['guests_adults'] : 2;
             $guestsChildren = isset($data['guests_children']) ? (int)$data['guests_children'] : 0;
             $totalGuests = max(0, $guestsAdults) + max(0, $guestsChildren);

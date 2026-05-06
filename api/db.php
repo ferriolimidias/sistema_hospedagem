@@ -480,6 +480,10 @@ try {
     $defaultInstructions = 'Olá! Realizei uma pré-reserva em {pousada}. Segue o comprovante do PIX para validação do pagamento. Obrigado(a).';
     $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('manual_pix_instructions', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute([$defaultInstructions]);
 } catch (PDOException $e) { /* chave já existe */ }
+try {
+    $defaultCancellationPolicy = "Cancelamentos com 14 dias ou mais de antecedência têm reembolso integral.\nEntre 13 e 7 dias, devolvemos 50% do valor pago.\nCom menos de 7 dias, não há reembolso, mas o valor pode ser convertido em crédito para nova hospedagem em até 12 meses (1 remarcação, sujeito à disponibilidade e eventual diferença tarifária).\nEm caso de no-show, o valor pago é retido.";
+    $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('cancellation_policy', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute([$defaultCancellationPolicy]);
+} catch (PDOException $e) { /* chave já existe */ }
 
 // Integração FNRH (Fase 1 — Check-in 360º).
 try {
@@ -549,6 +553,21 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_consumptions_reservation FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
         KEY idx_consumptions_reservation (reservation_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (PDOException $e) {
+    // Tabela já existe ou erro de permissão.
+}
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS seasonal_rules (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        rule_name VARCHAR(255) NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        min_nights INT NOT NULL,
+        chalet_id INT NULL,
+        CONSTRAINT fk_seasonal_rules_chalet FOREIGN KEY (chalet_id) REFERENCES chalets(id) ON DELETE CASCADE,
+        KEY idx_seasonal_dates (start_date, end_date),
+        KEY idx_seasonal_chalet (chalet_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (PDOException $e) {
     // Tabela já existe ou erro de permissão.
