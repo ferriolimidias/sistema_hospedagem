@@ -270,6 +270,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         { code: 'full', label: 'Pagamento 100% Antecipado', percent_now: 100 }
     ];
     let stayDiscounts = [];
+    let cancellationPolicyEditor = null;
 
     // Gallery Manager state (thumbnails + pending deletes).
     // Para Hero (personalização) o estado vive enquanto a página está aberta.
@@ -1494,7 +1495,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </div>
                         <div class="form-group">
                             <label>Política de Cancelamento (Global)</label>
-                            <textarea class="form-control" id="rulesCancellationPolicy" rows="5" placeholder="Descreva aqui as regras de cancelamento aplicadas à reserva."></textarea>
+                            <input type="hidden" id="rulesCancellationPolicy">
+                            <div id="rulesCancellationPolicyEditor" style="background:#fff; min-height:160px;"></div>
                             <small style="color:#666;">Salvo em <code>settings.cancellation_policy</code>.</small>
                         </div>
                         <div style="display:grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap:0.75rem;">
@@ -4215,16 +4217,64 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         return String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0');
     }
 
+    function initCancellationPolicyEditor(initialHtml = '') {
+        const hiddenEl = document.getElementById('rulesCancellationPolicy');
+        const editorEl = document.getElementById('rulesCancellationPolicyEditor');
+        if (!hiddenEl || !editorEl) return;
+
+        hiddenEl.value = String(initialHtml || '');
+        if (typeof Quill !== 'function') {
+            editorEl.innerHTML = '<textarea class="form-control" id="rulesCancellationPolicyFallback" rows="6" placeholder="Descreva aqui as regras de cancelamento aplicadas à reserva."></textarea>';
+            const fallback = document.getElementById('rulesCancellationPolicyFallback');
+            if (fallback) {
+                fallback.value = hiddenEl.value;
+                fallback.addEventListener('input', () => { hiddenEl.value = fallback.value; });
+            }
+            cancellationPolicyEditor = null;
+            return;
+        }
+
+        if (cancellationPolicyEditor) {
+            cancellationPolicyEditor.root.innerHTML = hiddenEl.value;
+        } else {
+            cancellationPolicyEditor = new Quill(editorEl, {
+                theme: 'snow',
+                placeholder: 'Descreva aqui as regras de cancelamento aplicadas à reserva.',
+                modules: {
+                    toolbar: [
+                        ['bold', 'italic', 'underline'],
+                        [{ list: 'ordered' }, { list: 'bullet' }],
+                        ['link'],
+                        ['clean']
+                    ]
+                }
+            });
+            cancellationPolicyEditor.on('text-change', () => {
+                hiddenEl.value = cancellationPolicyEditor.root.innerHTML;
+            });
+            cancellationPolicyEditor.root.innerHTML = hiddenEl.value;
+        }
+    }
+
+    function getCancellationPolicyHtml() {
+        const hiddenEl = document.getElementById('rulesCancellationPolicy');
+        if (cancellationPolicyEditor) {
+            return cancellationPolicyEditor.root.innerHTML.trim();
+        }
+        const fallback = document.getElementById('rulesCancellationPolicyFallback');
+        if (fallback) return String(fallback.value || '').trim();
+        return hiddenEl ? String(hiddenEl.value || '').trim() : '';
+    }
+
     async function saveRulesSettings() {
         const checkinEl = document.getElementById('rulesCheckinTime');
         const checkoutEl = document.getElementById('rulesCheckoutTime');
-        const cancellationEl = document.getElementById('rulesCancellationPolicy');
         const cleaningFeeEl = document.getElementById('rulesCleaningFee');
         const petFeeEl = document.getElementById('rulesPetFee');
         const calendarMonthsEl = document.getElementById('rulesCalendarMaxMonths');
         const checkin = normalizeTimeHHMM(checkinEl ? checkinEl.value : '', '14:00');
         const checkout = normalizeTimeHHMM(checkoutEl ? checkoutEl.value : '', '12:00');
-        const cancellationPolicy = cancellationEl ? String(cancellationEl.value || '').trim() : '';
+        const cancellationPolicy = getCancellationPolicyHtml();
         const cleaningFee = Math.max(0, parseFloat(cleaningFeeEl ? cleaningFeeEl.value : '0') || 0);
         const petFee = Math.max(0, parseFloat(petFeeEl ? petFeeEl.value : '0') || 0);
         const calendarMaxMonths = Math.max(1, Math.min(24, parseInt(calendarMonthsEl ? calendarMonthsEl.value : '6', 10) || 6));
@@ -4651,13 +4701,12 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             }
             const rulesCheckin = document.getElementById('rulesCheckinTime');
             const rulesCheckout = document.getElementById('rulesCheckoutTime');
-            const rulesCancellation = document.getElementById('rulesCancellationPolicy');
             const rulesCleaningFee = document.getElementById('rulesCleaningFee');
             const rulesPetFee = document.getElementById('rulesPetFee');
             const rulesCalendarMaxMonths = document.getElementById('rulesCalendarMaxMonths');
             if (rulesCheckin) rulesCheckin.value = normalizeTimeHHMM(data.checkin_time, '14:00');
             if (rulesCheckout) rulesCheckout.value = normalizeTimeHHMM(data.checkout_time, '12:00');
-            if (rulesCancellation) rulesCancellation.value = typeof data.cancellation_policy === 'string' ? data.cancellation_policy : '';
+            initCancellationPolicyEditor(typeof data.cancellation_policy === 'string' ? data.cancellation_policy : '');
             if (rulesCleaningFee) rulesCleaningFee.value = Number(data.cleaning_fee || 0).toFixed(2);
             if (rulesPetFee) rulesPetFee.value = Number(data.pet_fee || 0).toFixed(2);
             if (rulesCalendarMaxMonths) rulesCalendarMaxMonths.value = String(Math.max(1, parseInt(data.calendar_max_months || '6', 10) || 6));
