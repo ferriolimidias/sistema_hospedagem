@@ -412,6 +412,18 @@ try {
 }
 
 try {
+    $pdo->exec('ALTER TABLE reservations ADD COLUMN children_ages JSON NULL AFTER guests_children');
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
+    $pdo->exec('ALTER TABLE reservations ADD COLUMN brings_pet TINYINT(1) NOT NULL DEFAULT 0 AFTER children_ages');
+} catch (PDOException $e) {
+    // Coluna já existe.
+}
+
+try {
     $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('checkin_time', '14:00') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
 } catch (PDOException $e) {
     // Chave já existe ou tabela sem constraint única.
@@ -513,6 +525,20 @@ try {
 try {
     $pdo->exec("ALTER TABLE reservations ADD COLUMN payment_method VARCHAR(32) NOT NULL DEFAULT 'mercadopago'");
 } catch (PDOException $e) { /* coluna já existe */ }
+
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS stay_discounts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        min_nights INT NOT NULL,
+        discount_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_stay_discounts_min_nights (min_nights)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (PDOException $e) { /* tabela já existe */ }
+
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('cleaning_fee', '0') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pet_fee', '0') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('calendar_max_months', '6') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS coupons (

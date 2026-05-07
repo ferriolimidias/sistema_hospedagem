@@ -48,14 +48,154 @@ function findPaymentPolicyReservation(array $policies, string $code): array
         : ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100.0];
 }
 
+function assertNoReservationConflict(PDO $pdo, int $chaletId, string $checkin, string $checkout, ?int $ignoreReservationId = null): void
+{
+    try {
+        cleanupExpiredPendingReservations($pdo);
+    } catch (Throwable $e) {
+        // Não impede a validação principal; apenas evita holds vencidos bloquearem o calendário.
+    }
+
+    $sql = "
+        SELECT id
+        FROM reservations
+        WHERE chalet_id = ?
+          AND checkin_date < ?
+          AND checkout_date > ?
+          AND status NOT IN ('Cancelada', 'Recusada', 'Expirada', 'Finalizada')
+          AND NOT (status = 'Aguardando Pagamento' AND expires_at IS NOT NULL AND expires_at <= NOW())
+    ";
+    $params = [$chaletId, $checkout, $checkin];
+
+    if ($ignoreReservationId !== null && $ignoreReservationId > 0) {
+        $sql .= " AND id != ?";
+        $params[] = $ignoreReservationId;
+    }
+
+    $sql .= " LIMIT 1";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    if ($stmt->fetch()) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        jsonResponse(['error' => 'Erro: Este chalé já possui uma reserva ativa para as datas selecionadas.'], 409);
+    }
+}
+
+function reservationParseYmdDate(string $dateYmd): ?DateTimeImmutable
+{
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateYmd)) {
+        return null;
+    }
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $dateYmd, new DateTimeZone('UTC'));
+    $errors = DateTimeImmutable::getLastErrors();
+    if (!$date || ($errors !== false && ((int)$errors['warning_count'] > 0 || (int)$errors['error_count'] > 0))) {
+        return null;
+    }
+    return $date;
+}
+
 function nightsBetweenReservation(string $checkin, string $checkout): int
 {
-    $tsIn = strtotime($checkin . ' 00:00:00');
-    $tsOut = strtotime($checkout . ' 00:00:00');
-    if ($tsIn === false || $tsOut === false || $tsOut <= $tsIn) {
+    $cin = reservationParseYmdDate($checkin);
+    $cout = reservationParseYmdDate($checkout);
+    if (!$cin || !$cout || $cout <= $cin) {
         return 0;
     }
-    return (int) floor(($tsOut - $tsIn) / 86400);
+    return (int)$cin->diff($cout)->days;
+}
+
+function reservationCheckinDow(string $checkin): int
+{
+    $date = reservationParseYmdDate($checkin);
+    return $date ? (int)$date->format('w') : 0;
+}
+
+function chaletReservationMaxGuests(array $chaletRow): int
+{
+    $raw = $chaletRow['max_guests'] ?? ($chaletRow['capacity'] ?? 4);
+    return max(1, (int)$raw);
+}
+
+function assertReservationGuestCapacity(array $chaletRow, int $guestsAdults, int $guestsChildren): void
+{
+    $totalGuests = max(0, $guestsAdults) + max(0, $guestsChildren);
+    $maxGuests = chaletReservationMaxGuests($chaletRow);
+    if ($totalGuests > $maxGuests) {
+        jsonResponse([
+            'error' => 'A quantidade de hóspedes excede a capacidade máxima deste chalé.',
+            'max_guests' => $maxGuests,
+            'requested_guests' => $totalGuests
+        ], 422);
+    }
+}
+
+function reservationSettingFloat(PDO $pdo, string $key, float $default = 0.0): float
+{
+    try {
+        $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
+        $stmt->execute([$key]);
+        $raw = $stmt->fetchColumn();
+        if ($raw === false || $raw === null || $raw === '') return $default;
+        return max(0.0, (float)str_replace(',', '.', (string)$raw));
+    } catch (Throwable $e) {
+        return $default;
+    }
+}
+
+function reservationLoadStayDiscounts(PDO $pdo): array
+{
+    try {
+        $stmt = $pdo->query("SELECT min_nights, discount_percentage FROM stay_discounts ORDER BY min_nights ASC, discount_percentage DESC");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+function reservationNormalizeChildrenAges($raw, int $childrenCount): ?string
+{
+    if ($childrenCount <= 0) return null;
+    if (is_string($raw)) {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $raw = $decoded;
+        } else {
+            $raw = preg_split('/\s*,\s*/', trim($raw));
+        }
+    }
+    if (!is_array($raw)) return null;
+    $ages = [];
+    foreach ($raw as $age) {
+        if (count($ages) >= $childrenCount) break;
+        $n = (int)$age;
+        if ($n >= 0 && $n <= 17) $ages[] = $n;
+    }
+    return $ages ? json_encode($ages, JSON_UNESCAPED_UNICODE) : null;
+}
+
+function reservationCommercialTotals(PDO $pdo, array $chaletRow, string $checkin, string $checkout, int $guestsAdults, int $guestsChildren, bool $bringsPet, float $additionalValue, float $extrasTotal): array
+{
+    $nights = pricing_count_nights($checkin, $checkout);
+    $lodgingSubtotal = pricing_nightly_subtotal($chaletRow, $checkin, $checkout);
+    $stayDiscountRule = pricing_best_stay_discount(reservationLoadStayDiscounts($pdo), $nights);
+    $stayDiscountAmount = pricing_apply_percentage_discount($lodgingSubtotal, (float)$stayDiscountRule['discount_percentage']);
+    $lodgingAfterDiscount = max(0.0, round($lodgingSubtotal - $stayDiscountAmount, 2));
+    $extraGuestTotal = pricing_extra_guest_subtotal($chaletRow, $guestsAdults, $guestsChildren, $nights);
+    $cleaningFee = reservationSettingFloat($pdo, 'cleaning_fee', 0.0);
+    $petFee = $bringsPet ? reservationSettingFloat($pdo, 'pet_fee', 0.0) : 0.0;
+    $total = max(0.0, round($lodgingAfterDiscount + $extraGuestTotal + $additionalValue + $extrasTotal + $cleaningFee + $petFee, 2));
+    return [
+        'nights' => $nights,
+        'lodging_subtotal' => $lodgingSubtotal,
+        'stay_discount_percentage' => (float)$stayDiscountRule['discount_percentage'],
+        'stay_discount_amount' => $stayDiscountAmount,
+        'extra_guest_total' => $extraGuestTotal,
+        'cleaning_fee' => $cleaningFee,
+        'pet_fee' => $petFee,
+        'total' => $total,
+    ];
 }
 
 function validateSeasonalMinNights(PDO $pdo, int $chaletId, string $checkin, string $checkout): ?array
@@ -70,7 +210,7 @@ function validateSeasonalMinNights(PDO $pdo, int $chaletId, string $checkin, str
         ];
     }
 
-    $checkinDow = (int)date('w', strtotime($checkin . ' 00:00:00'));
+    $checkinDow = reservationCheckinDow($checkin);
 
     $sql = "SELECT id, rule_name, rule_type, start_date, end_date, recurring_days, min_nights, chalet_id
             FROM seasonal_rules
@@ -223,6 +363,9 @@ switch ($method) {
     case 'POST':
         // Cria nova reserva (Vindo do site Frontend)
         $data = json_decode(file_get_contents("php://input"), true);
+        if (!is_array($data)) {
+            jsonResponse(['error' => 'JSON inválido.'], 400);
+        }
 
         // Validação básica
         $required_fields = ['guest_name', 'checkin_date', 'checkout_date'];
@@ -270,29 +413,19 @@ switch ($method) {
 
         $checkin = convertDate($data['checkin_date']);
         $checkout = convertDate($data['checkout_date']);
+        $requestedStatus = isset($data['status']) && trim((string)$data['status']) !== ''
+            ? trim((string)$data['status'])
+            : '';
+        $isBlockingReservation = $requestedStatus === 'Bloqueado';
 
-        $seasonalValidation = validateSeasonalMinNights($pdo, (int)$chalet_id, $checkin, $checkout);
-        if ($seasonalValidation !== null) {
-            jsonResponse($seasonalValidation, 422);
+        if (!$isBlockingReservation) {
+            $seasonalValidation = validateSeasonalMinNights($pdo, (int)$chalet_id, $checkin, $checkout);
+            if ($seasonalValidation !== null) {
+                jsonResponse($seasonalValidation, 422);
+            }
         }
 
-        // Verifica sobreposição com reservas confirmadas ou com hold ativo.
-        $stmt_conflict = $pdo->prepare("
-            SELECT id
-            FROM reservations
-            WHERE chalet_id = ?
-              AND checkin_date < ?
-              AND checkout_date > ?
-              AND (
-                    status = 'Confirmada'
-                    OR (status = 'Aguardando Pagamento' AND expires_at IS NOT NULL AND expires_at > NOW())
-                  )
-            LIMIT 1
-        ");
-        $stmt_conflict->execute([$chalet_id, $checkout, $checkin]);
-        if ($stmt_conflict->fetch()) {
-            jsonResponse(['error' => 'Período indisponível para este chalé (reserva já confirmada ou em hold).'], 409);
-        }
+        assertNoReservationConflict($pdo, (int)$chalet_id, $checkin, $checkout);
 
         $stmtChalet = $pdo->prepare('SELECT * FROM chalets WHERE id = ? LIMIT 1');
         $stmtChalet->execute([$chalet_id]);
@@ -312,29 +445,25 @@ switch ($method) {
         if ($guestsChildren < 0) {
             $guestsChildren = 0;
         }
-        $totalGuests = $guestsAdults + $guestsChildren;
-        $maxGuests = isset($chaletRow['max_guests']) ? (int) $chaletRow['max_guests'] : 4;
-        if ($maxGuests < 1) {
-            $maxGuests = 1;
+        if (!$isBlockingReservation) {
+            assertReservationGuestCapacity($chaletRow, $guestsAdults, $guestsChildren);
         }
-        if ($totalGuests > $maxGuests) {
-            jsonResponse([
-                'error' => 'Quantidade de hóspedes excede a capacidade máxima do chalé.',
-                'max_guests' => $maxGuests,
-                'requested_guests' => $totalGuests
-            ], 400);
-        }
+        $childrenAgesJson = reservationNormalizeChildrenAges($data['children_ages'] ?? null, $guestsChildren);
+        $bringsPet = !empty($data['brings_pet']) || !empty($data['has_pet']);
 
-        $lodgingTotal = pricing_reservation_total($chaletRow, $checkin, $checkout, $guestsAdults, $guestsChildren);
+        $additional_value = isset($data['additional_value']) ? (float) $data['additional_value'] : 0;
         $extraIds = be_parse_extra_service_ids_from_payload($data);
         $extraPack = be_extra_services_from_ids($pdo, $extraIds);
         $extrasTotal = $extraPack['total'];
         $extrasJson = json_encode($extraPack['lines'], JSON_UNESCAPED_UNICODE);
+        $commercialTotals = $isBlockingReservation
+            ? ['total' => 0.0, 'stay_discount_amount' => 0.0]
+            : reservationCommercialTotals($pdo, $chaletRow, $checkin, $checkout, $guestsAdults, $guestsChildren, $bringsPet, $additional_value, $extrasTotal);
 
-        $preCoupon = round($lodgingTotal + $extrasTotal, 2);
+        $preCoupon = round((float)$commercialTotals['total'], 2);
         $couponInput = trim((string) ($data['coupon_code'] ?? ''));
-        $couponRow = $couponInput !== '' ? be_find_active_coupon($pdo, $couponInput) : null;
-        if ($couponInput !== '' && !$couponRow) {
+        $couponRow = (!$isBlockingReservation && $couponInput !== '') ? be_find_active_coupon($pdo, $couponInput) : null;
+        if (!$isBlockingReservation && $couponInput !== '' && !$couponRow) {
             jsonResponse(['error' => 'Cupom inválido ou expirado.'], 400);
         }
         $discountAmount = $couponRow ? be_compute_discount($preCoupon, $couponRow) : 0.0;
@@ -344,15 +473,14 @@ switch ($method) {
         $fnrhToken = bin2hex(random_bytes(16));
 
         $stmt = $pdo->prepare('INSERT INTO reservations (
-            guest_name, guest_email, guest_phone, guests_adults, guests_children, chalet_id, checkin_date, checkout_date,
+            guest_name, guest_email, guest_phone, guests_adults, guests_children, children_ages, brings_pet, chalet_id, checkin_date, checkout_date,
             total_amount, additional_value, payment_rule, payment_method, status, balance_paid, balance_paid_at,
             coupon_code, discount_amount, extras_json, extras_total, fnrh_access_token, fnrh_data
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)');
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)');
 
         $email = $data['guest_email'] ?? null;
         $phone = $data['guest_phone'] ?? null;
         $payment_rule = $data['payment_rule'] ?? 'full';
-        $additional_value = isset($data['additional_value']) ? (float) $data['additional_value'] : 0;
 
         // Método de pagamento: apenas dois valores válidos. Padrão 'mercadopago' para retro-compatibilidade.
         $paymentMethodRaw = strtolower(trim((string)($data['payment_method'] ?? 'mercadopago')));
@@ -362,8 +490,8 @@ switch ($method) {
         // - MP: 'Aguardando Pagamento' (entra hold com expires_at quando create_preference gera link)
         // - Manual: 'Pendente' (admin valida o comprovante manualmente)
         // Admin pode sempre sobrescrever passando 'status' no payload.
-        if (isset($data['status']) && trim((string)$data['status']) !== '') {
-            $status = (string)$data['status'];
+        if ($requestedStatus !== '') {
+            $status = $requestedStatus;
         } else {
             $status = $paymentMethod === 'manual' ? 'Pendente' : 'Aguardando Pagamento';
         }
@@ -376,29 +504,41 @@ switch ($method) {
             $balancePaidAt = date('Y-m-d H:i:s');
         }
 
-        if ($stmt->execute([
-            $data['guest_name'],
-            $email,
-            $phone,
-            $guestsAdults,
-            $guestsChildren,
-            $chalet_id,
-            $checkin,
-            $checkout,
-            $total,
-            $additional_value,
-            $payment_rule,
-            $paymentMethod,
-            $status,
-            $balancePaid,
-            $balancePaidAt,
-            $couponStored,
-            $discountAmount,
-            $extrasJson,
-            $extrasTotal,
-            $fnrhToken,
-        ])) {
-            $newId = (int) $pdo->lastInsertId();
+        try {
+            $pdo->beginTransaction();
+            $lockChalet = $pdo->prepare('SELECT id FROM chalets WHERE id = ? FOR UPDATE');
+            $lockChalet->execute([$chalet_id]);
+            assertNoReservationConflict($pdo, (int)$chalet_id, $checkin, $checkout);
+            $ok = $stmt->execute([
+                $data['guest_name'],
+                $email,
+                $phone,
+                $guestsAdults,
+                $guestsChildren,
+                $childrenAgesJson,
+                $bringsPet ? 1 : 0,
+                $chalet_id,
+                $checkin,
+                $checkout,
+                $total,
+                $additional_value,
+                $payment_rule,
+                $paymentMethod,
+                $status,
+                $balancePaid,
+                $balancePaidAt,
+                $couponStored,
+                $discountAmount,
+                $extrasJson,
+                $extrasTotal,
+                $fnrhToken,
+            ]);
+            if (!$ok) {
+                throw new RuntimeException('Falha ao salvar reserva');
+            }
+            $newId = (int)$pdo->lastInsertId();
+            $pdo->commit();
+
             try {
                 $eventRes = [
                     'id' => $newId,
@@ -412,8 +552,10 @@ switch ($method) {
                     'payment_rule' => (string) $payment_rule,
                     'fnrh_access_token' => (string) $fnrhToken,
                 ];
-                $notifyEvent = $paymentMethod === 'manual' ? 'reserva_pendente' : 'reserva';
-                evo_notify_event($pdo, $eventRes, $notifyEvent);
+                if ($status !== 'Bloqueado') {
+                    $notifyEvent = $paymentMethod === 'manual' ? 'reserva_pendente' : 'reserva';
+                    evo_notify_event($pdo, $eventRes, $notifyEvent);
+                }
             } catch (Throwable $e) {
                 error_log('[reservations] evo reserva notify fail: ' . $e->getMessage());
             }
@@ -422,8 +564,10 @@ switch ($method) {
                 'message' => 'Reserva criada com sucesso',
                 'id' => $newId
             ], 201);
-        }
-        else {
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             jsonResponse(['error' => 'Falha ao salvar reserva'], 500);
         }
         break;
@@ -431,36 +575,65 @@ switch ($method) {
     case 'PUT':
         // Atualiza reserva (Admin)
         $data = json_decode(file_get_contents("php://input"), true);
+        if (!is_array($data)) {
+            jsonResponse(['error' => 'JSON inválido.'], 400);
+        }
         if (!isset($_GET['id'])) {
             jsonResponse(['error' => 'ID é obrigatório'], 400);
         }
 
         if (isset($data['guest_name']) && isset($data['chalet_id'])) {
             // Edição completa
-            $seasonalValidation = validateSeasonalMinNights($pdo, (int)$data['chalet_id'], (string)$data['checkin_date'], (string)$data['checkout_date']);
-            if ($seasonalValidation !== null) {
-                jsonResponse($seasonalValidation, 422);
+            $reservationId = (int)$_GET['id'];
+            $st = $data['status'] ?? 'Confirmada';
+            $isBlockingReservation = $st === 'Bloqueado';
+            if (!$isBlockingReservation) {
+                $seasonalValidation = validateSeasonalMinNights($pdo, (int)$data['chalet_id'], (string)$data['checkin_date'], (string)$data['checkout_date']);
+                if ($seasonalValidation !== null) {
+                    jsonResponse($seasonalValidation, 422);
+                }
             }
+            assertNoReservationConflict($pdo, (int)$data['chalet_id'], (string)$data['checkin_date'], (string)$data['checkout_date'], $reservationId);
             $guestsAdults = isset($data['guests_adults']) ? (int)$data['guests_adults'] : 2;
             $guestsChildren = isset($data['guests_children']) ? (int)$data['guests_children'] : 0;
-            $totalGuests = max(0, $guestsAdults) + max(0, $guestsChildren);
-            $stmtCap = $pdo->prepare("SELECT max_guests FROM chalets WHERE id = ? LIMIT 1");
+            if ($guestsAdults < 0) $guestsAdults = 0;
+            if ($guestsChildren < 0) $guestsChildren = 0;
+            $stmtCap = $pdo->prepare("SELECT * FROM chalets WHERE id = ? LIMIT 1");
             $stmtCap->execute([$data['chalet_id']]);
-            $maxGuests = (int) ($stmtCap->fetchColumn() ?: 4);
-            if ($maxGuests < 1) {
-                $maxGuests = 1;
+            $chaletCapRow = $stmtCap->fetch(PDO::FETCH_ASSOC);
+            if (!$chaletCapRow) {
+                jsonResponse(['error' => 'Chalé não encontrado'], 400);
             }
-            if ($totalGuests > $maxGuests) {
-                jsonResponse([
-                    'error' => 'Quantidade de hóspedes excede a capacidade máxima do chalé.',
-                    'max_guests' => $maxGuests,
-                    'requested_guests' => $totalGuests
-                ], 400);
+            if (!$isBlockingReservation) {
+                assertReservationGuestCapacity($chaletCapRow, $guestsAdults, $guestsChildren);
             }
-            $stmt = $pdo->prepare("UPDATE reservations SET guest_name = ?, guest_email = ?, guest_phone = ?, guest_cpf = ?, guest_address = ?, guest_car_plate = ?, guest_companion_names = ?, guests_adults = ?, guests_children = ?, chalet_id = ?, checkin_date = ?, checkout_date = ?, total_amount = ?, additional_value = ?, payment_rule = ?, status = ?, balance_paid = ?, balance_paid_at = ? WHERE id = ?");
-            $pr = $data['payment_rule'] ?? 'full';
-            $st = $data['status'] ?? 'Confirmada';
+            $childrenAgesJson = reservationNormalizeChildrenAges($data['children_ages'] ?? null, $guestsChildren);
+            $bringsPet = !empty($data['brings_pet']) || !empty($data['has_pet']);
+            $stmtChaletPrice = $pdo->prepare('SELECT * FROM chalets WHERE id = ? LIMIT 1');
+            $stmtChaletPrice->execute([$data['chalet_id']]);
+            $chaletPriceRow = $stmtChaletPrice->fetch(PDO::FETCH_ASSOC);
+            if (!$chaletPriceRow) {
+                jsonResponse(['error' => 'Chalé não encontrado'], 400);
+            }
+            $stmtHol = $pdo->prepare('SELECT custom_date AS date, price, description AS descr FROM chalet_custom_prices WHERE chalet_id = ?');
+            $stmtHol->execute([$data['chalet_id']]);
+            $chaletPriceRow['holidays'] = $stmtHol->fetchAll(PDO::FETCH_ASSOC);
             $additional_value = isset($data['additional_value']) ? (float) $data['additional_value'] : 0;
+            $authoritativeTotal = $isBlockingReservation
+                ? 0.0
+                : (float)reservationCommercialTotals(
+                    $pdo,
+                    $chaletPriceRow,
+                    (string)$data['checkin_date'],
+                    (string)$data['checkout_date'],
+                    $guestsAdults,
+                    $guestsChildren,
+                    $bringsPet,
+                    $additional_value,
+                    (float)($data['extras_total'] ?? 0)
+                )['total'];
+            $stmt = $pdo->prepare("UPDATE reservations SET guest_name = ?, guest_email = ?, guest_phone = ?, guest_cpf = ?, guest_address = ?, guest_car_plate = ?, guest_companion_names = ?, guests_adults = ?, guests_children = ?, children_ages = ?, brings_pet = ?, chalet_id = ?, checkin_date = ?, checkout_date = ?, total_amount = ?, additional_value = ?, payment_rule = ?, status = ?, balance_paid = ?, balance_paid_at = ? WHERE id = ?");
+            $pr = $data['payment_rule'] ?? 'full';
 
             // Lê estado anterior para decidir transição do saldo.
             $stmtPrev = $pdo->prepare("SELECT balance_paid, balance_paid_at, status, guest_phone, guest_name, checkin_date, checkout_date, fnrh_access_token FROM reservations WHERE id = ? LIMIT 1");
@@ -495,10 +668,12 @@ switch ($method) {
             $data['guest_companion_names'] ?? null,
             $guestsAdults,
             $guestsChildren,
+            $childrenAgesJson,
+            $bringsPet ? 1 : 0,
             $data['chalet_id'],
             $data['checkin_date'],
             $data['checkout_date'],
-            $data['total_amount'],
+            $authoritativeTotal,
             $additional_value,
             $pr,
             $st,

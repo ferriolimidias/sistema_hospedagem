@@ -269,6 +269,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         { code: 'half', label: 'Sinal de 50% para reserva', percent_now: 50 },
         { code: 'full', label: 'Pagamento 100% Antecipado', percent_now: 100 }
     ];
+    let stayDiscounts = [];
 
     // Gallery Manager state (thumbnails + pending deletes).
     // Para Hero (personalização) o estado vive enquanto a página está aberta.
@@ -1263,6 +1264,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <h1 class="page-title">Gestão de Reservas</h1>
                 <div style="display: flex; gap: 1rem;">
                     <input type="text" class="form-control" placeholder="Buscar reserva..." style="width: 250px;">
+                    <button class="btn btn-outline" onclick="openBlockPeriodModal()"><i class="ph ph-lock-key"></i> Bloquear Período</button>
                     <button class="btn" onclick="openEditReservationModal(null)"><i class="ph ph-plus"></i> Nova Reserva</button>
                 </div>
             </div>
@@ -1331,6 +1333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         <select class="form-control status-select status-${getStatusClass(r.status)}" onchange="updateReservationStatus(${r.id}, this.value); this.className='form-control status-select status-' + (this.value === 'Confirmada' ? 'success' : this.value === 'Pendente' ? 'warning' : 'danger');" style="padding: 0.25rem 0.5rem; font-size: 0.85rem; width: auto; font-weight: 600;">
                                             <option ${r.status === 'Pendente' ? 'selected' : ''}>Pendente</option>
                                             <option ${r.status === 'Confirmada' ? 'selected' : ''}>Confirmada</option>
+                                            <option ${r.status === 'Bloqueado' ? 'selected' : ''}>Bloqueado</option>
                                             <option ${r.status === 'Cancelada' ? 'selected' : ''}>Cancelada</option>
                                         </select>
                                     </td>
@@ -1494,12 +1497,46 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <textarea class="form-control" id="rulesCancellationPolicy" rows="5" placeholder="Descreva aqui as regras de cancelamento aplicadas à reserva."></textarea>
                             <small style="color:#666;">Salvo em <code>settings.cancellation_policy</code>.</small>
                         </div>
+                        <div style="display:grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap:0.75rem;">
+                            <div class="form-group">
+                                <label>Taxa de Limpeza (R$)</label>
+                                <input type="number" class="form-control" id="rulesCleaningFee" min="0" step="0.01" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Taxa de Pet (R$)</label>
+                                <input type="number" class="form-control" id="rulesPetFee" min="0" step="0.01" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label>Limite do Calendário (meses)</label>
+                                <input type="number" class="form-control" id="rulesCalendarMaxMonths" min="1" max="24" step="1" value="6">
+                            </div>
+                        </div>
                         <div style="margin-top: 1rem; text-align: right;">
                             <button type="button" class="btn btn-primary" id="saveRulesBtn">
-                                <i class="ph ph-floppy-disk"></i> Salvar Horários
+                                <i class="ph ph-floppy-disk"></i> Salvar Regras Globais
                             </button>
                         </div>
                     </form>
+                </div>
+
+                <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
+                    <h3 style="margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                        <i class="ph ph-percent" style="color: var(--primary); margin-right: 0.5rem; vertical-align: bottom;"></i>
+                        Descontos por Noite
+                    </h3>
+                    <p style="margin-bottom:1rem;color:#666;font-size:0.9rem;">Exemplo: acima de 7 noites = 10% de desconto sobre o subtotal das diárias.</p>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:0.75rem; align-items:end; margin-bottom:1rem;">
+                        <div class="form-group" style="margin:0;">
+                            <label>Mínimo de noites</label>
+                            <input type="number" id="stayDiscountMinNights" class="form-control" min="1" step="1" placeholder="7">
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label>Desconto (%)</label>
+                            <input type="number" id="stayDiscountPercentage" class="form-control" min="0.01" max="100" step="0.01" placeholder="10">
+                        </div>
+                        <button type="button" class="btn btn-primary" id="saveStayDiscountBtn"><i class="ph ph-plus"></i> Adicionar</button>
+                    </div>
+                    <div class="table-container"><table class="data-table"><thead><tr><th>Regra</th><th>Desconto</th><th></th></tr></thead><tbody id="stayDiscountsTableBody"></tbody></table></div>
                 </div>
 
                 <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
@@ -2499,6 +2536,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function getStatusClass(status) {
         if (status === 'Confirmada') return 'success';
         if (status === 'Pendente') return 'warning';
+        if (status === 'Bloqueado') return 'warning';
         if (status === 'Cancelada') return 'danger';
         return 'info';
     }
@@ -2930,6 +2968,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('saveIdentitySeoBtn').addEventListener('click', saveIdentitySeoSettings);
                 const saveRulesBtnEl = document.getElementById('saveRulesBtn');
                 if (saveRulesBtnEl) saveRulesBtnEl.addEventListener('click', saveRulesSettings);
+                const saveStayDiscountBtnEl = document.getElementById('saveStayDiscountBtn');
+                if (saveStayDiscountBtnEl) saveStayDiscountBtnEl.addEventListener('click', saveStayDiscountRule);
                 const addPolicyBtnEl = document.getElementById('addPolicyBtn');
                 if (addPolicyBtnEl) addPolicyBtnEl.addEventListener('click', addEmptyPolicyRow);
                 const savePoliciesBtnEl = document.getElementById('savePoliciesBtn');
@@ -4179,11 +4219,83 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         const checkinEl = document.getElementById('rulesCheckinTime');
         const checkoutEl = document.getElementById('rulesCheckoutTime');
         const cancellationEl = document.getElementById('rulesCancellationPolicy');
+        const cleaningFeeEl = document.getElementById('rulesCleaningFee');
+        const petFeeEl = document.getElementById('rulesPetFee');
+        const calendarMonthsEl = document.getElementById('rulesCalendarMaxMonths');
         const checkin = normalizeTimeHHMM(checkinEl ? checkinEl.value : '', '14:00');
         const checkout = normalizeTimeHHMM(checkoutEl ? checkoutEl.value : '', '12:00');
         const cancellationPolicy = cancellationEl ? String(cancellationEl.value || '').trim() : '';
-        await saveSettingsToAPI({ checkin_time: checkin, checkout_time: checkout, cancellation_policy: cancellationPolicy });
+        const cleaningFee = Math.max(0, parseFloat(cleaningFeeEl ? cleaningFeeEl.value : '0') || 0);
+        const petFee = Math.max(0, parseFloat(petFeeEl ? petFeeEl.value : '0') || 0);
+        const calendarMaxMonths = Math.max(1, Math.min(24, parseInt(calendarMonthsEl ? calendarMonthsEl.value : '6', 10) || 6));
+        await saveSettingsToAPI({
+            checkin_time: checkin,
+            checkout_time: checkout,
+            cancellation_policy: cancellationPolicy,
+            cleaning_fee: cleaningFee.toFixed(2),
+            pet_fee: petFee.toFixed(2),
+            calendar_max_months: String(calendarMaxMonths)
+        });
         alert('Regras globais salvas com sucesso!');
+    }
+
+    function renderStayDiscountsEditor() {
+        const body = document.getElementById('stayDiscountsTableBody');
+        if (!body) return;
+        const rows = Array.isArray(stayDiscounts) ? stayDiscounts : [];
+        body.innerHTML = rows.length ? rows.map((d) => `
+            <tr>
+                <td>Acima de ${Number(d.min_nights) || 0} noite(s)</td>
+                <td>${Number(d.discount_percentage || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}%</td>
+                <td><button type="button" class="btn-icon" data-stay-discount-delete="${d.id}" style="color:var(--danger)"><i class="ph ph-trash"></i></button></td>
+            </tr>
+        `).join('') : '<tr><td colspan="3" style="text-align:center;color:#666;">Nenhum desconto configurado.</td></tr>';
+        body.querySelectorAll('[data-stay-discount-delete]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const id = parseInt(btn.getAttribute('data-stay-discount-delete'), 10);
+                if (!id || !confirm('Remover este desconto por noite?')) return;
+                await ensureInternalApiKey();
+                await fetch(`../api/stay_discounts.php?id=${id}`, { method: 'DELETE', headers: { 'X-Internal-Key': window.internalKey || internalApiKey || '' } });
+                await loadStayDiscounts();
+            });
+        });
+    }
+
+    async function loadStayDiscounts() {
+        try {
+            const res = await fetch('../api/stay_discounts.php');
+            const data = await res.json();
+            stayDiscounts = Array.isArray(data) ? data : [];
+        } catch {
+            stayDiscounts = [];
+        }
+        renderStayDiscountsEditor();
+    }
+
+    async function saveStayDiscountRule() {
+        const minEl = document.getElementById('stayDiscountMinNights');
+        const pctEl = document.getElementById('stayDiscountPercentage');
+        const minNights = parseInt(minEl ? minEl.value : '0', 10) || 0;
+        const discountPercentage = parseFloat(pctEl ? pctEl.value : '0') || 0;
+        if (minNights < 1 || discountPercentage <= 0 || discountPercentage > 100) {
+            showInlineToast('Informe noites e percentual válidos para o desconto.', 'error');
+            return;
+        }
+        await ensureInternalApiKey();
+        const res = await fetch('../api/stay_discounts.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': window.internalKey || internalApiKey || '' },
+            body: JSON.stringify({ min_nights: minNights, discount_percentage: discountPercentage })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            showInlineToast(data.error || 'Não foi possível salvar o desconto.', 'error');
+            return;
+        }
+        if (minEl) minEl.value = '';
+        if (pctEl) pctEl.value = '';
+        await loadStayDiscounts();
+        showInlineToast('Desconto por noite salvo com sucesso.', 'success');
     }
 
     function renderPaymentPoliciesEditor() {
@@ -4540,9 +4652,18 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             const rulesCheckin = document.getElementById('rulesCheckinTime');
             const rulesCheckout = document.getElementById('rulesCheckoutTime');
             const rulesCancellation = document.getElementById('rulesCancellationPolicy');
+            const rulesCleaningFee = document.getElementById('rulesCleaningFee');
+            const rulesPetFee = document.getElementById('rulesPetFee');
+            const rulesCalendarMaxMonths = document.getElementById('rulesCalendarMaxMonths');
             if (rulesCheckin) rulesCheckin.value = normalizeTimeHHMM(data.checkin_time, '14:00');
             if (rulesCheckout) rulesCheckout.value = normalizeTimeHHMM(data.checkout_time, '12:00');
             if (rulesCancellation) rulesCancellation.value = typeof data.cancellation_policy === 'string' ? data.cancellation_policy : '';
+            if (rulesCleaningFee) rulesCleaningFee.value = Number(data.cleaning_fee || 0).toFixed(2);
+            if (rulesPetFee) rulesPetFee.value = Number(data.pet_fee || 0).toFixed(2);
+            if (rulesCalendarMaxMonths) rulesCalendarMaxMonths.value = String(Math.max(1, parseInt(data.calendar_max_months || '6', 10) || 6));
+            if (document.getElementById('stayDiscountsTableBody')) {
+                await loadStayDiscounts();
+            }
             if (Array.isArray(data.payment_policies)) {
                 paymentPolicies = normalizePaymentPolicies(data.payment_policies);
             }
@@ -5488,12 +5609,13 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                         </div>
 
                         <div class="form-group" style="padding: 1rem; background: var(--bg-light); border-radius: 8px;">
-                            <h4 style="margin-bottom:0.5rem; font-size:0.95rem; color:var(--text-dark);">Preços Especiais (Feriados / Datas)</h4>
+                            <h4 style="margin-bottom:0.5rem; font-size:0.95rem; color:var(--text-dark);">Preços por Temporada / Mês</h4>
+                            <small style="display:block; color:#666; margin-bottom:0.75rem;">Selecione um período (ex: Dezembro) para definir o valor da alta temporada. Cada data cadastrada aqui tem prioridade sobre o preço do dia da semana e o preço base.</small>
                             <div id="holidaysList">
                                 ${holidaysHtml}
                             </div>
                             <button type="button" class="btn btn-primary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; margin-top: 0.5rem;" onclick="addHolidayRow()">
-                                <i class="ph ph-plus"></i> Adicionar Data Específica
+                                <i class="ph ph-plus"></i> Adicionar Data de Temporada
                             </button>
                         </div>
                         
@@ -5544,10 +5666,88 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         row.innerHTML = `
             <input type="date" class="form-control" name="hol_date[]" required>
             <input type="number" class="form-control" name="hol_price[]" placeholder="Preço (R$)" required>
-            <input type="text" class="form-control" name="hol_desc[]" placeholder="Descrição (ex: Natal)">
+            <input type="text" class="form-control" name="hol_desc[]" placeholder="Descrição (ex: Alta temporada Dezembro)">
             <button type="button" class="btn-icon" style="color:var(--danger)" onclick="this.parentElement.remove()"><i class="ph ph-trash"></i></button>
         `;
         document.getElementById('holidaysList').appendChild(row);
+    }
+
+    window.openBlockPeriodModal = function () {
+        const chaletOptions = chaletsData.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        const modalHtml = `
+            <div class="modal-overlay" id="blockPeriodModal" onclick="if(event.target === this) this.remove()">
+                <div class="modal-content" style="max-width:520px;">
+                    <div class="modal-header">
+                        <h3>Bloquear Período</h3>
+                        <button class="close-btn" onclick="document.getElementById('blockPeriodModal').remove()"><i class="ph ph-x"></i></button>
+                    </div>
+                    <form id="blockPeriodForm" style="display:flex; flex-direction:column; gap:0.85rem;">
+                        <div class="form-group" style="margin:0;">
+                            <label>Chalé</label>
+                            <select id="blockPeriodChalet" class="form-control" required>${chaletOptions}</select>
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem;">
+                            <div class="form-group" style="margin:0;">
+                                <label>Início</label>
+                                <input type="date" id="blockPeriodStart" class="form-control" required>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Fim</label>
+                                <input type="date" id="blockPeriodEnd" class="form-control" required>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label>Motivo</label>
+                            <input type="text" id="blockPeriodReason" class="form-control" placeholder="Ex.: Manutenção, canal externo, reforma" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="justify-content:center;"><i class="ph ph-lock-key"></i> Bloquear Datas</button>
+                    </form>
+                </div>
+            </div>
+        `;
+        document.getElementById('modalContainer').innerHTML = modalHtml;
+        document.getElementById('blockPeriodForm').addEventListener('submit', handleBlockPeriodSubmit);
+    }
+
+    async function handleBlockPeriodSubmit(e) {
+        e.preventDefault();
+        const chaletId = document.getElementById('blockPeriodChalet')?.value || '';
+        const start = document.getElementById('blockPeriodStart')?.value || '';
+        const end = document.getElementById('blockPeriodEnd')?.value || '';
+        const reason = (document.getElementById('blockPeriodReason')?.value || '').trim();
+        if (!chaletId || !start || !end || start >= end || !reason) {
+            showInlineToast('Informe chalé, período válido e motivo do bloqueio.', 'error');
+            return;
+        }
+        await ensureInternalApiKey();
+        const payload = {
+            guest_name: `Bloqueio: ${reason}`,
+            guest_email: '',
+            guest_phone: '',
+            guests_adults: 0,
+            guests_children: 0,
+            chalet_id: chaletId,
+            checkin_date: start,
+            checkout_date: end,
+            status: 'Bloqueado',
+            payment_rule: 'full',
+            payment_method: 'manual',
+            additional_value: 0
+        };
+        const res = await fetch('../api/reservations.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Internal-Key': window.internalKey || internalApiKey || '' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            showInlineToast(data.error || 'Não foi possível bloquear o período.', 'error');
+            return;
+        }
+        document.getElementById('blockPeriodModal')?.remove();
+        await fetchApiData();
+        renderView('reservations');
+        showInlineToast('Período bloqueado com sucesso.', 'success');
     }
 
     // Reservation Handling (Guest Folio centralizado com abas)
@@ -5593,6 +5793,8 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
 
                     <form onsubmit="handleEditReservation(event, ${jsParamId})">
                         <input type="hidden" id="editResBalancePaid" value="${Number(res.balance_paid || 0) === 1 ? '1' : '0'}">
+                        <input type="hidden" id="editResChildrenAges" value="${String(res.children_ages || '').replace(/"/g, '&quot;')}">
+                        <input type="hidden" id="editResBringsPet" value="${Number(res.brings_pet || 0) === 1 ? '1' : '0'}">
 
                         <section class="folio-pane active" data-pane="summary">
                             <div class="form-group">
@@ -5642,6 +5844,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                                     <select id="editResStatus" class="form-control">
                                         <option value="Pendente" ${res.status === 'Pendente' ? 'selected' : ''}>Pendente</option>
                                         <option value="Confirmada" ${res.status === 'Confirmada' ? 'selected' : ''}>Confirmada</option>
+                                        <option value="Bloqueado" ${res.status === 'Bloqueado' ? 'selected' : ''}>Bloqueado</option>
                                         <option value="Hospedado" ${res.status === 'Hospedado' ? 'selected' : ''}>Hospedado</option>
                                         <option value="Finalizada" ${res.status === 'Finalizada' ? 'selected' : ''}>Finalizada</option>
                                         <option value="Cancelada" ${res.status === 'Cancelada' ? 'selected' : ''}>Cancelada</option>
@@ -5651,7 +5854,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                             <div class="form-group">
                                 <label>Valor Total (R$)</label>
                                 <input type="number" step="0.01" id="editResTotal" class="form-control" required value="${res.total_amount || ''}">
-                                <small id="editResTotalBreakdown" style="color:#666; display:block; margin-top:0.25rem;">Preenchido automaticamente. Edite para sobrescrever.</small>
+                                <small id="editResTotalBreakdown" style="color:#666; display:block; margin-top:0.25rem;">Preenchido automaticamente com tarifas por noite. O servidor recalcula antes de salvar.</small>
                             </div>
                             <button type="submit" class="btn" style="width:100%; justify-content:center;">${isEditing ? 'Atualizar Reserva' : 'Criar Reserva'}</button>
                         </section>
@@ -5744,12 +5947,45 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         }
         const fmtMoney = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
+        function computeAdminLodgingSubtotal(chaletObj, checkinStr, checkoutStr) {
+            if (!chaletObj || !checkinStr || !checkoutStr) return 0;
+            const nights = diffNightsAdmin(checkinStr, checkoutStr);
+            if (nights <= 0) return 0;
+            const basePrice = parseFloat(chaletObj.price) || 0;
+            const customByDate = {};
+            const holidays = Array.isArray(chaletObj.holidays) ? chaletObj.holidays : [];
+            holidays.forEach((h) => {
+                const d = String(h.date || h.custom_date || '').slice(0, 10);
+                const p = parseFloat(h.price);
+                if (d && Number.isFinite(p) && p > 0) customByDate[d] = p;
+            });
+            const weekProps = ['price_sun', 'price_mon', 'price_tue', 'price_wed', 'price_thu', 'price_fri', 'price_sat'];
+            const cin = new Date(checkinStr + 'T00:00:00');
+            let lodging = 0;
+            for (let i = 0; i < nights; i++) {
+                const current = new Date(cin);
+                current.setDate(current.getDate() + i);
+                const y = current.getFullYear();
+                const m = String(current.getMonth() + 1).padStart(2, '0');
+                const d = String(current.getDate()).padStart(2, '0');
+                const dateStr = `${y}-${m}-${d}`;
+                let nightPrice = basePrice;
+                if (customByDate[dateStr] > 0) {
+                    nightPrice = customByDate[dateStr];
+                } else {
+                    const weekPrice = parseFloat(chaletObj[weekProps[current.getDay()]]);
+                    if (Number.isFinite(weekPrice) && weekPrice > 0) nightPrice = weekPrice;
+                }
+                lodging += nightPrice;
+            }
+            return Math.round(lodging * 100) / 100;
+        }
+
         function recalculateTotalAdmin() {
             if (!totalInput) return;
             const chaletObj = (typeof chaletsData !== 'undefined')
                 ? (chaletsData.find(c => String(c.id) === String(chaletSelect ? chaletSelect.value : '')) || null)
                 : null;
-            const price = chaletObj ? (parseFloat(chaletObj.price) || 0) : 0;
             const baseGuests = chaletObj && chaletObj.base_guests != null ? parseInt(chaletObj.base_guests, 10) || 0 : 0;
             const extraFee = chaletObj && chaletObj.extra_guest_fee != null ? parseFloat(chaletObj.extra_guest_fee) || 0 : 0;
             const ciStr = checkinInput ? checkinInput.value : '';
@@ -5766,14 +6002,14 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             const parsedGuests = guestsSelect ? parseGuestsOptionAdmin(guestsSelect.value) : { adults: 0, children: 0 };
             const totalGuests = parsedGuests.adults + parsedGuests.children;
             const extraGuests = Math.max(0, totalGuests - baseGuests);
-            const lodging = Math.round(price * nights * 100) / 100;
+            const lodging = computeAdminLodgingSubtotal(chaletObj, ciStr, coStr);
             const extra = Math.round(extraGuests * extraFee * nights * 100) / 100;
             const adjustment = additionalInput ? (parseFloat(additionalInput.value) || 0) : 0;
             const total = Math.round((lodging + extra + adjustment) * 100) / 100;
             totalInput.value = total.toFixed(2);
             if (breakdownEl) {
                 breakdownEl.style.color = '#666';
-                const parts = [`${nights} noite(s) × ${fmtMoney(price)} = ${fmtMoney(lodging)}`];
+                const parts = [`Hospedagem (${nights} noite(s), tarifas por data/dia da semana): ${fmtMoney(lodging)}`];
                 if (extraGuests > 0) parts.push(`${extraGuests} hóspede(s) extra × ${fmtMoney(extraFee)} × ${nights} = ${fmtMoney(extra)}`);
                 if (adjustment !== 0) parts.push(`Ajuste: ${fmtMoney(adjustment)}`);
                 parts.push(`Total: ${fmtMoney(total)}`);
@@ -6198,7 +6434,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         if (totalInput) {
             totalInput.addEventListener('input', () => {
                 if (breakdownEl) {
-                    breakdownEl.textContent = 'Valor total sobrescrito manualmente. Será recalculado se datas, hospedagem, hóspedes ou ajuste mudarem.';
+                    breakdownEl.textContent = 'Atenção: o servidor recalcula o total por segurança ao salvar.';
                     breakdownEl.style.color = 'var(--warning, #b45309)';
                 }
                 renderCheckoutTab();
@@ -6259,6 +6495,16 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             additional_value: additionalValue,
             status: document.getElementById('editResStatus').value
         };
+        const childrenAgesEl = document.getElementById('editResChildrenAges');
+        const bringsPetEl = document.getElementById('editResBringsPet');
+        if (childrenAgesEl && childrenAgesEl.value) {
+            try {
+                payload.children_ages = JSON.parse(childrenAgesEl.value);
+            } catch {
+                payload.children_ages = childrenAgesEl.value;
+            }
+        }
+        if (bringsPetEl) payload.brings_pet = bringsPetEl.value === '1' ? 1 : 0;
         const cpfEl = document.getElementById('editResGuestCpf');
         const fnrhPhoneEl = document.getElementById('editResGuestPhoneFnrh');
         const addrEl = document.getElementById('editResGuestAddress');
@@ -6312,10 +6558,16 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 await fetchApiData();
                 renderView('reservations');
             } else {
-                alert('Erro ao salvar a reserva.');
+                const data = await res.json().catch(() => ({}));
+                const message = data.error || data.message || 'Erro ao salvar a reserva.';
+                if (typeof showInlineToast === 'function') showInlineToast(message, 'error');
+                else alert(message);
             }
         } catch (err) {
             console.error('Falha na requisição de Reserva', err);
+            const message = err && err.message ? err.message : 'Erro de conexão ao salvar a reserva.';
+            if (typeof showInlineToast === 'function') showInlineToast(message, 'error');
+            else alert(message);
         }
     }
 

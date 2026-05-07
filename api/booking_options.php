@@ -53,6 +53,23 @@ try {
         ];
     }
 
+    $customPrices = [];
+    try {
+        $stmtCustomPrices = $pdo->query('SELECT chalet_id, custom_date, price, description FROM chalet_custom_prices ORDER BY chalet_id ASC, custom_date ASC');
+        foreach ($stmtCustomPrices->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $cid = (string)(int)$r['chalet_id'];
+            $date = (string)$r['custom_date'];
+            if ($cid === '0' || $date === '') continue;
+            if (!isset($customPrices[$cid])) $customPrices[$cid] = [];
+            $customPrices[$cid][$date] = [
+                'price' => (float)$r['price'],
+                'description' => (string)($r['description'] ?? ''),
+            ];
+        }
+    } catch (Throwable $e) {
+        $customPrices = [];
+    }
+
     // Leitura de configurações híbridas de pagamento.
     $readSetting = static function (PDO $pdo, string $key, string $default = ''): string {
         try {
@@ -72,6 +89,9 @@ try {
     $mpActiveRaw = $readSetting($pdo, 'payment_mercadopago_active', '1');
     $manualActiveRaw = $readSetting($pdo, 'payment_manual_pix_active', '0');
     $cancellationPolicy = $readSetting($pdo, 'cancellation_policy', '');
+    $cleaningFee = max(0.0, (float)str_replace(',', '.', $readSetting($pdo, 'cleaning_fee', '0')));
+    $petFee = max(0.0, (float)str_replace(',', '.', $readSetting($pdo, 'pet_fee', '0')));
+    $calendarMaxMonths = max(1, min(24, (int)$readSetting($pdo, 'calendar_max_months', '6')));
 
     // Valida se Mercado Pago tem Access Token configurado — se o admin marcou "ativo"
     // mas o token não foi gravado, desliga silenciosamente para não quebrar o checkout.
@@ -127,12 +147,31 @@ try {
         $seasonalRules = [];
     }
 
+    $stayDiscounts = [];
+    try {
+        $stmtDiscounts = $pdo->query('SELECT id, min_nights, discount_percentage FROM stay_discounts ORDER BY min_nights ASC, discount_percentage DESC');
+        foreach ($stmtDiscounts->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $stayDiscounts[] = [
+                'id' => (int)$r['id'],
+                'min_nights' => (int)$r['min_nights'],
+                'discount_percentage' => (float)$r['discount_percentage'],
+            ];
+        }
+    } catch (Throwable $e) {
+        $stayDiscounts = [];
+    }
+
     jsonResponse([
         'show_coupon_field' => $nCoupons > 0,
         'show_extras_section' => count($services) > 0,
         'extra_services' => $services,
+        'custom_prices' => $customPrices,
         'payment_policies' => $paymentPolicies,
         'cancellation_policy' => $cancellationPolicy,
+        'cleaning_fee' => $cleaningFee,
+        'pet_fee' => $petFee,
+        'calendar_max_months' => $calendarMaxMonths,
+        'stay_discounts' => $stayDiscounts,
         'seasonal_rules' => $seasonalRules,
         'payment_methods' => [
             'mercadopago_active' => $mpActive,
@@ -148,11 +187,16 @@ try {
         'show_coupon_field' => false,
         'show_extras_section' => false,
         'extra_services' => [],
+        'custom_prices' => [],
         'payment_policies' => [
             ['code' => 'half', 'label' => 'Sinal de 50% para reserva', 'percent_now' => 50],
             ['code' => 'full', 'label' => 'Pagamento 100% Antecipado', 'percent_now' => 100],
         ],
         'cancellation_policy' => '',
+        'cleaning_fee' => 0,
+        'pet_fee' => 0,
+        'calendar_max_months' => 6,
+        'stay_discounts' => [],
         'seasonal_rules' => [],
         'payment_methods' => [
             'mercadopago_active' => true,

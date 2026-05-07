@@ -328,6 +328,8 @@ function runInitialSchema(PDO $pdo): void
             guest_companion_names TEXT NULL,
             guests_adults INT NOT NULL DEFAULT 2,
             guests_children INT NOT NULL DEFAULT 0,
+            children_ages JSON NULL,
+            brings_pet TINYINT(1) NOT NULL DEFAULT 0,
             chalet_id INT NOT NULL,
             checkin_date DATE NOT NULL,
             checkout_date DATE NOT NULL,
@@ -440,6 +442,14 @@ function runInitialSchema(PDO $pdo): void
                 REFERENCES chalets(id) ON DELETE CASCADE,
             KEY idx_seasonal_dates (start_date, end_date),
             KEY idx_seasonal_chalet (chalet_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        "CREATE TABLE IF NOT EXISTS stay_discounts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            min_nights INT NOT NULL,
+            discount_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_stay_discounts_min_nights (min_nights)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
         "CREATE TABLE IF NOT EXISTS coupons (
@@ -613,6 +623,18 @@ function runInitialSchema(PDO $pdo): void
         // Coluna já existe.
     }
 
+    try {
+        $pdo->exec('ALTER TABLE reservations ADD COLUMN children_ages JSON NULL AFTER guests_children');
+    } catch (PDOException $e) {
+        // Coluna já existe.
+    }
+
+    try {
+        $pdo->exec('ALTER TABLE reservations ADD COLUMN brings_pet TINYINT(1) NOT NULL DEFAULT 0 AFTER children_ages');
+    } catch (PDOException $e) {
+        // Coluna já existe.
+    }
+
     // Método de pagamento (mercadopago | manual) — diferencia reservas automáticas (MP)
     // das manuais (PIX via WhatsApp). Sem DROP; se a coluna já existir, o erro é ignorado.
     try {
@@ -658,6 +680,18 @@ function runInitialSchema(PDO $pdo): void
         // Coluna já existe.
     }
 
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS stay_discounts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            min_nights INT NOT NULL,
+            discount_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_stay_discounts_min_nights (min_nights)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (PDOException $e) {
+        // Tabela já existe.
+    }
+
     // Personalização (campos adicionados em versões mais recentes).
     $__customizationCols = [
         "ALTER TABLE personalizacao ADD COLUMN loc_map_embed TEXT NULL AFTER loc_map_link",
@@ -680,6 +714,22 @@ function runInitialSchema(PDO $pdo): void
         $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('checkout_time', '12:00') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
     } catch (PDOException $e) {
         // Chave já existe ou tabela sem constraint única.
+    }
+
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('cleaning_fee', '0') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) {
+        // Chave já existe.
+    }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pet_fee', '0') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) {
+        // Chave já existe.
+    }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('calendar_max_months', '6') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) {
+        // Chave já existe.
     }
 
     try {

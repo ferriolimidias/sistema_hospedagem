@@ -89,6 +89,49 @@ CREATE TABLE IF NOT EXISTS `settings` (
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS `reservations` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `guest_name` varchar(255) NOT NULL,
+  `guest_email` varchar(255) DEFAULT NULL,
+  `guest_phone` varchar(50) DEFAULT NULL,
+  `guest_cpf` varchar(14) DEFAULT NULL,
+  `guest_address` text,
+  `guest_car_plate` varchar(16) DEFAULT NULL,
+  `guest_companion_names` text,
+  `guests_adults` int NOT NULL DEFAULT '2',
+  `guests_children` int NOT NULL DEFAULT '0',
+  `children_ages` json DEFAULT NULL,
+  `brings_pet` tinyint(1) NOT NULL DEFAULT '0',
+  `chalet_id` int NOT NULL,
+  `checkin_date` date NOT NULL,
+  `checkout_date` date NOT NULL,
+  `total_amount` decimal(10,2) NOT NULL,
+  `additional_value` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `payment_rule` varchar(20) NOT NULL DEFAULT 'full',
+  `payment_method` varchar(32) NOT NULL DEFAULT 'mercadopago',
+  `status` varchar(50) NOT NULL DEFAULT 'Confirmada',
+  `expires_at` datetime DEFAULT NULL,
+  `mp_init_point` text,
+  `contract_filename` varchar(255) DEFAULT NULL,
+  `last_contract_sent_at` datetime DEFAULT NULL,
+  `balance_paid` tinyint(1) NOT NULL DEFAULT '0',
+  `balance_paid_at` datetime DEFAULT NULL,
+  `coupon_code` varchar(100) DEFAULT NULL,
+  `discount_amount` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `extras_json` text,
+  `extras_total` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `fnrh_access_token` varchar(64) DEFAULT NULL,
+  `fnrh_data` text,
+  `fnrh_status` varchar(32) NOT NULL DEFAULT 'pendente',
+  `fnrh_submitted_at` datetime DEFAULT NULL,
+  `fnrh_last_response` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_reservations_fnrh_token` (`fnrh_access_token`),
+  KEY `idx_reservations_chalet_dates` (`chalet_id`,`checkin_date`,`checkout_date`),
+  CONSTRAINT `fk_reservations_chalet` FOREIGN KEY (`chalet_id`) REFERENCES `chalets` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `faqs` (
   `id` int NOT NULL AUTO_INCREMENT,
   `question` varchar(500) NOT NULL,
@@ -114,6 +157,15 @@ CREATE TABLE IF NOT EXISTS `seasonal_rules` (
   KEY `idx_seasonal_dates` (`start_date`,`end_date`),
   KEY `idx_seasonal_chalet` (`chalet_id`),
   CONSTRAINT `fk_seasonal_rules_chalet` FOREIGN KEY (`chalet_id`) REFERENCES `chalets` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `stay_discounts` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `min_nights` int NOT NULL,
+  `discount_percentage` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_stay_discounts_min_nights` (`min_nights`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 DELETE FROM `personalizacao`;
@@ -228,6 +280,9 @@ INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES
 ('meta_description', 'Plataforma completa para gestão de reservas, check-in online e controle de hospedagem.'),
 ('primary_color', '#2563eb'),
 ('secondary_color', '#1e293b'),
+('cleaning_fee', '0'),
+('pet_fee', '0'),
+('calendar_max_months', '6'),
 ('owner_whatsapp', ''),
 ('manual_pix_instructions', 'Para confirmar a reserva, realizamos o pagamento em PIX em 2 etapas: 50% no ato da contratação e 50% até o check-in. Após o envio do comprovante, o contrato digital é liberado para assinatura.'),
 ('cancellation_policy', 'Cancelamentos com 14 dias ou mais de antecedência têm reembolso integral.\nEntre 13 e 7 dias, devolvemos 50% do valor pago.\nCom menos de 7 dias, não há reembolso, mas o valor pode ser convertido em crédito para nova hospedagem em até 12 meses (1 remarcação, sujeito à disponibilidade e eventual diferença tarifária).\nEm caso de no-show, o valor pago é retido.'),

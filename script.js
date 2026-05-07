@@ -5,12 +5,26 @@ document.addEventListener('DOMContentLoaded', () => {
     let latestAvailabilityRequest = 0;
     let currentChalet = '';
 
+    function parseYmdParts(dateStr) {
+        const parts = String(dateStr || '').split('-').map((part) => parseInt(part, 10));
+        if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) return null;
+        return { year: parts[0], month: parts[1], day: parts[2] };
+    }
+
+    function formatLocalYmd(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
     function countNightsBetween(checkinStr, checkoutStr) {
-        const partsIn = checkinStr.split('-');
-        const partsOut = checkoutStr.split('-');
-        const cin = new Date(partsIn[0], partsIn[1] - 1, partsIn[2]);
-        const cout = new Date(partsOut[0], partsOut[1] - 1, partsOut[2]);
-        const diffDays = Math.ceil((cout - cin) / (1000 * 60 * 60 * 24));
+        const partsIn = parseYmdParts(checkinStr);
+        const partsOut = parseYmdParts(checkoutStr);
+        if (!partsIn || !partsOut) return 1;
+        const cin = Date.UTC(partsIn.year, partsIn.month - 1, partsIn.day);
+        const cout = Date.UTC(partsOut.year, partsOut.month - 1, partsOut.day);
+        const diffDays = Math.floor((cout - cin) / (1000 * 60 * 60 * 24));
         return diffDays > 0 ? diffDays : 1;
     }
 
@@ -47,7 +61,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (rule.chalet_id != null && targetChaletId != null && Number(rule.chalet_id) !== targetChaletId) return;
             if (rule.chalet_id != null && targetChaletId == null) return;
             if (rule.rule_type === 'recurring') {
-                const dow = new Date(checkinStr + 'T00:00:00').getDay();
+                const parts = parseYmdParts(checkinStr);
+                if (!parts) return;
+                const dow = new Date(parts.year, parts.month - 1, parts.day, 12).getDay();
                 if (Array.isArray(rule.recurring_days) && rule.recurring_days.includes(dow)) {
                     minRequired = Math.max(minRequired, Number(rule.min_nights) || 1);
                 }
@@ -62,31 +78,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getCheckoutMinDateFromRule(checkinStr, minNights) {
         if (!checkinStr) return '';
-        const d = new Date(checkinStr + 'T00:00:00');
+        const parts = parseYmdParts(checkinStr);
+        if (!parts) return '';
+        const d = new Date(parts.year, parts.month - 1, parts.day, 12);
         if (isNaN(d.getTime())) return '';
         d.setDate(d.getDate() + Math.max(1, minNights));
-        return d.toISOString().split('T')[0];
+        return formatLocalYmd(d);
     }
 
     /** Soma das diárias (feriados + preço por dia da semana), alinhado com api/pricing.php */
     function computeLodgingSubtotal(chalet, checkinStr, checkoutStr) {
         if (!chalet || !checkinStr || !checkoutStr) return 0;
         const nights = countNightsBetween(checkinStr, checkoutStr);
-        const partsIn = checkinStr.split('-');
-        const cin = new Date(partsIn[0], partsIn[1] - 1, partsIn[2]);
+        const partsIn = parseYmdParts(checkinStr);
+        if (!partsIn) return 0;
+        const cin = new Date(partsIn.year, partsIn.month - 1, partsIn.day, 12);
         const basePrice = chalet.price != null ? parseFloat(chalet.price) : 0;
+        const bookingCustomPrices = bookingOptions && bookingOptions.custom_prices && chalet.id
+            ? (bookingOptions.custom_prices[String(chalet.id)] || bookingOptions.custom_prices[chalet.id] || {})
+            : {};
         let lodging = 0;
         for (let i = 0; i < nights; i++) {
             const currentDate = new Date(cin);
             currentDate.setDate(currentDate.getDate() + i);
-            const year = currentDate.getFullYear();
-            const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-            const day = String(currentDate.getDate()).padStart(2, '0');
-            const dateStr = `${year}-${month}-${day}`;
+            const dateStr = formatLocalYmd(currentDate);
             const dayOfWeek = currentDate.getDay();
             let nightPrice = basePrice;
             const hol = chalet.holidays?.find((h) => h.date === dateStr);
-            if (hol && hol.price) {
+            const optionCustom = bookingCustomPrices && bookingCustomPrices[dateStr];
+            if (optionCustom && parseFloat(optionCustom.price) > 0) {
+                nightPrice = parseFloat(optionCustom.price);
+            } else if (hol && hol.price) {
                 nightPrice = parseFloat(hol.price);
             } else {
                 const weekProps = ['price_sun', 'price_mon', 'price_tue', 'price_wed', 'price_thu', 'price_fri', 'price_sat'];
@@ -483,9 +505,14 @@ document.addEventListener('DOMContentLoaded', () => {
         show_coupon_field: false,
         show_extras_section: false,
         extra_services: [],
+        custom_prices: {},
         payment_policies: [],
         seasonal_rules: [],
-        cancellation_policy: ''
+        cancellation_policy: '',
+        cleaning_fee: 0,
+        pet_fee: 0,
+        calendar_max_months: 6,
+        stay_discounts: []
     };
     window.__couponPreview = null;
     window.__lastModalSubtotalPreCoupon = 0;
@@ -639,11 +666,106 @@ document.addEventListener('DOMContentLoaded', () => {
         return Math.round(s * 100) / 100;
     }
 
+    function getBestStayDiscount(nights) {
+        const rules = Array.isArray(bookingOptions.stay_discounts) ? bookingOptions.stay_discounts : [];
+        let best = { min_nights: 0, discount_percentage: 0 };
+        rules.forEach((rule) => {
+            const min = Math.max(1, parseInt(rule.min_nights, 10) || 0);
+            const pct = Math.max(0, Math.min(100, parseFloat(rule.discount_percentage) || 0));
+            if (nights >= min && pct > 0 && min >= best.min_nights) {
+                best = { min_nights: min, discount_percentage: pct };
+            }
+        });
+        return best;
+    }
+
+    function applyCalendarMaxDate() {
+        const months = Math.max(1, Math.min(24, parseInt(bookingOptions.calendar_max_months, 10) || 6));
+        const max = new Date();
+        max.setMonth(max.getMonth() + months);
+        const maxStr = formatLocalYmd(max);
+        document.querySelectorAll('input[type="date"]').forEach((input) => {
+            input.setAttribute('max', maxStr);
+            if (input._flatpickr) {
+                input._flatpickr.set('maxDate', maxStr);
+            }
+        });
+    }
+
+    function initPublicDatePickers() {
+        if (typeof window.flatpickr !== 'function') return;
+        const months = Math.max(1, Math.min(24, parseInt(bookingOptions.calendar_max_months, 10) || 6));
+        const max = new Date();
+        max.setMonth(max.getMonth() + months);
+        const maxStr = formatLocalYmd(max);
+        ['checkin', 'checkout', 'modalCheckin', 'modalCheckout'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el || el._flatpickr) return;
+            window.flatpickr(el, {
+                dateFormat: 'Y-m-d',
+                allowInput: false,
+                disableMobile: true,
+                minDate: el.getAttribute('min') || 'today',
+                maxDate: el.getAttribute('max') || maxStr,
+                onChange: () => {
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+        });
+    }
+
+    function renderChildrenAgesInputs(childrenCount) {
+        const block = document.getElementById('childrenAgesBlock');
+        const host = document.getElementById('childrenAgesInputs');
+        if (!block || !host) return;
+        const count = Math.max(0, parseInt(childrenCount, 10) || 0);
+        if (count <= 0) {
+            block.style.display = 'none';
+            host.innerHTML = '';
+            return;
+        }
+        block.style.display = 'block';
+        host.innerHTML = Array.from({ length: count }).map((_, idx) => `
+            <input type="number" class="form-control child-age-input" min="0" max="17" step="1" placeholder="Idade da Criança ${idx + 1}" required>
+        `).join('');
+    }
+
+    function getChildrenAgesFromInputs() {
+        return Array.from(document.querySelectorAll('#childrenAgesInputs .child-age-input'))
+            .map((input) => parseInt(input.value, 10))
+            .filter((age) => Number.isFinite(age) && age >= 0 && age <= 17);
+    }
+
+    function showMobileBookingError(message) {
+        const existing = document.getElementById('mobile-booking-error');
+        if (existing) existing.remove();
+        const box = document.createElement('div');
+        box.id = 'mobile-booking-error';
+        box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:100000;width:min(92vw,420px);background:#fff;border:1px solid #fecaca;border-radius:14px;box-shadow:0 18px 45px rgba(0,0,0,.28);padding:1rem;text-align:center;color:#7f1d1d;';
+        box.innerHTML = `
+            <div style="font-weight:800;margin-bottom:.5rem;">Não foi possível concluir a reserva</div>
+            <div style="font-size:.95rem;line-height:1.45;color:#991b1b;">${String(message || 'Verifique os dados e tente novamente.').replace(/</g, '&lt;')}</div>
+            <button type="button" id="mobile-booking-error-close" style="margin-top:1rem;padding:.7rem 1rem;border:0;border-radius:9px;background:#991b1b;color:#fff;font-weight:700;width:100%;">Entendi</button>
+        `;
+        document.body.appendChild(box);
+        const close = document.getElementById('mobile-booking-error-close');
+        if (close) close.addEventListener('click', () => box.remove());
+        setTimeout(() => {
+            if (box && box.parentNode) box.remove();
+        }, 7000);
+    }
+
     function hideOptionalSummaryRows() {
         const ex = document.getElementById('summaryExtrasRow');
         const di = document.getElementById('summaryDiscountRow');
+        const stay = document.getElementById('summaryStayDiscountRow');
+        const cleaning = document.getElementById('summaryCleaningRow');
+        const pet = document.getElementById('summaryPetRow');
         if (ex) ex.style.display = 'none';
         if (di) di.style.display = 'none';
+        if (stay) stay.style.display = 'none';
+        if (cleaning) cleaning.style.display = 'none';
+        if (pet) pet.style.display = 'none';
         window.__lastModalSubtotalPreCoupon = 0;
     }
 
@@ -679,6 +801,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         renderPaymentOptionsUI();
         renderPaymentMethodsUI();
+        const petLabel = document.getElementById('bookingPetLabel');
+        if (petLabel) {
+            const fee = Math.max(0, parseFloat(bookingOptions.pet_fee) || 0);
+            petLabel.textContent = fee > 0
+                ? `Vou levar meu Pet (Taxa de R$ ${fee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+                : 'Vou levar meu Pet';
+        }
     }
 
     async function loadBookingOptions() {
@@ -690,9 +819,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 show_coupon_field: !!data.show_coupon_field,
                 show_extras_section: !!data.show_extras_section,
                 extra_services: Array.isArray(data.extra_services) ? data.extra_services : [],
+                custom_prices: data.custom_prices && typeof data.custom_prices === 'object' ? data.custom_prices : {},
                 payment_policies: normalizePaymentPolicies(data.payment_policies),
                 seasonal_rules: normalizeSeasonalRules(data.seasonal_rules),
                 cancellation_policy: typeof data.cancellation_policy === 'string' ? data.cancellation_policy : '',
+                cleaning_fee: Math.max(0, parseFloat(data.cleaning_fee) || 0),
+                pet_fee: Math.max(0, parseFloat(data.pet_fee) || 0),
+                calendar_max_months: Math.max(1, parseInt(data.calendar_max_months, 10) || 6),
+                stay_discounts: Array.isArray(data.stay_discounts) ? data.stay_discounts : [],
                 payment_methods: Object.assign({}, defaultMethods, data.payment_methods || {})
             };
         } catch {
@@ -700,13 +834,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 show_coupon_field: false,
                 show_extras_section: false,
                 extra_services: [],
+                custom_prices: {},
                 payment_policies: normalizePaymentPolicies([]),
                 seasonal_rules: [],
                 cancellation_policy: '',
+                cleaning_fee: 0,
+                pet_fee: 0,
+                calendar_max_months: 6,
+                stay_discounts: [],
                 payment_methods: defaultMethods
             };
         }
         renderBookingOptionsUI();
+        applyCalendarMaxDate();
+        initPublicDatePickers();
         enforceCheckoutBySeasonalRule('checkin', 'checkout', null);
         const chalet = findChaletByName(currentChalet);
         enforceCheckoutBySeasonalRule('modalCheckin', 'modalCheckout', chalet && chalet.id ? chalet.id : null);
@@ -729,8 +870,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const minCheckout = getCheckoutMinDateFromRule(checkin, minNights);
         if (!minCheckout) return;
         checkoutEl.setAttribute('min', minCheckout);
+        if (checkoutEl._flatpickr) {
+            checkoutEl._flatpickr.set('minDate', minCheckout);
+        }
         if (!checkoutEl.value || checkoutEl.value < minCheckout) {
             checkoutEl.value = minCheckout;
+            if (checkoutEl._flatpickr) {
+                checkoutEl._flatpickr.setDate(minCheckout, false);
+            }
         }
     }
 
@@ -781,10 +928,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modalGuestsEl) {
             modalGuestsEl.innerHTML = '';
             renderGuestOptions(modalGuestsEl, maxG, preferredModal);
+            renderChildrenAgesInputs(parseGuestsOption(modalGuestsEl.value || preferredModal, 1).children);
         }
         enforceCheckoutBySeasonalRule('modalCheckin', 'modalCheckout', currentChaletObj && currentChaletObj.id ? currentChaletObj.id : null);
 
         document.querySelectorAll('#bookingExtrasList input[type="checkbox"]').forEach((cb) => { cb.checked = false; });
+        const petToggle = document.getElementById('bookingPetToggle');
+        if (petToggle) petToggle.checked = false;
         const hct = document.getElementById('hasCouponToggle');
         if (hct) hct.checked = false;
         const wrap = document.getElementById('bookingCouponFieldsWrap');
@@ -866,7 +1016,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modalCheckout').addEventListener('change', scheduleUpdateModalSummary);
     const modalGuestsOptionEl = document.getElementById('modalGuestsOption');
     if (modalGuestsOptionEl) {
-        modalGuestsOptionEl.addEventListener('change', scheduleUpdateModalSummary);
+        modalGuestsOptionEl.addEventListener('change', () => {
+            const parsed = parseGuestsOption(modalGuestsOptionEl.value, 1);
+            renderChildrenAgesInputs(parsed.children);
+            scheduleUpdateModalSummary();
+        });
     }
 
     if (modal) {
@@ -883,6 +1037,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.__couponPreview = null;
                 const cfb = document.getElementById('couponFeedback');
                 if (cfb) cfb.textContent = '';
+                scheduleUpdateModalSummary();
+            }
+            if (e.target && e.target.id === 'bookingPetToggle') {
+                window.__couponPreview = null;
                 scheduleUpdateModalSummary();
             }
         });
@@ -979,6 +1137,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const summaryExtrasEl = document.getElementById('summaryExtras');
         const summaryDiscountRow = document.getElementById('summaryDiscountRow');
         const summaryDiscountEl = document.getElementById('summaryDiscount');
+        const summaryStayDiscountRow = document.getElementById('summaryStayDiscountRow');
+        const summaryStayDiscountLabel = document.getElementById('summaryStayDiscountLabel');
+        const summaryStayDiscountEl = document.getElementById('summaryStayDiscount');
+        const summaryCleaningRow = document.getElementById('summaryCleaningRow');
+        const summaryCleaningEl = document.getElementById('summaryCleaning');
+        const summaryPetRow = document.getElementById('summaryPetRow');
+        const summaryPetEl = document.getElementById('summaryPet');
 
         // Reset
         confirmBtn.disabled = true;
@@ -1068,9 +1233,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalHospedesSelecionados = totalGuestsFromSelection(guestsVal);
 
         const lodging = computeLodgingSubtotal(chalet, checkinStr, checkoutStr);
+        const stayDiscountRule = getBestStayDiscount(nights);
+        const stayDiscountAmount = Math.round(lodging * ((stayDiscountRule.discount_percentage || 0) / 100) * 100) / 100;
+        const lodgingAfterDiscount = Math.max(0, Math.round((lodging - stayDiscountAmount) * 100) / 100);
         const extraGuest = computeExtraGuestSubtotal(chalet, guestsAdults, guestsChildren, nights);
         const extrasTotal = getSelectedExtrasTotal();
-        const baseTotal = Math.round((lodging + extraGuest + extrasTotal) * 100) / 100;
+        const cleaningFee = Math.max(0, parseFloat(bookingOptions.cleaning_fee) || 0);
+        const wantsPet = !!(document.getElementById('bookingPetToggle') && document.getElementById('bookingPetToggle').checked);
+        const petFee = wantsPet ? Math.max(0, parseFloat(bookingOptions.pet_fee) || 0) : 0;
+        const baseTotal = Math.round((lodgingAfterDiscount + extraGuest + extrasTotal + cleaningFee + petFee) * 100) / 100;
         window.__lastModalSubtotalPreCoupon = baseTotal;
 
         let discount = 0;
@@ -1094,6 +1265,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         nightsEl.textContent = nights;
         if (lodgingEl) lodgingEl.textContent = `R$ ${lodging.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        if (summaryStayDiscountRow && summaryStayDiscountEl && summaryStayDiscountLabel) {
+            if (stayDiscountAmount > 0) {
+                summaryStayDiscountRow.style.display = '';
+                summaryStayDiscountLabel.textContent = `Desconto aplicado (-${Number(stayDiscountRule.discount_percentage).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%):`;
+                summaryStayDiscountEl.textContent = `- R$ ${stayDiscountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            } else {
+                summaryStayDiscountRow.style.display = 'none';
+            }
+        }
         if (extraGuest > 0 && extraRow && extraEl && extraLabelEl) {
             const baseG = Math.max(1, parseInt(String(chalet.base_guests ?? 2), 10) || 2);
             const fee = parseFloat(String(chalet.extra_guest_fee ?? 0)) || 0;
@@ -1112,6 +1292,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 summaryExtrasEl.textContent = `R$ ${extrasTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
             } else {
                 summaryExtrasRow.style.display = 'none';
+            }
+        }
+        if (summaryCleaningRow && summaryCleaningEl) {
+            if (cleaningFee > 0) {
+                summaryCleaningRow.style.display = '';
+                summaryCleaningEl.textContent = `R$ ${cleaningFee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            } else {
+                summaryCleaningRow.style.display = 'none';
+            }
+        }
+        if (summaryPetRow && summaryPetEl) {
+            if (petFee > 0) {
+                summaryPetRow.style.display = '';
+                summaryPetEl.textContent = `R$ ${petFee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+            } else {
+                summaryPetRow.style.display = 'none';
             }
         }
         if (summaryDiscountRow && summaryDiscountEl) {
@@ -1245,8 +1441,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const gAdults = parsedTopGuests.adults;
                     const gChildren = parsedTopGuests.children;
                     const lodgingPart = computeLodgingSubtotal(chalet, filterCheckin, filterCheckout);
+                    const stayDiscountRule = getBestStayDiscount(nights);
+                    const stayDiscountPart = Math.round(lodgingPart * ((stayDiscountRule.discount_percentage || 0) / 100) * 100) / 100;
                     const extraPart = computeExtraGuestSubtotal(chalet, gAdults, gChildren, nights);
-                    const totalPrice = Math.round((lodgingPart + extraPart) * 100) / 100;
+                    const cleaningPart = Math.max(0, parseFloat(bookingOptions.cleaning_fee) || 0);
+                    const totalPrice = Math.round((lodgingPart - stayDiscountPart + extraPart + cleaningPart) * 100) / 100;
 
                     const displayPrice = totalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 0 });
 
@@ -1316,15 +1515,23 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
 
             const submitBtn = finalBookingForm.querySelector('button[type="submit"]');
-            submitBtn.textContent = 'Processando Reserva...';
-            submitBtn.disabled = true;
+            const resetSubmitButton = () => {
+                if (typeof updateConfirmButtonForMethod === 'function') {
+                    updateConfirmButtonForMethod();
+                }
+                if (submitBtn) submitBtn.disabled = false;
+            };
+            if (submitBtn) {
+                submitBtn.textContent = 'Processando Reserva...';
+                submitBtn.disabled = true;
+            }
 
-            const checkin = document.getElementById('modalCheckin').value;
-            const checkout = document.getElementById('modalCheckout').value;
-            const name = document.getElementById('bookingName').value;
-            const email = document.getElementById('bookingEmail').value;
-            const phone = document.getElementById('bookingPhone').value;
-            const totalText = document.getElementById('summaryTotal').textContent;
+            const checkin = document.getElementById('modalCheckin')?.value || '';
+            const checkout = document.getElementById('modalCheckout')?.value || '';
+            const name = document.getElementById('bookingName')?.value || '';
+            const email = document.getElementById('bookingEmail')?.value || '';
+            const phone = document.getElementById('bookingPhone')?.value || '';
+            const totalText = document.getElementById('summaryTotal')?.textContent || 'R$ 0,00';
 
             const paymentRuleInput = document.querySelector('input[name="paymentRule"]:checked');
             const paymentRule = paymentRuleInput ? paymentRuleInput.value : 'full';
@@ -1345,6 +1552,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const parsedGuests = parseGuestsOption(guestsVal, 1);
             const guestsAdults = parsedGuests.adults;
             const guestsChildren = parsedGuests.children;
+            const childrenAges = guestsChildren > 0 ? getChildrenAgesFromInputs() : [];
 
             // Extrair Dados do Formulário (chalet_id quando disponível para maior confiabilidade)
             const chaletForReserva = allChalets[reserva.chaletName];
@@ -1358,7 +1566,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 checkin_date: reserva.checkin,
                 checkout_date: reserva.checkout,
                 payment_rule: paymentRule,
-                payment_method: paymentMethod
+                payment_method: paymentMethod,
+                children_ages: Array.isArray(childrenAges) ? childrenAges : [],
+                brings_pet: !!document.getElementById('bookingPetToggle')?.checked
                 // status será definido pelo backend conforme o payment_method
             };
             if (chaletForReserva && chaletForReserva.id) formDados.chalet_id = chaletForReserva.id;
@@ -1385,24 +1595,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 const dbData = await resDb.json().catch(() => ({}));
                 if (!resDb.ok) {
-                    alert(dbData.error || 'Não foi possível registrar a reserva. Verifique os dados e tente novamente.');
-                    updateConfirmButtonForMethod();
-                    submitBtn.disabled = false;
+                    showMobileBookingError(dbData.error || dbData.message || 'Não foi possível registrar a reserva. Verifique os dados e tente novamente.');
+                    resetSubmitButton();
                     return;
                 }
                 reservationId = dbData.id;
             } catch (e) {
                 console.error(e);
-                alert("Houve uma falha ao registrar sua reserva. Tente novamente.");
-                updateConfirmButtonForMethod();
-                submitBtn.disabled = false;
+                showMobileBookingError("Houve uma falha ao registrar sua reserva. Tente novamente.");
+                resetSubmitButton();
                 return;
             }
 
             // 2. Ramificação por método de pagamento
             if (paymentMethod === 'manual') {
-                submitBtn.textContent = 'Reserva realizada';
-                submitBtn.disabled = false;
+                if (submitBtn) {
+                    submitBtn.textContent = 'Reserva realizada';
+                    submitBtn.disabled = false;
+                }
                 showReservationFeedback(
                     'Reserva confirmada! Verifique seu WhatsApp agora mesmo para concluir o pagamento.'
                 );
@@ -1420,7 +1630,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Alerta já exibido em createMercadoPagoPreference quando aplicável
             } else {
                 // Redirecionando para tela de pagamento do Mercado Pago
-                submitBtn.textContent = 'Redirecionando...';
+                if (submitBtn) submitBtn.textContent = 'Redirecionando...';
             }
         });
     }
@@ -2146,6 +2356,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
 
 
 

@@ -24,17 +24,16 @@ try {
     $year = isset($_GET['year']) ? (int)$_GET['year'] : 0;
     if ((!$periodStart || !$periodEnd) && $month >= 1 && $month <= 12 && $year >= 2000) {
         $periodStart = sprintf('%04d-%02d-01', $year, $month);
-        $periodEnd = date('Y-m-d', strtotime($periodStart . ' +1 month'));
+        $monthStart = DateTimeImmutable::createFromFormat('!Y-m-d', $periodStart, new DateTimeZone('UTC'));
+        $periodEnd = $monthStart ? $monthStart->modify('+1 month')->format('Y-m-d') : null;
     }
 
     $query = "
         SELECT id, checkin_date, checkout_date, status, expires_at
         FROM reservations
         WHERE chalet_id = ?
-          AND (
-                status = 'Confirmada'
-                OR (status = 'Aguardando Pagamento' AND expires_at IS NOT NULL AND expires_at > NOW())
-              )
+          AND status NOT IN ('Cancelada', 'Recusada', 'Expirada', 'Finalizada')
+          AND NOT (status = 'Aguardando Pagamento' AND expires_at IS NOT NULL AND expires_at <= NOW())
     ";
     $params = [$chaletId];
 

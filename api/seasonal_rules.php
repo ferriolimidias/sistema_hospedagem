@@ -6,6 +6,16 @@ require_once __DIR__ . '/booking_extras.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
+function sr_is_valid_ymd(string $dateYmd): bool
+{
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateYmd)) {
+        return false;
+    }
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $dateYmd, new DateTimeZone('UTC'));
+    $errors = DateTimeImmutable::getLastErrors();
+    return (bool)$date && ($errors === false || ((int)$errors['warning_count'] === 0 && (int)$errors['error_count'] === 0));
+}
+
 function sr_validate_payload(PDO $pdo, array $data): array
 {
     $ruleName = trim((string)($data['rule_name'] ?? ''));
@@ -25,7 +35,7 @@ function sr_validate_payload(PDO $pdo, array $data): array
         jsonResponse(['error' => 'Nome da regra é obrigatório.'], 400);
     }
     if ($ruleType === 'period') {
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)) {
+        if (!sr_is_valid_ymd($startDate) || !sr_is_valid_ymd($endDate)) {
             jsonResponse(['error' => 'Datas inválidas. Use o formato YYYY-MM-DD.'], 400);
         }
         if ($startDate > $endDate) {

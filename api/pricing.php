@@ -6,12 +6,24 @@ declare(strict_types=1);
  *
  * @param array<string,mixed> $chalet Linha de chalets + chave opcional 'holidays': lista de ['date'=>'Y-m-d','price'=>float]
  */
+function pricing_parse_ymd_date(string $dateYmd): ?DateTimeImmutable
+{
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateYmd)) {
+        return null;
+    }
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $dateYmd, new DateTimeZone('UTC'));
+    $errors = DateTimeImmutable::getLastErrors();
+    if (!$date || ($errors !== false && ((int)$errors['warning_count'] > 0 || (int)$errors['error_count'] > 0))) {
+        return null;
+    }
+    return $date;
+}
+
 function pricing_count_nights(string $checkinYmd, string $checkoutYmd): int
 {
-    try {
-        $cin = new DateTimeImmutable($checkinYmd . ' 00:00:00');
-        $cout = new DateTimeImmutable($checkoutYmd . ' 00:00:00');
-    } catch (Exception $e) {
+    $cin = pricing_parse_ymd_date($checkinYmd);
+    $cout = pricing_parse_ymd_date($checkoutYmd);
+    if (!$cin || !$cout) {
         return 1;
     }
     if ($cout <= $cin) {
@@ -37,9 +49,8 @@ function pricing_nightly_subtotal(array $chalet, string $checkinYmd, string $che
 
     $weekProps = ['price_sun', 'price_mon', 'price_tue', 'price_wed', 'price_thu', 'price_fri', 'price_sat'];
 
-    try {
-        $cin = new DateTimeImmutable($checkinYmd);
-    } catch (Exception $e) {
+    $cin = pricing_parse_ymd_date($checkinYmd);
+    if (!$cin) {
         return round($basePrice * $nights, 2);
     }
 
@@ -93,4 +104,24 @@ function pricing_reservation_total(array $chalet, string $checkinYmd, string $ch
     $extra = pricing_extra_guest_subtotal($chalet, $guestsAdults, $guestsChildren, $nights);
 
     return round($lodging + $extra, 2);
+}
+
+function pricing_best_stay_discount(array $discountRules, int $nights): array
+{
+    $best = ['min_nights' => 0, 'discount_percentage' => 0.0];
+    foreach ($discountRules as $rule) {
+        if (!is_array($rule)) continue;
+        $minNights = max(1, (int)($rule['min_nights'] ?? 0));
+        $percentage = max(0.0, min(100.0, (float)($rule['discount_percentage'] ?? 0)));
+        if ($nights >= $minNights && $percentage > 0 && $minNights >= (int)$best['min_nights']) {
+            $best = ['min_nights' => $minNights, 'discount_percentage' => $percentage];
+        }
+    }
+    return $best;
+}
+
+function pricing_apply_percentage_discount(float $amount, float $percentage): float
+{
+    $percentage = max(0.0, min(100.0, $percentage));
+    return round(max(0.0, $amount) * ($percentage / 100.0), 2);
 }

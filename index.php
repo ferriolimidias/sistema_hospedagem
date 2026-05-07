@@ -167,6 +167,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="styles.css?v=2">
 </head>
 
@@ -464,12 +465,19 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                         </select>
                     </div>
                 </div>
+                <div id="childrenAgesBlock" class="form-group" style="display:none; margin-bottom:1rem;">
+                    <label style="font-weight:600;">Idade das Crianças</label>
+                    <div id="childrenAgesInputs" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem; margin-top:0.5rem;"></div>
+                </div>
                 <div id="availabilityMessage" style="color: var(--danger); font-size: 0.9rem; margin-bottom: 1rem; display: none;"></div>
                 <div class="reservation-summary" style="margin-bottom: 1.5rem;">
                     <div class="summary-row"><span>Noites:</span><strong id="summaryNights">0</strong></div>
-                    <div class="summary-row"><span>Hospedagem (diárias):</span><strong id="summaryLodging">R$ 0,00</strong></div>
+                    <div class="summary-row"><span>Subtotal das diárias:</span><strong id="summaryLodging">R$ 0,00</strong></div>
+                    <div class="summary-row" id="summaryStayDiscountRow" style="display: none;"><span id="summaryStayDiscountLabel">Desconto aplicado:</span><strong id="summaryStayDiscount">- R$ 0,00</strong></div>
                     <div class="summary-row" id="summaryExtraGuestsRow" style="display: none;"><span id="summaryExtraGuestsLabel">Hóspedes extra:</span><strong id="summaryExtraGuests">R$ 0,00</strong></div>
                     <div class="summary-row" id="summaryExtrasRow" style="display: none;"><span>Serviços adicionais:</span><strong id="summaryExtras">R$ 0,00</strong></div>
+                    <div class="summary-row" id="summaryCleaningRow" style="display: none;"><span>Taxa de Limpeza:</span><strong id="summaryCleaning">R$ 0,00</strong></div>
+                    <div class="summary-row" id="summaryPetRow" style="display: none;"><span>Taxa Pet:</span><strong id="summaryPet">R$ 0,00</strong></div>
                     <div class="summary-row" id="summaryDiscountRow" style="display: none;"><span>Desconto (cupom):</span><strong id="summaryDiscount">- R$ 0,00</strong></div>
                     <hr style="margin: 0.5rem 0; border-color: rgba(255,255,255,0.1);">
                     <div class="summary-row total"><span>Total:</span><strong id="summaryTotal">R$ 0,00</strong></div>
@@ -489,6 +497,11 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 <div id="bookingExtrasBlock" class="form-group" style="display: none; margin-bottom: 1rem;">
                     <label style="font-weight: 600;">Serviços adicionais</label>
                     <div id="bookingExtrasList" style="margin-top: 0.5rem;"></div>
+                </div>
+                <div id="bookingPetBlock" class="form-group" style="margin-bottom: 1rem;">
+                    <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:500;">
+                        <input type="checkbox" id="bookingPetToggle"> <span id="bookingPetLabel">Vou levar meu Pet</span>
+                    </label>
                 </div>
                 <form id="finalBookingForm">
                     <div class="form-group"><label>Nome Completo</label><input type="text" id="bookingName" placeholder="Seu nome" required></div>
@@ -568,7 +581,8 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/carousel/carousel.autoplay.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui@5.0/dist/fancybox/fancybox.umd.js"></script>
-    <script src="script.js?v=20"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="script.js?v=1.1.0"></script>
 </body>
 
 </html>
