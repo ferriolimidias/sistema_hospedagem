@@ -4008,8 +4008,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             evo_notify_checkin: document.getElementById('evoNotifyCheckin')?.checked ? '1' : '0',
             evo_notify_checkout: document.getElementById('evoNotifyCheckout')?.checked ? '1' : '0'
         };
-        await saveSettingsToAPI(settings);
-        alert('Configuração de Comunicação e Integrações salva com sucesso!');
+        try {
+            await saveSettingsToAPI(settings);
+            showInlineToast('Configuração de Comunicação e Integrações salva com sucesso.', 'success');
+        } catch (e) {
+            showInlineToast(e.message || 'Não foi possível salvar as configurações.', 'error');
+        }
     }
 
     async function testEvolutionConnection() {
@@ -4105,8 +4109,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             settings.mercadoPagoSettings = { accessToken: mpToken };
         }
 
-        await saveSettingsToAPI(settings);
-        alert('Métodos de pagamento salvos com sucesso!');
+        try {
+            await saveSettingsToAPI(settings);
+            showInlineToast('Métodos de pagamento salvos com sucesso.', 'success');
+        } catch (e) {
+            showInlineToast(e.message || 'Não foi possível salvar os métodos de pagamento.', 'error');
+        }
     }
 
     function getDefaultPixTemplate() {
@@ -4202,9 +4210,9 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         try {
             await saveSettingsToAPI(payload);
             if (apiKeyEl) apiKeyEl.value = '';
-            alert('Configurações FNRH salvas com sucesso!');
+            showInlineToast('Configurações FNRH salvas com sucesso.', 'success');
         } catch (e) {
-            alert('Não foi possível salvar as configurações FNRH.');
+            showInlineToast(e.message || 'Não foi possível salvar as configurações FNRH.', 'error');
         }
     }
 
@@ -4259,7 +4267,9 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
     function getCancellationPolicyHtml() {
         const hiddenEl = document.getElementById('rulesCancellationPolicy');
         if (cancellationPolicyEditor) {
-            return cancellationPolicyEditor.root.innerHTML.trim();
+            const html = cancellationPolicyEditor.root.innerHTML.trim();
+            if (hiddenEl) hiddenEl.value = html;
+            return html;
         }
         const fallback = document.getElementById('rulesCancellationPolicyFallback');
         if (fallback) return String(fallback.value || '').trim();
@@ -4278,15 +4288,19 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         const cleaningFee = Math.max(0, parseFloat(cleaningFeeEl ? cleaningFeeEl.value : '0') || 0);
         const petFee = Math.max(0, parseFloat(petFeeEl ? petFeeEl.value : '0') || 0);
         const calendarMaxMonths = Math.max(1, Math.min(24, parseInt(calendarMonthsEl ? calendarMonthsEl.value : '6', 10) || 6));
-        await saveSettingsToAPI({
-            checkin_time: checkin,
-            checkout_time: checkout,
-            cancellation_policy: cancellationPolicy,
-            cleaning_fee: cleaningFee.toFixed(2),
-            pet_fee: petFee.toFixed(2),
-            calendar_max_months: String(calendarMaxMonths)
-        });
-        alert('Regras globais salvas com sucesso!');
+        try {
+            await saveSettingsToAPI({
+                checkin_time: checkin,
+                checkout_time: checkout,
+                cancellation_policy: cancellationPolicy,
+                cleaning_fee: cleaningFee.toFixed(2),
+                pet_fee: petFee.toFixed(2),
+                calendar_max_months: String(calendarMaxMonths)
+            });
+            showInlineToast('Regras globais salvas com sucesso.', 'success');
+        } catch (e) {
+            showInlineToast(e.message || 'Não foi possível salvar as regras globais.', 'error');
+        }
     }
 
     function renderStayDiscountsEditor() {
@@ -4325,8 +4339,9 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
     async function saveStayDiscountRule() {
         const minEl = document.getElementById('stayDiscountMinNights');
         const pctEl = document.getElementById('stayDiscountPercentage');
-        const minNights = parseInt(minEl ? minEl.value : '0', 10) || 0;
-        const discountPercentage = parseFloat(pctEl ? pctEl.value : '0') || 0;
+        const minNights = parseInt(String(minEl ? minEl.value : '').trim(), 10) || 0;
+        const pctRaw = String(pctEl ? pctEl.value : '').trim().replace(/\s/g, '').replace('%', '').replace(',', '.');
+        const discountPercentage = parseFloat(pctRaw) || 0;
         if (minNights < 1 || discountPercentage <= 0 || discountPercentage > 100) {
             showInlineToast('Informe noites e percentual válidos para o desconto.', 'error');
             return;
@@ -4339,7 +4354,8 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            showInlineToast(data.error || 'Não foi possível salvar o desconto.', 'error');
+            const detail = data.details ? ` ${String(data.details)}` : '';
+            showInlineToast((data.error || 'Não foi possível salvar o desconto.') + detail, 'error');
             return;
         }
         if (minEl) minEl.value = '';
@@ -4438,10 +4454,14 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 return;
             }
         }
-        await saveSettingsToAPI({ payment_policies: policies });
-        paymentPolicies = normalizePaymentPolicies(policies);
-        renderPaymentPoliciesEditor();
-        alert('Políticas de pagamento salvas com sucesso!');
+        try {
+            await saveSettingsToAPI({ payment_policies: policies });
+            paymentPolicies = normalizePaymentPolicies(policies);
+            renderPaymentPoliciesEditor();
+            showInlineToast('Políticas de pagamento salvas com sucesso.', 'success');
+        } catch (e) {
+            showInlineToast(e.message || 'Não foi possível salvar as políticas de pagamento.', 'error');
+        }
     }
 
     function hexToRgb(hex) {
@@ -4482,22 +4502,44 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             secondary_color: secondaryEl ? secondaryEl.value : '#1e293b'
         };
         applyAdminTheme(settings.primary_color, settings.secondary_color);
-        await saveSettingsToAPI(settings);
-        alert('Identidade visual e SEO salvos com sucesso!');
+        try {
+            await saveSettingsToAPI(settings);
+            showInlineToast('Identidade visual e SEO salvos com sucesso.', 'success');
+        } catch (e) {
+            showInlineToast(e.message || 'Não foi possível salvar identidade visual e SEO.', 'error');
+        }
     }
 
     async function saveSettingsToAPI(dataObj) {
-        try {
-            await fetch('../api/settings.php', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(dataObj)
-            });
-            localStorage.clear(); // Garante que a versão local seja ignorada no futuro
-        } catch (e) {
-            console.error("Falha ao salvar config na API", e);
+        const res = await fetch('../api/settings.php', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dataObj)
+        });
+        const rawText = await res.text();
+        let body = {};
+        if (rawText) {
+            try {
+                body = JSON.parse(rawText);
+            } catch (_) {
+                body = { error: rawText.length > 400 ? rawText.slice(0, 400) + '…' : rawText };
+            }
         }
+        const apiError = typeof body.error === 'string' ? body.error : '';
+        const detailPart = body.details ? String(body.details) : '';
+        const combined = apiError && detailPart ? `${apiError}: ${detailPart}` : (apiError || detailPart).trim();
+        if (!res.ok) {
+            const fallback = body.message && typeof body.message === 'string' ? body.message : '';
+            throw new Error(combined || fallback || `Falha ao salvar configurações (HTTP ${res.status}).`);
+        }
+        if (apiError) {
+            throw new Error(combined || apiError);
+        }
+        try {
+            localStorage.clear();
+        } catch (_) { /* noop */ }
+        return body;
     }
 
     async function sendEvolutionWebhooks(reserva, isManual = false) {
@@ -4857,8 +4899,12 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             }
         };
 
-        await saveSettingsToAPI(settings);
-        alert('Redes Sociais salvas com sucesso no Banco de Dados!');
+        try {
+            await saveSettingsToAPI(settings);
+            showInlineToast('Redes sociais salvas com sucesso.', 'success');
+        } catch (e) {
+            showInlineToast(e.message || 'Não foi possível salvar as redes sociais.', 'error');
+        }
     }
 
     async function saveCustomizationSettings() {

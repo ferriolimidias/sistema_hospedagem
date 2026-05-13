@@ -187,17 +187,20 @@ switch ($method) {
         }
 
         // Salva ou atualiza configuração em lote
-        $rawData = file_get_contents("php://input");
-        $data = json_decode($rawData, true);
-
-        // Fallback para multipart form data (usa $_POST após processar uploads)
-        if (!$data && !empty($_POST)) {
-            $data = $_POST;
-        } elseif (!empty($_POST)) {
+        $rawData = file_get_contents('php://input');
+        $data = null;
+        if ($rawData !== '' && $rawData !== false) {
+            $decoded = json_decode($rawData, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $data = $decoded;
+            }
+        }
+        // Multipart / form-url-encoded: usar $_POST só quando não veio JSON válido no corpo
+        if ($data === null && !empty($_POST)) {
             $data = $_POST;
         }
 
-        if (!$data || !is_array($data)) {
+        if (!is_array($data)) {
             jsonResponse(['error' => 'Formato de dados inválido.'], 400);
         }
 

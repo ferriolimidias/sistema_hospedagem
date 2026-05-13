@@ -284,6 +284,15 @@ function be_require_admin_auth(PDO $pdo): array
     return $admin;
 }
 
+/**
+ * Rotas internas do painel (cupons, descontos por noite, etc.): exige sessão admin.
+ * Mantém o nome histórico "internal" por compatibilidade com chamadas que enviam X-Internal-Key.
+ */
+function be_require_internal_key(PDO $pdo): void
+{
+    be_require_admin_auth($pdo);
+}
+
 try {
     $pdo->exec("ALTER TABLE admins ADD COLUMN auth_token VARCHAR(255) NULL AFTER password");
 } catch (PDOException $e) {

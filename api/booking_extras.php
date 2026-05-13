@@ -92,8 +92,3 @@ function be_parse_extra_service_ids_from_payload(array $raw): array
     }
     return [];
 }
-
-function be_require_internal_key(PDO $pdo): void
-{
-    be_require_admin_auth($pdo);
-}

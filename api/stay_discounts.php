@@ -28,23 +28,33 @@ if ($method === 'POST') {
     if (!is_array($data)) {
         jsonResponse(['error' => 'JSON inválido.'], 400);
     }
-    $minNights = max(0, (int)($data['min_nights'] ?? 0));
-    $percentage = (float)($data['discount_percentage'] ?? 0);
+    $minStr = trim((string)($data['min_nights'] ?? ''));
+    $minStrNorm = str_replace(',', '.', $minStr);
+    $minNights = $minStr === '' ? 0 : max(0, (int)floor((float)$minStrNorm));
+    $pctRaw = $data['discount_percentage'] ?? null;
+    if (is_string($pctRaw)) {
+        $pctRaw = str_replace([' ', '%'], '', str_replace(',', '.', trim($pctRaw)));
+    }
+    $percentage = (float)$pctRaw;
     if ($minNights < 1) {
-        jsonResponse(['error' => 'Informe o mínimo de noites.'], 422);
+        jsonResponse(['error' => 'Informe o mínimo de noites (número inteiro ≥ 1).'], 422);
     }
     if ($percentage <= 0 || $percentage > 100) {
         jsonResponse(['error' => 'Percentual de desconto deve estar entre 0,01 e 100.'], 422);
     }
     $id = isset($data['id']) ? (int)$data['id'] : 0;
-    if ($id > 0) {
-        $stmt = $pdo->prepare('UPDATE stay_discounts SET min_nights = ?, discount_percentage = ? WHERE id = ?');
-        $stmt->execute([$minNights, $percentage, $id]);
-        jsonResponse(['status' => 'ok', 'id' => $id]);
+    try {
+        if ($id > 0) {
+            $stmt = $pdo->prepare('UPDATE stay_discounts SET min_nights = ?, discount_percentage = ? WHERE id = ?');
+            $stmt->execute([$minNights, $percentage, $id]);
+            jsonResponse(['status' => 'ok', 'id' => $id]);
+        }
+        $stmt = $pdo->prepare('INSERT INTO stay_discounts (min_nights, discount_percentage) VALUES (?, ?)');
+        $stmt->execute([$minNights, $percentage]);
+        jsonResponse(['status' => 'ok', 'id' => (int)$pdo->lastInsertId()], 201);
+    } catch (Throwable $e) {
+        jsonResponse(['error' => 'Falha ao gravar no banco de dados.', 'details' => $e->getMessage()], 500);
     }
-    $stmt = $pdo->prepare('INSERT INTO stay_discounts (min_nights, discount_percentage) VALUES (?, ?)');
-    $stmt->execute([$minNights, $percentage]);
-    jsonResponse(['status' => 'ok', 'id' => (int)$pdo->lastInsertId()], 201);
 }
 
 if ($method === 'DELETE') {
