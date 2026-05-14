@@ -92,6 +92,27 @@ try {
     $cleaningFee = max(0.0, (float)str_replace(',', '.', $readSetting($pdo, 'cleaning_fee', '0')));
     $petFee = max(0.0, (float)str_replace(',', '.', $readSetting($pdo, 'pet_fee', '0')));
     $calendarMaxMonths = max(1, min(24, (int)$readSetting($pdo, 'calendar_max_months', '6')));
+    $calendarLimitType = strtolower(trim($readSetting($pdo, 'calendar_limit_type', 'months')));
+    if ($calendarLimitType !== 'period') {
+        $calendarLimitType = 'months';
+    }
+    $calendarPeriodStart = trim($readSetting($pdo, 'calendar_period_start', ''));
+    $calendarPeriodEnd = trim($readSetting($pdo, 'calendar_period_end', ''));
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $calendarPeriodStart)) {
+        $calendarPeriodStart = '';
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $calendarPeriodEnd)) {
+        $calendarPeriodEnd = '';
+    }
+    if ($calendarLimitType === 'period' && ($calendarPeriodStart === '' || $calendarPeriodEnd === '')) {
+        $calendarLimitType = 'months';
+    } elseif ($calendarLimitType === 'period' && $calendarPeriodStart > $calendarPeriodEnd) {
+        $calendarLimitType = 'months';
+    }
+    if ($calendarLimitType !== 'period') {
+        $calendarPeriodStart = '';
+        $calendarPeriodEnd = '';
+    }
 
     // Valida se Mercado Pago tem Access Token configurado — se o admin marcou "ativo"
     // mas o token não foi gravado, desliga silenciosamente para não quebrar o checkout.
@@ -171,6 +192,9 @@ try {
         'cleaning_fee' => $cleaningFee,
         'pet_fee' => $petFee,
         'calendar_max_months' => $calendarMaxMonths,
+        'calendar_limit_type' => $calendarLimitType,
+        'calendar_period_start' => $calendarPeriodStart,
+        'calendar_period_end' => $calendarPeriodEnd,
         'stay_discounts' => $stayDiscounts,
         'seasonal_rules' => $seasonalRules,
         'payment_methods' => [
@@ -196,6 +220,9 @@ try {
         'cleaning_fee' => 0,
         'pet_fee' => 0,
         'calendar_max_months' => 6,
+        'calendar_limit_type' => 'months',
+        'calendar_period_start' => '',
+        'calendar_period_end' => '',
         'stay_discounts' => [],
         'seasonal_rules' => [],
         'payment_methods' => [

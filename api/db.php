@@ -548,6 +548,9 @@ try {
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('cleaning_fee', '0') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pet_fee', '0') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('calendar_max_months', '6') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('calendar_limit_type', 'months') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('calendar_period_start', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('calendar_period_end', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS coupons (

@@ -512,6 +512,9 @@ document.addEventListener('DOMContentLoaded', () => {
         cleaning_fee: 0,
         pet_fee: 0,
         calendar_max_months: 6,
+        calendar_limit_type: 'months',
+        calendar_period_start: '',
+        calendar_period_end: '',
         stay_discounts: []
     };
     window.__couponPreview = null;
@@ -672,32 +675,74 @@ document.addEventListener('DOMContentLoaded', () => {
         rules.forEach((rule) => {
             const min = Math.max(1, parseInt(rule.min_nights, 10) || 0);
             const pct = Math.max(0, Math.min(100, parseFloat(rule.discount_percentage) || 0));
-            if (nights >= min && pct > 0 && min >= best.min_nights) {
+            if (nights < min || pct <= 0) return;
+            if (min > best.min_nights || (min === best.min_nights && pct > best.discount_percentage)) {
                 best = { min_nights: min, discount_percentage: pct };
             }
         });
         return best;
     }
 
+    function getBookingCalendarBounds() {
+        const type = String(bookingOptions.calendar_limit_type || 'months').toLowerCase() === 'period' ? 'period' : 'months';
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = formatLocalYmd(today);
+
+        const monthsMax = () => {
+            const months = Math.max(1, Math.min(24, parseInt(bookingOptions.calendar_max_months, 10) || 6));
+            const max = new Date(today);
+            max.setMonth(max.getMonth() + months);
+            return { minStr: todayStr, maxStr: formatLocalYmd(max) };
+        };
+
+        if (type !== 'period') {
+            return monthsMax();
+        }
+        const ps = String(bookingOptions.calendar_period_start || '').trim();
+        const pe = String(bookingOptions.calendar_period_end || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ps) || !/^\d{4}-\d{2}-\d{2}$/.test(pe)) {
+            return monthsMax();
+        }
+        if (ps > pe) {
+            return monthsMax();
+        }
+        const startParts = parseYmdParts(ps);
+        const endParts = parseYmdParts(pe);
+        if (!startParts || !endParts) {
+            return monthsMax();
+        }
+        const startD = new Date(startParts.year, startParts.month - 1, startParts.day, 12, 0, 0, 0);
+        const endD = new Date(endParts.year, endParts.month - 1, endParts.day, 12, 0, 0, 0);
+        if (isNaN(startD.getTime()) || isNaN(endD.getTime())) {
+            return monthsMax();
+        }
+        const minD = startD > today ? startD : today;
+        let maxD = endD;
+        if (maxD < minD) {
+            maxD = minD;
+        }
+        return { minStr: formatLocalYmd(minD), maxStr: formatLocalYmd(maxD) };
+    }
+
     function applyCalendarMaxDate() {
-        const months = Math.max(1, Math.min(24, parseInt(bookingOptions.calendar_max_months, 10) || 6));
-        const max = new Date();
-        max.setMonth(max.getMonth() + months);
-        const maxStr = formatLocalYmd(max);
-        document.querySelectorAll('input[type="date"]').forEach((input) => {
-            input.setAttribute('max', maxStr);
+        const bounds = getBookingCalendarBounds();
+        const ids = ['checkin', 'checkout', 'modalCheckin', 'modalCheckout'];
+        ids.forEach((id) => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.setAttribute('min', bounds.minStr);
+            input.setAttribute('max', bounds.maxStr);
             if (input._flatpickr) {
-                input._flatpickr.set('maxDate', maxStr);
+                input._flatpickr.set('minDate', bounds.minStr);
+                input._flatpickr.set('maxDate', bounds.maxStr);
             }
         });
     }
 
     function initPublicDatePickers() {
         if (typeof window.flatpickr !== 'function') return;
-        const months = Math.max(1, Math.min(24, parseInt(bookingOptions.calendar_max_months, 10) || 6));
-        const max = new Date();
-        max.setMonth(max.getMonth() + months);
-        const maxStr = formatLocalYmd(max);
+        const bounds = getBookingCalendarBounds();
         ['checkin', 'checkout', 'modalCheckin', 'modalCheckout'].forEach((id) => {
             const el = document.getElementById(id);
             if (!el || el._flatpickr) return;
@@ -705,8 +750,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 dateFormat: 'Y-m-d',
                 allowInput: false,
                 disableMobile: true,
-                minDate: el.getAttribute('min') || 'today',
-                maxDate: el.getAttribute('max') || maxStr,
+                minDate: bounds.minStr,
+                maxDate: bounds.maxStr,
                 onChange: () => {
                     el.dispatchEvent(new Event('change', { bubbles: true }));
                 }
@@ -826,6 +871,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 cleaning_fee: Math.max(0, parseFloat(data.cleaning_fee) || 0),
                 pet_fee: Math.max(0, parseFloat(data.pet_fee) || 0),
                 calendar_max_months: Math.max(1, parseInt(data.calendar_max_months, 10) || 6),
+                calendar_limit_type: String(data.calendar_limit_type || 'months').toLowerCase() === 'period' ? 'period' : 'months',
+                calendar_period_start: typeof data.calendar_period_start === 'string' ? data.calendar_period_start.trim() : '',
+                calendar_period_end: typeof data.calendar_period_end === 'string' ? data.calendar_period_end.trim() : '',
                 stay_discounts: Array.isArray(data.stay_discounts) ? data.stay_discounts : [],
                 payment_methods: Object.assign({}, defaultMethods, data.payment_methods || {})
             };
@@ -841,6 +889,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 cleaning_fee: 0,
                 pet_fee: 0,
                 calendar_max_months: 6,
+                calendar_limit_type: 'months',
+                calendar_period_start: '',
+                calendar_period_end: '',
                 stay_discounts: [],
                 payment_methods: defaultMethods
             };
@@ -852,13 +903,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const chalet = findChaletByName(currentChalet);
         enforceCheckoutBySeasonalRule('modalCheckin', 'modalCheckout', chalet && chalet.id ? chalet.id : null);
     }
-
-    // Set minimum dates to today
-    const today = new Date().toISOString().split('T')[0];
-    const checkinInputs = document.querySelectorAll('input[type="date"]');
-    checkinInputs.forEach(input => {
-        input.setAttribute('min', today);
-    });
 
     function enforceCheckoutBySeasonalRule(checkinInputId, checkoutInputId, chaletId = null) {
         const checkinEl = document.getElementById(checkinInputId);

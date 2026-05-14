@@ -28,14 +28,28 @@ if ($method === 'POST') {
     if (!is_array($data)) {
         jsonResponse(['error' => 'JSON inválido.'], 400);
     }
-    $minStr = trim((string)($data['min_nights'] ?? ''));
-    $minStrNorm = str_replace(',', '.', $minStr);
-    $minNights = $minStr === '' ? 0 : max(0, (int)floor((float)$minStrNorm));
-    $pctRaw = $data['discount_percentage'] ?? null;
-    if (is_string($pctRaw)) {
-        $pctRaw = str_replace([' ', '%'], '', str_replace(',', '.', trim($pctRaw)));
+    $minRaw = $data['min_nights'] ?? $data['minNights'] ?? null;
+    $minNights = 0;
+    if (is_int($minRaw) || is_float($minRaw)) {
+        $minNights = max(0, (int) round((float) $minRaw));
+    } else {
+        $minStr = trim((string) ($minRaw ?? ''));
+        $minStrNorm = str_replace(',', '.', preg_replace('/[^\d.,-]/', '', $minStr));
+        if ($minStrNorm !== '' && is_numeric($minStrNorm)) {
+            $minNights = max(0, (int) floor((float) $minStrNorm));
+        }
     }
-    $percentage = (float)$pctRaw;
+    $pctRaw = $data['discount_percentage'] ?? $data['discountPercentage'] ?? null;
+    $percentage = 0.0;
+    if (is_int($pctRaw) || is_float($pctRaw)) {
+        $percentage = (float) $pctRaw;
+    } elseif (is_string($pctRaw)) {
+        $pctClean = str_replace([' ', '%'], '', str_replace(',', '.', trim($pctRaw)));
+        if ($pctClean !== '' && is_numeric($pctClean)) {
+            $percentage = (float) $pctClean;
+        }
+    }
+    $percentage = round(max(0.0, min(100.0, $percentage)), 2);
     if ($minNights < 1) {
         jsonResponse(['error' => 'Informe o mínimo de noites (número inteiro ≥ 1).'], 422);
     }
@@ -62,9 +76,13 @@ if ($method === 'DELETE') {
     if ($id <= 0) {
         jsonResponse(['error' => 'id obrigatório'], 400);
     }
-    $stmt = $pdo->prepare('DELETE FROM stay_discounts WHERE id = ?');
-    $stmt->execute([$id]);
-    jsonResponse(['status' => 'ok']);
+    try {
+        $stmt = $pdo->prepare('DELETE FROM stay_discounts WHERE id = ?');
+        $stmt->execute([$id]);
+        jsonResponse(['status' => 'ok']);
+    } catch (Throwable $e) {
+        jsonResponse(['error' => 'Falha ao excluir no banco de dados.', 'details' => $e->getMessage()], 500);
+    }
 }
 
 jsonResponse(['error' => 'Método não permitido'], 405);

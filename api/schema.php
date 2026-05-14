@@ -731,6 +731,21 @@ function runInitialSchema(PDO $pdo): void
     } catch (PDOException $e) {
         // Chave já existe.
     }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('calendar_limit_type', 'months') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) {
+        // Chave já existe.
+    }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('calendar_period_start', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) {
+        // Chave já existe.
+    }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('calendar_period_end', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) {
+        // Chave já existe.
+    }
 
     try {
         $defaultPolicies = json_encode([

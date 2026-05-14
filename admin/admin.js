@@ -1499,7 +1499,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <div id="rulesCancellationPolicyEditor" style="background:#fff; min-height:160px;"></div>
                             <small style="color:#666;">Salvo em <code>settings.cancellation_policy</code>.</small>
                         </div>
-                        <div style="display:grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap:0.75rem;">
+                        <div style="display:grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap:0.75rem;">
                             <div class="form-group">
                                 <label>Taxa de Limpeza (R$)</label>
                                 <input type="number" class="form-control" id="rulesCleaningFee" min="0" step="0.01" value="0">
@@ -1508,9 +1508,31 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <label>Taxa de Pet (R$)</label>
                                 <input type="number" class="form-control" id="rulesPetFee" min="0" step="0.01" value="0">
                             </div>
-                            <div class="form-group">
-                                <label>Limite do Calendário (meses)</label>
-                                <input type="number" class="form-control" id="rulesCalendarMaxMonths" min="1" max="24" step="1" value="6">
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr; gap:0.75rem; margin-top:0.75rem;">
+                            <div class="form-group" style="margin:0;">
+                                <label>Tipo de limite do calendário (reservas públicas)</label>
+                                <select class="form-control" id="rulesCalendarLimitType">
+                                    <option value="months">Por meses (a partir de hoje)</option>
+                                    <option value="period">Por período específico</option>
+                                </select>
+                                <small style="color:#666;">Controla até quando o hóspede pode selecionar datas no site (Flatpickr).</small>
+                            </div>
+                            <div id="rulesCalendarMonthsWrap" style="display:grid; grid-template-columns: 1fr; gap:0.75rem;">
+                                <div class="form-group" style="margin:0;">
+                                    <label>Quantidade de meses à frente</label>
+                                    <input type="number" class="form-control" id="rulesCalendarMaxMonths" min="1" max="24" step="1" value="6">
+                                </div>
+                            </div>
+                            <div id="rulesCalendarPeriodWrap" style="display:none; grid-template-columns: 1fr 1fr; gap:0.75rem;">
+                                <div class="form-group" style="margin:0;">
+                                    <label>Data de início do período</label>
+                                    <input type="date" class="form-control" id="rulesCalendarPeriodStart">
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label>Data de fim do período</label>
+                                    <input type="date" class="form-control" id="rulesCalendarPeriodEnd">
+                                </div>
                             </div>
                         </div>
                         <div style="margin-top: 1rem; text-align: right;">
@@ -4276,18 +4298,46 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         return hiddenEl ? String(hiddenEl.value || '').trim() : '';
     }
 
+    function syncRulesCalendarLimitUi() {
+        const sel = document.getElementById('rulesCalendarLimitType');
+        const monthsWrap = document.getElementById('rulesCalendarMonthsWrap');
+        const periodWrap = document.getElementById('rulesCalendarPeriodWrap');
+        if (!sel || !monthsWrap || !periodWrap) return;
+        const isPeriod = sel.value === 'period';
+        monthsWrap.style.display = isPeriod ? 'none' : 'grid';
+        periodWrap.style.display = isPeriod ? 'grid' : 'none';
+    }
+
     async function saveRulesSettings() {
         const checkinEl = document.getElementById('rulesCheckinTime');
         const checkoutEl = document.getElementById('rulesCheckoutTime');
         const cleaningFeeEl = document.getElementById('rulesCleaningFee');
         const petFeeEl = document.getElementById('rulesPetFee');
         const calendarMonthsEl = document.getElementById('rulesCalendarMaxMonths');
+        const limitTypeEl = document.getElementById('rulesCalendarLimitType');
+        const periodStartEl = document.getElementById('rulesCalendarPeriodStart');
+        const periodEndEl = document.getElementById('rulesCalendarPeriodEnd');
         const checkin = normalizeTimeHHMM(checkinEl ? checkinEl.value : '', '14:00');
         const checkout = normalizeTimeHHMM(checkoutEl ? checkoutEl.value : '', '12:00');
         const cancellationPolicy = getCancellationPolicyHtml();
         const cleaningFee = Math.max(0, parseFloat(cleaningFeeEl ? cleaningFeeEl.value : '0') || 0);
         const petFee = Math.max(0, parseFloat(petFeeEl ? petFeeEl.value : '0') || 0);
         const calendarMaxMonths = Math.max(1, Math.min(24, parseInt(calendarMonthsEl ? calendarMonthsEl.value : '6', 10) || 6));
+        const limitType = (limitTypeEl && limitTypeEl.value === 'period') ? 'period' : 'months';
+        let calendarPeriodStart = '';
+        let calendarPeriodEnd = '';
+        if (limitType === 'period') {
+            calendarPeriodStart = (periodStartEl ? periodStartEl.value : '').trim();
+            calendarPeriodEnd = (periodEndEl ? periodEndEl.value : '').trim();
+            if (!calendarPeriodStart || !calendarPeriodEnd) {
+                showInlineToast('Informe a data de início e a data de fim do período do calendário.', 'error');
+                return;
+            }
+            if (calendarPeriodStart > calendarPeriodEnd) {
+                showInlineToast('A data inicial do período deve ser anterior ou igual à data final.', 'error');
+                return;
+            }
+        }
         try {
             await saveSettingsToAPI({
                 checkin_time: checkin,
@@ -4295,7 +4345,10 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 cancellation_policy: cancellationPolicy,
                 cleaning_fee: cleaningFee.toFixed(2),
                 pet_fee: petFee.toFixed(2),
-                calendar_max_months: String(calendarMaxMonths)
+                calendar_max_months: String(calendarMaxMonths),
+                calendar_limit_type: limitType,
+                calendar_period_start: calendarPeriodStart,
+                calendar_period_end: calendarPeriodEnd
             });
             showInlineToast('Regras globais salvas com sucesso.', 'success');
         } catch (e) {
@@ -4309,7 +4362,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         const rows = Array.isArray(stayDiscounts) ? stayDiscounts : [];
         body.innerHTML = rows.length ? rows.map((d) => `
             <tr>
-                <td>Acima de ${Number(d.min_nights) || 0} noite(s)</td>
+                <td>A partir de ${Number(d.min_nights) || 0} noite(s) (inclusive)</td>
                 <td>${Number(d.discount_percentage || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}%</td>
                 <td><button type="button" class="btn-icon" data-stay-discount-delete="${d.id}" style="color:var(--danger)"><i class="ph ph-trash"></i></button></td>
             </tr>
@@ -4319,7 +4372,12 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 const id = parseInt(btn.getAttribute('data-stay-discount-delete'), 10);
                 if (!id || !confirm('Remover este desconto por noite?')) return;
                 await ensureInternalApiKey();
-                await fetch(`../api/stay_discounts.php?id=${id}`, { method: 'DELETE', headers: { 'X-Internal-Key': window.internalKey || internalApiKey || '' } });
+                const delRes = await fetch(`../api/stay_discounts.php?id=${id}`, { method: 'DELETE', headers: { 'X-Internal-Key': window.internalKey || internalApiKey || '' } });
+                const delData = await delRes.json().catch(() => ({}));
+                if (!delRes.ok) {
+                    showInlineToast((delData.error || 'Não foi possível remover o desconto.') + (delData.details ? ' ' + String(delData.details) : ''), 'error');
+                    return;
+                }
                 await loadStayDiscounts();
             });
         });
@@ -4339,11 +4397,22 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
     async function saveStayDiscountRule() {
         const minEl = document.getElementById('stayDiscountMinNights');
         const pctEl = document.getElementById('stayDiscountPercentage');
-        const minNights = parseInt(String(minEl ? minEl.value : '').trim(), 10) || 0;
-        const pctRaw = String(pctEl ? pctEl.value : '').trim().replace(/\s/g, '').replace('%', '').replace(',', '.');
-        const discountPercentage = parseFloat(pctRaw) || 0;
+        let minNights = 0;
+        if (minEl && Number.isFinite(minEl.valueAsNumber)) {
+            minNights = Math.max(0, Math.floor(Math.abs(minEl.valueAsNumber)));
+        } else {
+            minNights = parseInt(String(minEl ? minEl.value : '').trim(), 10) || 0;
+        }
+        const pctStr = String(pctEl ? pctEl.value : '').trim().replace(/\s/g, '').replace('%', '').replace(',', '.');
+        const fromInput = pctEl && typeof pctEl.valueAsNumber === 'number' ? pctEl.valueAsNumber : NaN;
+        let discountPercentage = Number.isFinite(fromInput) ? fromInput : parseFloat(pctStr);
+        if (!Number.isFinite(discountPercentage)) {
+            showInlineToast('Informe noites (inteiro ≥ 1) e percentual entre 0,01 e 100.', 'error');
+            return;
+        }
+        discountPercentage = Math.round(discountPercentage * 100) / 100;
         if (minNights < 1 || discountPercentage <= 0 || discountPercentage > 100) {
-            showInlineToast('Informe noites e percentual válidos para o desconto.', 'error');
+            showInlineToast('Informe noites (inteiro ≥ 1) e percentual entre 0,01 e 100.', 'error');
             return;
         }
         await ensureInternalApiKey();
@@ -4510,6 +4579,10 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         }
     }
 
+    /**
+     * Persiste chaves em `settings` via POST JSON. Só limpa `localStorage` após HTTP 2xx
+     * e corpo sem `error`; caso contrário lança Error (use try/catch + showInlineToast).
+     */
     async function saveSettingsToAPI(dataObj) {
         const res = await fetch('../api/settings.php', {
             method: 'POST',
@@ -4752,7 +4825,26 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             if (rulesCleaningFee) rulesCleaningFee.value = Number(data.cleaning_fee || 0).toFixed(2);
             if (rulesPetFee) rulesPetFee.value = Number(data.pet_fee || 0).toFixed(2);
             if (rulesCalendarMaxMonths) rulesCalendarMaxMonths.value = String(Math.max(1, parseInt(data.calendar_max_months || '6', 10) || 6));
-            if (document.getElementById('stayDiscountsTableBody')) {
+            const rulesCalLimitType = document.getElementById('rulesCalendarLimitType');
+            const rulesCalPeriodStart = document.getElementById('rulesCalendarPeriodStart');
+            const rulesCalPeriodEnd = document.getElementById('rulesCalendarPeriodEnd');
+            if (rulesCalLimitType) {
+                const lt = String(data.calendar_limit_type || 'months').toLowerCase();
+                rulesCalLimitType.value = lt === 'period' ? 'period' : 'months';
+                if (!rulesCalLimitType.dataset.boundLimitType) {
+                    rulesCalLimitType.dataset.boundLimitType = '1';
+                    rulesCalLimitType.addEventListener('change', syncRulesCalendarLimitUi);
+                }
+            }
+            if (rulesCalPeriodStart) {
+                const ps = String(data.calendar_period_start || '').trim();
+                rulesCalPeriodStart.value = /^\d{4}-\d{2}-\d{2}$/.test(ps) ? ps : '';
+            }
+            if (rulesCalPeriodEnd) {
+                const pe = String(data.calendar_period_end || '').trim();
+                rulesCalPeriodEnd.value = /^\d{4}-\d{2}-\d{2}$/.test(pe) ? pe : '';
+            }
+            syncRulesCalendarLimitUi();
                 await loadStayDiscounts();
             }
             if (Array.isArray(data.payment_policies)) {

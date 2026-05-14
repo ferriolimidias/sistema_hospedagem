@@ -199,6 +199,38 @@ function evoi_extract_status(array $decoded): string
     return 'close';
 }
 
+/**
+ * Instância já existente na Evolution (create retorna 403/409 ou mensagem típica).
+ */
+function evoi_instance_create_conflict(array $resp): bool
+{
+    $http = (int) ($resp['http_code'] ?? 0);
+    if (in_array($http, [403, 409], true)) {
+        return true;
+    }
+    $body = strtolower((string) ($resp['body'] ?? ''));
+    if ($body === '') {
+        return false;
+    }
+    $needles = [
+        'already exists',
+        'already in use',
+        'duplicate',
+        'já existe',
+        'ja existe',
+        'em uso',
+        'instance name',
+        'instancename',
+        'nome da inst',
+    ];
+    foreach ($needles as $n) {
+        if (strpos($body, $n) !== false) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function evoi_compose_error_message(string $prefix, array $resp): string
 {
     $http = (int) ($resp['http_code'] ?? 0);
@@ -285,20 +317,36 @@ try {
             ];
             $createResp = evoi_call('POST', $baseUrl . '/instance/create', $globalKey, $createPayload);
             if (!$createResp['ok']) {
-                $payload = ['ok' => false, 'error' => 'A Evolution recusou a criação: ' . (string)($createResp['body'] ?? '')];
-                jsonResponse($payload, 400);
-            }
-            $createDecoded = json_decode($createResp['body'], true);
-            if (!is_array($createDecoded)) {
-                $createDecoded = [];
-            }
-            $apiToken = evoi_extract_token($createDecoded);
-            if ($apiToken !== '') {
-                $token = $apiToken;
-            }
-            evoi_save_setting($pdo, 'evo_instance', $instance);
-            if ($token !== '') {
-                evoi_save_setting($pdo, 'evo_apikey', $token);
+                if (evoi_instance_create_conflict($createResp)) {
+                    $createDecoded = json_decode((string) ($createResp['body'] ?? ''), true);
+                    if (!is_array($createDecoded)) {
+                        $createDecoded = [];
+                    }
+                    $apiToken = evoi_extract_token($createDecoded);
+                    if ($apiToken !== '') {
+                        $token = $apiToken;
+                    }
+                    evoi_save_setting($pdo, 'evo_instance', $instance);
+                    if ($token !== '') {
+                        evoi_save_setting($pdo, 'evo_apikey', $token);
+                    }
+                } else {
+                    $payload = ['ok' => false, 'error' => 'A Evolution recusou a criação: ' . (string)($createResp['body'] ?? '')];
+                    jsonResponse($payload, 400);
+                }
+            } else {
+                $createDecoded = json_decode($createResp['body'], true);
+                if (!is_array($createDecoded)) {
+                    $createDecoded = [];
+                }
+                $apiToken = evoi_extract_token($createDecoded);
+                if ($apiToken !== '') {
+                    $token = $apiToken;
+                }
+                evoi_save_setting($pdo, 'evo_instance', $instance);
+                if ($token !== '') {
+                    evoi_save_setting($pdo, 'evo_apikey', $token);
+                }
             }
         }
 
