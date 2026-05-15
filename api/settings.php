@@ -186,22 +186,31 @@ switch ($method) {
             }
         }
 
-        // Salva ou atualiza configuração em lote
+        // Salva ou atualiza configuração em lote (JSON no corpo ou multipart $_POST)
         $rawData = file_get_contents('php://input');
         $data = null;
+        $contentType = strtolower((string)($_SERVER['CONTENT_TYPE'] ?? ''));
+        $isJsonRequest = strpos($contentType, 'application/json') !== false;
+
         if ($rawData !== '' && $rawData !== false) {
-            $decoded = json_decode($rawData, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                $data = $decoded;
+            $trimmed = trim($rawData);
+            if ($trimmed !== '') {
+                $decoded = json_decode($trimmed, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    $data = $decoded;
+                } elseif ($isJsonRequest) {
+                    error_log('[settings.php] JSON inválido: ' . json_last_error_msg());
+                    jsonResponse(['error' => 'JSON inválido no corpo da requisição.', 'details' => json_last_error_msg()], 400);
+                }
             }
         }
-        // Multipart / form-url-encoded: usar $_POST só quando não veio JSON válido no corpo
         if ($data === null && !empty($_POST)) {
             $data = $_POST;
         }
 
         if (!is_array($data)) {
-            jsonResponse(['error' => 'Formato de dados inválido.'], 400);
+            error_log('[settings.php] Payload ausente ou inválido. auth=' . ($isAdminAuthenticated ? '1' : '0') . ' content-type=' . $contentType);
+            jsonResponse(['error' => 'Formato de dados inválido. Envie um objeto JSON.'], 400);
         }
 
         $pdo->beginTransaction();
@@ -209,19 +218,32 @@ switch ($method) {
             $stmt = $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
 
             $ignoreKeys = ['logo', 'logo_light', 'dummy', 'hero_images', 'about_image', 'favicon_image', 'testi1_image', 'testi2_image', 'testi3_image', 'evolutionSettings'];
+            $savedKeys = [];
             foreach ($data as $key => $value) {
-                if (in_array($key, $ignoreKeys)) continue;
-                if (is_array($value) && isset($value['tmp_name'])) continue; // skip raw file refs
+                $key = trim((string) $key);
+                if ($key === '' || in_array($key, $ignoreKeys, true)) {
+                    continue;
+                }
+                if (is_array($value) && isset($value['tmp_name'])) {
+                    continue;
+                }
 
-                $stringVal = is_array($value) ? json_encode($value) : (string) $value;
+                $stringVal = is_array($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : (string) $value;
                 $stmt->execute([$key, $stringVal]);
+                $savedKeys[] = $key;
+            }
+
+            if ($savedKeys === []) {
+                $pdo->rollBack();
+                jsonResponse(['error' => 'Nenhuma configuração válida para salvar.'], 400);
             }
 
             $pdo->commit();
-            jsonResponse(['status' => 'success', 'message' => 'Configurações salvas com sucesso']);
+            jsonResponse(['status' => 'success', 'message' => 'Configurações salvas com sucesso', 'saved_keys' => $savedKeys]);
         }
         catch (Exception $e) {
             $pdo->rollBack();
+            error_log('[settings.php] Erro ao salvar: ' . $e->getMessage());
             jsonResponse(['error' => 'Erro ao salvar configurações', 'details' => $e->getMessage()], 500);
         }
         break;

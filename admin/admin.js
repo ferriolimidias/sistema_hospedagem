@@ -1455,24 +1455,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         settings: `
             <div class="page-header">
                 <h1 class="page-title">Configurações do Sistema</h1>
-                <button class="btn" onclick="alert('Configurações salvas!')"><i class="ph ph-floppy-disk"></i> Salvar Alterações</button>
+                <button type="button" class="btn" id="btnSaveGeneralSettings"><i class="ph ph-floppy-disk"></i> Salvar Informações Gerais</button>
             </div>
 
             <div class="grid-cards" style="grid-template-columns: 1fr 1fr;">
                 <div class="card">
                     <h3 style="margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">Informações Gerais</h3>
-                    <form>
+                    <form id="generalSettingsForm" onsubmit="return false;">
                         <div class="form-group">
-                            <label>Nome do Estabelecimento</label>
-                            <input type="text" class="form-control" placeholder="Nome do estabelecimento">
+                            <label for="nome_estabelecimento">Nome do Estabelecimento</label>
+                            <input type="text" class="form-control" id="nome_estabelecimento" placeholder="Nome do estabelecimento" autocomplete="organization">
+                            <small style="color:#666;">Salvo em <code>settings.company_name</code></small>
                         </div>
                         <div class="form-group">
-                            <label>E-mail de Contato</label>
-                            <input type="email" class="form-control" placeholder="contato@suapousada.com">
+                            <label for="email_contato">E-mail de Contato</label>
+                            <input type="email" class="form-control" id="email_contato" placeholder="contato@suapousada.com" autocomplete="email">
+                            <small style="color:#666;">Salvo em <code>settings.contact_email</code></small>
                         </div>
                         <div class="form-group">
-                            <label>Telefone Principal</label>
-                            <input type="text" class="form-control" placeholder="(00) 00000-0000">
+                            <label for="telefone_principal">Telefone Principal</label>
+                            <input type="text" class="form-control" id="telefone_principal" placeholder="(00) 00000-0000" autocomplete="tel">
+                            <small style="color:#666;">Salvo em <code>settings.contact_phone</code></small>
                         </div>
                     </form>
                 </div>
@@ -2969,8 +2972,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                     await loadAllSettings();
                 } catch (settingsErr) {
                     console.error('Erro ao carregar configurações:', settingsErr);
+                    showInlineToast('Não foi possível carregar as configurações do servidor.', 'error');
                 }
                 try {
+                    const saveGeneralBtn = document.getElementById('btnSaveGeneralSettings');
+                    if (saveGeneralBtn && !saveGeneralBtn.dataset.bound) {
+                        saveGeneralBtn.dataset.bound = '1';
+                        saveGeneralBtn.addEventListener('click', async () => {
+                            const originalHtml = saveGeneralBtn.innerHTML;
+                            saveGeneralBtn.disabled = true;
+                            saveGeneralBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Salvando...';
+                            try {
+                                await saveGeneralSettings();
+                                showInlineToast('Informações gerais salvas com sucesso.', 'success');
+                            } catch (e) {
+                                showInlineToast(e.message || 'Não foi possível salvar as informações gerais.', 'error');
+                            } finally {
+                                saveGeneralBtn.disabled = false;
+                                saveGeneralBtn.innerHTML = originalHtml;
+                            }
+                        });
+                    }
                     const saveEvolutionBtn = document.getElementById('saveEvolutionBtn');
                     if (saveEvolutionBtn) saveEvolutionBtn.addEventListener('click', saveEvolutionSettings);
                     const testEvolutionBtnEl = document.getElementById('btn-test-evo');
@@ -4601,9 +4623,54 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         }
     }
 
+    function collectGeneralSettingsPayload() {
+        const nomeEl = document.getElementById('nome_estabelecimento');
+        const emailEl = document.getElementById('email_contato');
+        const phoneEl = document.getElementById('telefone_principal');
+        return {
+            company_name: nomeEl ? String(nomeEl.value || '').trim() : '',
+            contact_email: emailEl ? String(emailEl.value || '').trim() : '',
+            contact_phone: phoneEl ? String(phoneEl.value || '').trim() : ''
+        };
+    }
+
+    function populateGeneralSettingsFromData(data) {
+        if (!data || typeof data !== 'object') return;
+        const nomeEl = document.getElementById('nome_estabelecimento');
+        const emailEl = document.getElementById('email_contato');
+        const phoneEl = document.getElementById('telefone_principal');
+        const companyName = (typeof data.company_name === 'string' && data.company_name.trim() !== '')
+            ? data.company_name.trim()
+            : (typeof data.site_title === 'string' ? data.site_title.trim() : '');
+        if (nomeEl) nomeEl.value = companyName;
+        if (emailEl) emailEl.value = typeof data.contact_email === 'string' ? data.contact_email : '';
+        if (phoneEl) phoneEl.value = typeof data.contact_phone === 'string' ? data.contact_phone : '';
+        const brandEl = document.getElementById('adminBrandName');
+        if (brandEl && companyName) brandEl.textContent = companyName;
+    }
+
+    /** Salva Informações Gerais; rejeita Promise se o servidor não confirmar sucesso. */
+    async function saveGeneralSettings() {
+        const payload = collectGeneralSettingsPayload();
+        if (!payload.company_name) {
+            showInlineToast('Informe o nome do estabelecimento.', 'error');
+            throw new Error('Nome do estabelecimento obrigatório.');
+        }
+        const body = await saveSettingsToAPI({
+            ...payload,
+            site_title: payload.company_name
+        });
+        populateGeneralSettingsFromData({
+            company_name: payload.company_name,
+            contact_email: payload.contact_email,
+            contact_phone: payload.contact_phone,
+            site_title: payload.company_name
+        });
+        return body;
+    }
+
     /**
-     * Persiste chaves em `settings` via POST JSON. Só limpa `localStorage` após HTTP 2xx
-     * e corpo sem `error`; caso contrário lança Error (use try/catch + showInlineToast).
+     * Persiste chaves em `settings` via POST JSON. Lança Error se HTTP falhar ou corpo trazer `error`.
      */
     async function saveSettingsToAPI(dataObj) {
         const res = await fetch('../api/settings.php', {
@@ -4631,9 +4698,9 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         if (apiError) {
             throw new Error(combined || apiError);
         }
-        try {
-            localStorage.clear();
-        } catch (_) { /* noop */ }
+        if (body.status !== 'success') {
+            throw new Error(body.message || 'O servidor não confirmou o salvamento.');
+        }
         return body;
     }
 
@@ -4767,8 +4834,12 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
 
     async function loadAllSettings() {
         try {
-            const res = await fetch('../api/settings.php', { credentials: 'same-origin' });
+            const res = await fetch('../api/settings.php?_t=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' });
+            if (!res.ok) {
+                throw new Error('Falha ao carregar configurações (HTTP ' + res.status + ').');
+            }
             const data = await res.json();
+            populateGeneralSettingsFromData(data);
 
             // Popula Comunicação e Integrações (Evolution API nativa).
             const asBoolFlag = (v) => {
@@ -5171,11 +5242,11 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 xhr.send(formData);
             });
 
-            alert('Personalizações salvas no banco de dados com sucesso!');
-            await loadCustomizationForm(); // Atualiza os campos com o que foi salvo
+            showInlineToast('Personalização salva com sucesso (Nossa História, localização, etc.).', 'success');
+            await loadCustomizationForm();
         } catch (e) {
             console.error("Erro no upload das imagens de personalização", e);
-            alert("Erro de conexão: " + (e.message || "Verifique o console"));
+            showInlineToast(e.message || 'Não foi possível salvar a personalização.', 'error');
         } finally {
             if (saveBtn) {
                 saveBtn.disabled = false;

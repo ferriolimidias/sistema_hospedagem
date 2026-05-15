@@ -746,6 +746,21 @@ function runInitialSchema(PDO $pdo): void
     } catch (PDOException $e) {
         // Chave já existe.
     }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('company_name', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) {
+        // Chave já existe.
+    }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('contact_email', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) {
+        // Chave já existe.
+    }
+    try {
+        $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('contact_phone', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute();
+    } catch (PDOException $e) {
+        // Chave já existe.
+    }
 
     try {
         $defaultPolicies = json_encode([

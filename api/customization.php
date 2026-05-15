@@ -81,6 +81,9 @@ switch ($method) {
         break;
 
     case 'POST':
+        if (be_get_admin_from_cookie($pdo) === null) {
+            jsonResponse(['error' => 'Sessão administrativa inválida'], 401);
+        }
         $customization = [];
         if (!empty($_POST['customization'])) {
             $decoded = json_decode($_POST['customization'], true);
