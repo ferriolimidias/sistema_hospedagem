@@ -2965,39 +2965,50 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             // Setup Settings Form if it's the settings view
             if (viewName === 'settings') {
-                await loadAllSettings();
-                document.getElementById('saveEvolutionBtn').addEventListener('click', saveEvolutionSettings);
-                const testEvolutionBtnEl = document.getElementById('btn-test-evo');
-                if (testEvolutionBtnEl) testEvolutionBtnEl.addEventListener('click', testEvolutionConnection);
-                const evoConnectBtnEl = document.getElementById('btn-evo-connect-qr');
-                if (evoConnectBtnEl) evoConnectBtnEl.addEventListener('click', openEvolutionQrModal);
-                const evoStatusBtnEl = document.getElementById('btn-evo-check-status');
-                if (evoStatusBtnEl) evoStatusBtnEl.addEventListener('click', refreshEvolutionConnectionStatus);
-                const evoDisconnectBtnEl = document.getElementById('btn-evo-disconnect');
-                if (evoDisconnectBtnEl) evoDisconnectBtnEl.addEventListener('click', disconnectEvolutionInstance);
-                const evoTestContractMediaBtnEl = document.getElementById('btn-evo-test-contract-media');
-                if (evoTestContractMediaBtnEl) evoTestContractMediaBtnEl.addEventListener('click', () => testEvolutionMedia('contract'));
-                const evoTestReceiptMediaBtnEl = document.getElementById('btn-evo-test-receipt-media');
-                if (evoTestReceiptMediaBtnEl) evoTestReceiptMediaBtnEl.addEventListener('click', () => testEvolutionMedia('receipt'));
-                const evoQrCloseBtnEl = document.getElementById('btn-evo-qr-close');
-                if (evoQrCloseBtnEl) evoQrCloseBtnEl.addEventListener('click', closeEvolutionQrModal);
-                const savePaymentMethodsBtnEl = document.getElementById('savePaymentMethodsBtn');
-                if (savePaymentMethodsBtnEl) savePaymentMethodsBtnEl.addEventListener('click', savePaymentMethodsSettings);
-                const testPixMessageBtnEl = document.getElementById('testPixMessageBtn');
-                if (testPixMessageBtnEl) testPixMessageBtnEl.addEventListener('click', testPixMessageNow);
-                initPixTemplateHelpers();
-                const saveFnrhBtnEl = document.getElementById('saveFnrhSettingsBtn');
-                if (saveFnrhBtnEl) saveFnrhBtnEl.addEventListener('click', saveFnrhSettings);
-                document.getElementById('saveSocialBtn').addEventListener('click', saveSocialSettings);
-                document.getElementById('saveIdentitySeoBtn').addEventListener('click', saveIdentitySeoSettings);
-                const saveRulesBtnEl = document.getElementById('saveRulesBtn');
-                if (saveRulesBtnEl) saveRulesBtnEl.addEventListener('click', saveRulesSettings);
-                const saveStayDiscountBtnEl = document.getElementById('saveStayDiscountBtn');
-                if (saveStayDiscountBtnEl) saveStayDiscountBtnEl.addEventListener('click', saveStayDiscountRule);
-                const addPolicyBtnEl = document.getElementById('addPolicyBtn');
-                if (addPolicyBtnEl) addPolicyBtnEl.addEventListener('click', addEmptyPolicyRow);
-                const savePoliciesBtnEl = document.getElementById('savePoliciesBtn');
-                if (savePoliciesBtnEl) savePoliciesBtnEl.addEventListener('click', savePaymentPolicies);
+                try {
+                    await loadAllSettings();
+                } catch (settingsErr) {
+                    console.error('Erro ao carregar configurações:', settingsErr);
+                }
+                try {
+                    const saveEvolutionBtn = document.getElementById('saveEvolutionBtn');
+                    if (saveEvolutionBtn) saveEvolutionBtn.addEventListener('click', saveEvolutionSettings);
+                    const testEvolutionBtnEl = document.getElementById('btn-test-evo');
+                    if (testEvolutionBtnEl) testEvolutionBtnEl.addEventListener('click', testEvolutionConnection);
+                    const evoConnectBtnEl = document.getElementById('btn-evo-connect-qr');
+                    if (evoConnectBtnEl) evoConnectBtnEl.addEventListener('click', openEvolutionQrModal);
+                    const evoStatusBtnEl = document.getElementById('btn-evo-check-status');
+                    if (evoStatusBtnEl) evoStatusBtnEl.addEventListener('click', refreshEvolutionConnectionStatus);
+                    const evoDisconnectBtnEl = document.getElementById('btn-evo-disconnect');
+                    if (evoDisconnectBtnEl) evoDisconnectBtnEl.addEventListener('click', disconnectEvolutionInstance);
+                    const evoTestContractMediaBtnEl = document.getElementById('btn-evo-test-contract-media');
+                    if (evoTestContractMediaBtnEl) evoTestContractMediaBtnEl.addEventListener('click', () => testEvolutionMedia('contract'));
+                    const evoTestReceiptMediaBtnEl = document.getElementById('btn-evo-test-receipt-media');
+                    if (evoTestReceiptMediaBtnEl) evoTestReceiptMediaBtnEl.addEventListener('click', () => testEvolutionMedia('receipt'));
+                    const evoQrCloseBtnEl = document.getElementById('btn-evo-qr-close');
+                    if (evoQrCloseBtnEl) evoQrCloseBtnEl.addEventListener('click', closeEvolutionQrModal);
+                    const savePaymentMethodsBtnEl = document.getElementById('savePaymentMethodsBtn');
+                    if (savePaymentMethodsBtnEl) savePaymentMethodsBtnEl.addEventListener('click', savePaymentMethodsSettings);
+                    const testPixMessageBtnEl = document.getElementById('testPixMessageBtn');
+                    if (testPixMessageBtnEl) testPixMessageBtnEl.addEventListener('click', testPixMessageNow);
+                    initPixTemplateHelpers();
+                    const saveFnrhBtnEl = document.getElementById('saveFnrhSettingsBtn');
+                    if (saveFnrhBtnEl) saveFnrhBtnEl.addEventListener('click', saveFnrhSettings);
+                    const saveSocialBtn = document.getElementById('saveSocialBtn');
+                    if (saveSocialBtn) saveSocialBtn.addEventListener('click', saveSocialSettings);
+                    const saveIdentitySeoBtn = document.getElementById('saveIdentitySeoBtn');
+                    if (saveIdentitySeoBtn) saveIdentitySeoBtn.addEventListener('click', saveIdentitySeoSettings);
+                    const saveRulesBtnEl = document.getElementById('saveRulesBtn');
+                    if (saveRulesBtnEl) saveRulesBtnEl.addEventListener('click', saveRulesSettings);
+                    const saveStayDiscountBtnEl = document.getElementById('saveStayDiscountBtn');
+                    if (saveStayDiscountBtnEl) saveStayDiscountBtnEl.addEventListener('click', saveStayDiscountRule);
+                    const addPolicyBtnEl = document.getElementById('addPolicyBtn');
+                    if (addPolicyBtnEl) addPolicyBtnEl.addEventListener('click', addEmptyPolicyRow);
+                    const savePoliciesBtnEl = document.getElementById('savePoliciesBtn');
+                    if (savePoliciesBtnEl) savePoliciesBtnEl.addEventListener('click', savePaymentPolicies);
+                } catch (bindErr) {
+                    console.error('Erro ao vincular eventos da view Configurações:', bindErr);
+                }
             }
             if (viewName === 'customization') {
                 await loadAllSettings();
@@ -4253,36 +4264,47 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         if (!hiddenEl || !editorEl) return;
 
         hiddenEl.value = String(initialHtml || '');
-        if (typeof Quill !== 'function') {
+        try {
+            if (typeof Quill !== 'function') {
+                editorEl.innerHTML = '<textarea class="form-control" id="rulesCancellationPolicyFallback" rows="6" placeholder="Descreva aqui as regras de cancelamento aplicadas à reserva."></textarea>';
+                const fallback = document.getElementById('rulesCancellationPolicyFallback');
+                if (fallback) {
+                    fallback.value = hiddenEl.value;
+                    fallback.addEventListener('input', () => { hiddenEl.value = fallback.value; });
+                }
+                cancellationPolicyEditor = null;
+                return;
+            }
+
+            if (cancellationPolicyEditor) {
+                cancellationPolicyEditor.root.innerHTML = hiddenEl.value;
+            } else {
+                cancellationPolicyEditor = new Quill(editorEl, {
+                    theme: 'snow',
+                    placeholder: 'Descreva aqui as regras de cancelamento aplicadas à reserva.',
+                    modules: {
+                        toolbar: [
+                            ['bold', 'italic', 'underline'],
+                            [{ list: 'ordered' }, { list: 'bullet' }],
+                            ['link'],
+                            ['clean']
+                        ]
+                    }
+                });
+                cancellationPolicyEditor.on('text-change', () => {
+                    hiddenEl.value = cancellationPolicyEditor.root.innerHTML;
+                });
+                cancellationPolicyEditor.root.innerHTML = hiddenEl.value;
+            }
+        } catch (error) {
+            console.error('Erro ao inicializar editor de política de cancelamento:', error);
+            cancellationPolicyEditor = null;
             editorEl.innerHTML = '<textarea class="form-control" id="rulesCancellationPolicyFallback" rows="6" placeholder="Descreva aqui as regras de cancelamento aplicadas à reserva."></textarea>';
             const fallback = document.getElementById('rulesCancellationPolicyFallback');
             if (fallback) {
                 fallback.value = hiddenEl.value;
                 fallback.addEventListener('input', () => { hiddenEl.value = fallback.value; });
             }
-            cancellationPolicyEditor = null;
-            return;
-        }
-
-        if (cancellationPolicyEditor) {
-            cancellationPolicyEditor.root.innerHTML = hiddenEl.value;
-        } else {
-            cancellationPolicyEditor = new Quill(editorEl, {
-                theme: 'snow',
-                placeholder: 'Descreva aqui as regras de cancelamento aplicadas à reserva.',
-                modules: {
-                    toolbar: [
-                        ['bold', 'italic', 'underline'],
-                        [{ list: 'ordered' }, { list: 'bullet' }],
-                        ['link'],
-                        ['clean']
-                    ]
-                }
-            });
-            cancellationPolicyEditor.on('text-change', () => {
-                hiddenEl.value = cancellationPolicyEditor.root.innerHTML;
-            });
-            cancellationPolicyEditor.root.innerHTML = hiddenEl.value;
         }
     }
 
@@ -4754,12 +4776,18 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 return s === '1' || s === 'true' || s === 'on' || s === 'yes';
             };
             if (document.getElementById('ownerWhatsapp')) document.getElementById('ownerWhatsapp').value = data.owner_whatsapp || '';
-            renderEvolutionManagedUi(!!data.evolution_global_managed);
-            if (data.evolution_global_managed && document.getElementById('evoManagedPanel')) {
-                renderEvolutionConnectionStatus('close');
-                try {
-                    await refreshEvolutionConnectionStatus();
-                } catch (_) { /* noop */ }
+            try {
+                renderEvolutionManagedUi(!!data.evolution_global_managed);
+                if (data.evolution_global_managed && document.getElementById('evoManagedPanel')) {
+                    renderEvolutionConnectionStatus('close');
+                    try {
+                        await refreshEvolutionConnectionStatus();
+                    } catch (evoErr) {
+                        console.warn('Evolution: não foi possível consultar status na carga inicial.', evoErr);
+                    }
+                }
+            } catch (evoInitErr) {
+                console.error('Erro na inicialização da Evolution API:', evoInitErr);
             }
             if (document.getElementById('evoNotifyReserva')) document.getElementById('evoNotifyReserva').checked = asBoolFlag(data.evo_notify_reserva);
             if (document.getElementById('evoNotifyCheckin')) document.getElementById('evoNotifyCheckin').checked = asBoolFlag(data.evo_notify_checkin);
@@ -4821,7 +4849,11 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             const rulesCalendarMaxMonths = document.getElementById('rulesCalendarMaxMonths');
             if (rulesCheckin) rulesCheckin.value = normalizeTimeHHMM(data.checkin_time, '14:00');
             if (rulesCheckout) rulesCheckout.value = normalizeTimeHHMM(data.checkout_time, '12:00');
-            initCancellationPolicyEditor(typeof data.cancellation_policy === 'string' ? data.cancellation_policy : '');
+            try {
+                initCancellationPolicyEditor(typeof data.cancellation_policy === 'string' ? data.cancellation_policy : '');
+            } catch (quillErr) {
+                console.error('Erro ao carregar política de cancelamento no editor:', quillErr);
+            }
             if (rulesCleaningFee) rulesCleaningFee.value = Number(data.cleaning_fee || 0).toFixed(2);
             if (rulesPetFee) rulesPetFee.value = Number(data.pet_fee || 0).toFixed(2);
             if (rulesCalendarMaxMonths) rulesCalendarMaxMonths.value = String(Math.max(1, parseInt(data.calendar_max_months || '6', 10) || 6));
@@ -4845,6 +4877,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 rulesCalPeriodEnd.value = /^\d{4}-\d{2}-\d{2}$/.test(pe) ? pe : '';
             }
             syncRulesCalendarLimitUi();
+            if (document.getElementById('stayDiscountsTableBody')) {
                 await loadStayDiscounts();
             }
             if (Array.isArray(data.payment_policies)) {
