@@ -16,6 +16,11 @@ try {
 } catch (Throwable $e) {
     // Coluna já existe.
 }
+try {
+    $pdo->exec("ALTER TABLE personalizacao ADD COLUMN loc_subtitulo TEXT NULL AFTER loc_endereco");
+} catch (Throwable $e) {
+    // Coluna já existe.
+}
 
 // Converte linha da tabela personalizacao para formato esperado pelo frontend
 function rowToCustomization($row) {
@@ -55,6 +60,7 @@ function rowToCustomization($row) {
         'testi3Text' => $row['testi3_texto'] ?? '',
         'testi3Image' => $row['testi3_imagem'] ?? '',
         'locAddress' => $row['loc_endereco'] ?? '',
+        'locSubtitle' => $row['loc_subtitulo'] ?? '',
         'locCar' => $row['loc_carro'] ?? '',
         'locMapLink' => $row['loc_map_link'] ?? '',
         'locMapEmbed' => $row['loc_map_embed'] ?? '',
@@ -311,6 +317,7 @@ switch ($method) {
             $customization['testi3Text'] ?? '',
             $t3img,
             $customization['locAddress'] ?? '',
+            $customization['locSubtitle'] ?? '',
             $customization['locCar'] ?? '',
             $customization['locMapLink'] ?? '',
             $locMapEmbed,
@@ -329,11 +336,11 @@ switch ($method) {
         ];
 
         if ($existing) {
-            $stmt = $pdo->prepare("UPDATE personalizacao SET hero_titulo=?, hero_subtitulo=?, hero_imagens=?, about_titulo=?, about_texto=?, about_imagem=?, chalets_subtitulo=?, chalets_titulo=?, chalets_desc=?, feat1_titulo=?, feat1_desc=?, feat2_titulo=?, feat2_desc=?, feat3_titulo=?, feat3_desc=?, feat4_titulo=?, feat4_desc=?, feat5_titulo=?, feat5_desc=?, testi1_nome=?, testi1_local=?, testi1_texto=?, testi1_imagem=?, testi2_nome=?, testi2_local=?, testi2_texto=?, testi2_imagem=?, testi3_nome=?, testi3_local=?, testi3_texto=?, testi3_imagem=?, loc_endereco=?, loc_carro=?, loc_map_link=?, loc_map_embed=?, videos_enabled=?, videos_json=?, wa_numero=?, wa_mensagem=?, footer_desc=?, footer_endereco=?, footer_email=?, footer_telefone=?, footer_copyright=?, logo_principal=?, logo_alternativa=?, favicon=? WHERE id=?");
+            $stmt = $pdo->prepare("UPDATE personalizacao SET hero_titulo=?, hero_subtitulo=?, hero_imagens=?, about_titulo=?, about_texto=?, about_imagem=?, chalets_subtitulo=?, chalets_titulo=?, chalets_desc=?, feat1_titulo=?, feat1_desc=?, feat2_titulo=?, feat2_desc=?, feat3_titulo=?, feat3_desc=?, feat4_titulo=?, feat4_desc=?, feat5_titulo=?, feat5_desc=?, testi1_nome=?, testi1_local=?, testi1_texto=?, testi1_imagem=?, testi2_nome=?, testi2_local=?, testi2_texto=?, testi2_imagem=?, testi3_nome=?, testi3_local=?, testi3_texto=?, testi3_imagem=?, loc_endereco=?, loc_subtitulo=?, loc_carro=?, loc_map_link=?, loc_map_embed=?, videos_enabled=?, videos_json=?, wa_numero=?, wa_mensagem=?, footer_desc=?, footer_endereco=?, footer_email=?, footer_telefone=?, footer_copyright=?, logo_principal=?, logo_alternativa=?, favicon=? WHERE id=?");
             $params[] = $existing['id'];
             $stmt->execute($params);
         } else {
-            $stmt = $pdo->prepare("INSERT INTO personalizacao (hero_titulo, hero_subtitulo, hero_imagens, about_titulo, about_texto, about_imagem, chalets_subtitulo, chalets_titulo, chalets_desc, feat1_titulo, feat1_desc, feat2_titulo, feat2_desc, feat3_titulo, feat3_desc, feat4_titulo, feat4_desc, feat5_titulo, feat5_desc, testi1_nome, testi1_local, testi1_texto, testi1_imagem, testi2_nome, testi2_local, testi2_texto, testi2_imagem, testi3_nome, testi3_local, testi3_texto, testi3_imagem, loc_endereco, loc_carro, loc_map_link, loc_map_embed, videos_enabled, videos_json, wa_numero, wa_mensagem, footer_desc, footer_endereco, footer_email, footer_telefone, footer_copyright, logo_principal, logo_alternativa, favicon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt = $pdo->prepare("INSERT INTO personalizacao (hero_titulo, hero_subtitulo, hero_imagens, about_titulo, about_texto, about_imagem, chalets_subtitulo, chalets_titulo, chalets_desc, feat1_titulo, feat1_desc, feat2_titulo, feat2_desc, feat3_titulo, feat3_desc, feat4_titulo, feat4_desc, feat5_titulo, feat5_desc, testi1_nome, testi1_local, testi1_texto, testi1_imagem, testi2_nome, testi2_local, testi2_texto, testi2_imagem, testi3_nome, testi3_local, testi3_texto, testi3_imagem, loc_endereco, loc_subtitulo, loc_carro, loc_map_link, loc_map_embed, videos_enabled, videos_json, wa_numero, wa_mensagem, footer_desc, footer_endereco, footer_email, footer_telefone, footer_copyright, logo_principal, logo_alternativa, favicon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute($params);
         }
 

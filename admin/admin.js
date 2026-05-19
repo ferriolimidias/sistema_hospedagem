@@ -2176,6 +2176,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <div class="accordion-body-inner">
                     <form id="locationForm">
                         <div class="form-group">
+                            <label>Subtítulo da Localização</label>
+                            <textarea class="form-control" id="customLocSubtitle" rows="3" placeholder="Estamos localizados no coração do litoral catarinense..."></textarea>
+                        </div>
+                        <div class="form-group">
                             <label>Endereço Completo</label>
                             <input type="text" class="form-control" id="customLocAddress" placeholder="Rua, número, bairro, cidade/UF">
                         </div>
@@ -4776,6 +4780,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             set('customTesti3Name', custom.testi3Name);
             set('customTesti3Location', custom.testi3Location);
             set('customTesti3Text', custom.testi3Text);
+            set('customLocSubtitle', custom.locSubtitle);
             set('customLocAddress', custom.locAddress);
             set('customLocCar', custom.locCar);
             set('customLocMapLink', custom.locMapLink);
@@ -5059,6 +5064,8 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 renderTestimonialImagePreview(3, custom.testi3Image);
 
                 // Location
+                const locSubtitleEl = document.getElementById('customLocSubtitle');
+                if (locSubtitleEl) locSubtitleEl.value = custom.locSubtitle || '';
                 document.getElementById('customLocAddress').value = custom.locAddress || '';
                 document.getElementById('customLocCar').value = custom.locCar || '';
                 document.getElementById('customLocMapLink').value = custom.locMapLink || '';
@@ -5167,6 +5174,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             testi3Name: document.getElementById('customTesti3Name').value,
             testi3Location: document.getElementById('customTesti3Location').value,
             testi3Text: document.getElementById('customTesti3Text').value,
+            locSubtitle: (document.getElementById('customLocSubtitle') || {}).value || '',
             locAddress: document.getElementById('customLocAddress').value,
             locCar: document.getElementById('customLocCar').value,
             locMapLink: document.getElementById('customLocMapLink').value,

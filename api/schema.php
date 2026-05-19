@@ -399,6 +399,7 @@ function runInitialSchema(PDO $pdo): void
             testi3_texto TEXT NULL,
             testi3_imagem VARCHAR(500) NULL,
             loc_endereco TEXT NULL,
+            loc_subtitulo TEXT NULL,
             loc_carro TEXT NULL,
             loc_map_link VARCHAR(500) NULL,
             loc_map_embed TEXT NULL,
@@ -694,6 +695,7 @@ function runInitialSchema(PDO $pdo): void
 
     // Personalização (campos adicionados em versões mais recentes).
     $__customizationCols = [
+        "ALTER TABLE personalizacao ADD COLUMN loc_subtitulo TEXT NULL AFTER loc_endereco",
         "ALTER TABLE personalizacao ADD COLUMN loc_map_embed TEXT NULL AFTER loc_map_link",
         "ALTER TABLE personalizacao ADD COLUMN videos_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER loc_map_embed",
         "ALTER TABLE personalizacao ADD COLUMN videos_json TEXT NULL AFTER videos_enabled",

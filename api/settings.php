@@ -83,6 +83,7 @@ switch ($method) {
                             'testi3Text' => $row['testi3_texto'] ?? '',
                             'testi3Image' => $row['testi3_imagem'] ?? '',
                             'locAddress' => $row['loc_endereco'] ?? '',
+                            'locSubtitle' => $row['loc_subtitulo'] ?? '',
                             'locCar' => $row['loc_carro'] ?? '',
                             'locMapLink' => $row['loc_map_link'] ?? '',
                             'locMapEmbed' => $row['loc_map_embed'] ?? '',

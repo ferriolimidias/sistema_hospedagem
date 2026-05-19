@@ -37,7 +37,7 @@ $c = [
     'testi1Name' => '', 'testi1Location' => '', 'testi1Text' => '', 'testi1Image' => '',
     'testi2Name' => '', 'testi2Location' => '', 'testi2Text' => '', 'testi2Image' => '',
     'testi3Name' => '', 'testi3Location' => '', 'testi3Text' => '', 'testi3Image' => '',
-    'locAddress' => '', 'locCar' => '', 'locMapLink' => '', 'locMapEmbed' => '',
+    'locAddress' => '', 'locSubtitle' => '', 'locCar' => '', 'locMapLink' => '', 'locMapEmbed' => '',
     'waNumber' => '', 'waMessage' => '',
     'footerDesc' => '', 'footerAddress' => '', 'footerEmail' => '', 'footerPhone' => '', 'footerCopyright' => '',
     'logoPrincipalImg' => '',
@@ -72,7 +72,9 @@ try {
         $c['testi2Text'] = $row['testi2_texto'] ?? ''; $c['testi2Image'] = $row['testi2_imagem'] ?? '';
         $c['testi3Name'] = $row['testi3_nome'] ?? ''; $c['testi3Location'] = $row['testi3_local'] ?? '';
         $c['testi3Text'] = $row['testi3_texto'] ?? ''; $c['testi3Image'] = $row['testi3_imagem'] ?? '';
-        $c['locAddress'] = $row['loc_endereco'] ?? ''; $c['locCar'] = $row['loc_carro'] ?? '';
+        $c['locAddress'] = $row['loc_endereco'] ?? '';
+        $c['locSubtitle'] = $row['loc_subtitulo'] ?? '';
+        $c['locCar'] = $row['loc_carro'] ?? '';
         $c['locMapLink'] = $row['loc_map_link'] ?? '';
         $c['locMapEmbed'] = $row['loc_map_embed'] ?? '';
         $c['waNumber'] = $row['wa_numero'] ?? ''; $c['waMessage'] = $row['wa_mensagem'] ?? '';
@@ -335,7 +337,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 <div class="location-info">
                     <span class="subtitle">Como chegar</span>
                     <h2 class="section-title">Nossa Localização</h2>
-                    <p>Estamos localizados no coração da serra, em um local de fácil acesso para carros de passeio, mas imerso na natureza com total privacidade.</p>
+                    <p id="locSubtitle"><?= $h($c['locSubtitle'] ?: 'Estamos localizados no coração do litoral catarinense. Em meio a natureza e com total tranquilidade.') ?></p>
                     <ul class="contact-details">
                         <li><i class="ph ph-map-pin"></i><div><strong>Endereço</strong><span id="locAddress"><?= $h($c['locAddress']) ?></span></div></li>
                         <li><i class="ph ph-car"></i><div><strong>De Carro</strong><span id="locCar"><?= $h($c['locCar']) ?></span></div></li>

@@ -1990,6 +1990,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if ($('testi3Avatar')) $('testi3Avatar').textContent = buildInitials(custom.testi3Name || $('testi3Name')?.textContent || '');
 
                 // Location
+                if ($('locSubtitle') && custom.locSubtitle) $('locSubtitle').innerHTML = custom.locSubtitle;
                 if ($('locAddress') && custom.locAddress) $('locAddress').innerHTML = custom.locAddress;
                 if ($('locCar') && custom.locCar) $('locCar').innerHTML = custom.locCar;
                 if ($('locMapLink') && custom.locMapLink) $('locMapLink').href = custom.locMapLink;

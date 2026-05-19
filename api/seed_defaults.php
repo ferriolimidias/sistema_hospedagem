@@ -40,6 +40,7 @@ $defaultCustomization = [
     'testi3Text' => 'Ótima experiência geral, check-in rápido e suporte atencioso durante toda a hospedagem.',
     'testi3Image' => 'https://ui-avatars.com/api/?name=Hospede+Exemplo&background=64748B&color=fff',
     'locAddress' => 'Endereço do estabelecimento',
+    'locSubtitle' => 'Estamos localizados no coração do litoral catarinense. Em meio a natureza e com total tranquilidade.',
     'locCar' => 'Informações de acesso e deslocamento podem ser personalizadas pelo estabelecimento.',
     'locMapLink' => 'https://www.google.com/maps',
     'waNumber' => '5535999999999',
