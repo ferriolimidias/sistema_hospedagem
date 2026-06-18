@@ -87,64 +87,170 @@ function evo_http_config(PDO $pdo): array
     $global = function_exists('be_evolution_global_config')
         ? be_evolution_global_config()
         : ['enabled' => false, 'url' => '', 'key' => '', 'env_found' => false];
-    $url = rtrim(trim((string) ($global['url'] ?? '')), '/');
-    $globalKey = trim((string) ($global['key'] ?? ''));
+    $url = rtrim(trim(evo_setting($pdo, 'evo_url', '')), '/');
+    if ($url === '') $url = rtrim(trim((string) ($global['url'] ?? '')), '/');
+    $globalKey = trim(evo_setting($pdo, 'evo_apikey', ''));
+    if ($globalKey === '') $globalKey = trim((string) ($global['key'] ?? ''));
     $instance = trim(evo_setting($pdo, 'evo_instance', ''));
-    // Token da instância no banco tem prioridade; fallback para chave global do .env.
-    $instanceApiKey = trim(evo_setting($pdo, 'evo_apikey', ''));
-    $apikey = $instanceApiKey !== '' ? $instanceApiKey : $globalKey;
-    return ['url' => $url, 'instance' => $instance, 'apikey' => $apikey, 'global_key' => $globalKey];
+    if ($instance === '' && function_exists('be_env_value')) {
+        $instance = trim(be_env_value('EVOLUTION_INSTANCE', ''));
+        if ($instance === '') $instance = trim(be_env_value('EVO_INSTANCE', ''));
+    }
+    return ['url' => $url, 'instance' => $instance, 'apikey' => $globalKey, 'global_key' => $globalKey, 'provider' => 'evolution_api'];
 }
 
-function evo_send_text(PDO $pdo, string $number, string $text): array
+function evo_is_configured(PDO $pdo): bool
 {
     $cfg = evo_http_config($pdo);
     $url = (string) ($cfg['url'] ?? '');
     $instance = (string) ($cfg['instance'] ?? '');
     $apikey = (string) ($cfg['apikey'] ?? '');
-    if ($url === '' || $instance === '' || $apikey === '') {
-        return ['ok' => false, 'error' => 'Evolution API não configurada (.env URL/KEY global e instância ativa são obrigatórios).'];
+    return $url !== '' && $instance !== '' && $apikey !== '';
+}
+
+function evo_go_is_configured(PDO $pdo): bool
+{
+    return evo_is_configured($pdo);
+}
+
+function evo_format_number(string $raw): string
+{
+    return preg_replace('/[^0-9]/', '', (string)$raw) ?? '';
+}
+
+function evo_go_format_number(string $raw): string
+{
+    return evo_format_number($raw);
+}
+
+function evo_mask_number(string $number): string
+{
+    $clean = evo_format_number($number);
+    if (strlen($clean) <= 6) return str_repeat('*', strlen($clean));
+    return substr($clean, 0, 4) . str_repeat('*', max(0, strlen($clean) - 8)) . substr($clean, -4);
+}
+
+function evo_go_mask_number(string $number): string
+{
+    return evo_mask_number($number);
+}
+
+function evo_instance_create(PDO $pdo, string $instance, string $token = '', bool $dryRun = false): array
+{
+    $payload = [
+        'instanceName' => $instance,
+        'qrcode' => true,
+        'integration' => 'WHATSAPP-BAILEYS',
+    ];
+    return evo_request($pdo, 'POST', '/instance/create', $payload, 20, $dryRun);
+}
+
+function evo_go_instance_create(PDO $pdo, string $instance, string $token = '', bool $dryRun = false): array
+{
+    return evo_instance_create($pdo, $instance, $token, $dryRun);
+}
+
+function evo_instance_connect(PDO $pdo, string $instance, bool $dryRun = false): array
+{
+    return evo_request($pdo, 'GET', '/instance/connect/' . rawurlencode($instance), null, 20, $dryRun);
+}
+
+function evo_go_instance_connect(PDO $pdo, string $instance, bool $dryRun = false): array
+{
+    return evo_instance_connect($pdo, $instance, $dryRun);
+}
+
+function evo_instance_status(PDO $pdo, string $instance, bool $dryRun = false): array
+{
+    return evo_request($pdo, 'GET', '/instance/connectionState/' . rawurlencode($instance), null, 20, $dryRun);
+}
+
+function evo_go_instance_status(PDO $pdo, string $instance, bool $dryRun = false): array
+{
+    return evo_instance_status($pdo, $instance, $dryRun);
+}
+
+function evo_instance_delete(PDO $pdo, string $instance, bool $dryRun = false): array
+{
+    return evo_request($pdo, 'DELETE', '/instance/delete/' . rawurlencode($instance), null, 20, $dryRun);
+}
+
+function evo_go_instance_delete(PDO $pdo, string $instance, bool $dryRun = false): array
+{
+    return evo_instance_delete($pdo, $instance, $dryRun);
+}
+
+function evo_sanitize_payload(?array $payload): array
+{
+    if (!is_array($payload)) return [];
+    $safe = $payload;
+    if (isset($safe['number'])) $safe['number'] = evo_mask_number((string)$safe['number']);
+    foreach (['media', 'mediaBase64'] as $mediaKey) {
+        if (isset($safe[$mediaKey])) $safe[$mediaKey] = '[base64 omitido]';
     }
-    $number = preg_replace('/[^0-9]/', '', (string)$number) ?? '';
-    if ($number === '' || trim($text) === '') {
-        return ['ok' => false, 'error' => 'Número ou texto inválido.'];
+    return $safe;
+}
+
+function evo_go_sanitize_payload(?array $payload): array
+{
+    return evo_sanitize_payload($payload);
+}
+
+function evo_request(PDO $pdo, string $method, string $path, ?array $payload = null, int $timeout = 20, bool $dryRun = false): array
+{
+    $cfg = evo_http_config($pdo);
+    $url = (string) ($cfg['url'] ?? '');
+    $apikey = (string) ($cfg['apikey'] ?? '');
+    if ($url === '' || $apikey === '') {
+        return ['ok' => false, 'error' => 'Evolution API nao configurada.'];
+    }
+    $endpoint = $url . '/' . ltrim($path, '/');
+    if ($dryRun) {
+        return [
+            'ok' => true,
+            'dry_run' => true,
+            'endpoint' => $endpoint,
+            'method' => strtoupper($method),
+            'send_type' => strpos($path, 'sendMedia') !== false ? 'media' : 'text',
+            'payload' => evo_sanitize_payload($payload),
+        ];
     }
     if (!function_exists('curl_init')) {
         return ['ok' => false, 'error' => 'cURL indisponível no servidor.'];
     }
-    $endpoint = $url . '/message/sendText/' . rawurlencode($instance);
-    $payload = json_encode(['number' => $number, 'text' => $text], JSON_UNESCAPED_UNICODE);
     try {
         $ch = curl_init();
         if ($ch === false) {
             throw new RuntimeException('Falha ao inicializar cURL.');
         }
-        curl_setopt_array($ch, [
+        $opts = [
             CURLOPT_URL => $endpoint,
-            CURLOPT_POST => true,
+            CURLOPT_CUSTOMREQUEST => strtoupper($method),
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 2,
-            CURLOPT_CONNECTTIMEOUT => 2,
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_CONNECTTIMEOUT => min(5, $timeout),
             CURLOPT_HTTPHEADER => [
                 'Content-Type: application/json',
                 'apikey: ' . $apikey,
             ],
-            CURLOPT_POSTFIELDS => $payload,
-        ]);
+        ];
+        if ($payload !== null) {
+            $opts[CURLOPT_POSTFIELDS] = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        }
+        curl_setopt_array($ch, $opts);
         $body = curl_exec($ch);
         $err = curl_error($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
     } catch (Throwable $e) {
-        error_log('[evolution_service] fail-fast exception: ' . $e->getMessage());
-        // Nunca interromper o fluxo principal (reserva/check-in/check-out).
-        return ['ok' => true, 'skipped' => true, 'reason' => 'fail_fast_exception'];
+        error_log('[evolution_api] exception: ' . $e->getMessage());
+        return ['ok' => false, 'http_code' => 0, 'error' => 'Falha ao comunicar com Evolution API.', 'body' => ''];
     }
-    $ok = ($err === '' && $code >= 200 && $code < 300);
     $bodyText = is_string($body) ? $body : '';
+    $ok = ($err === '' && $code >= 200 && $code < 300);
     if (!$ok) {
         $logBody = function_exists('mb_substr') ? mb_substr($bodyText, 0, 1200) : substr($bodyText, 0, 1200);
-        error_log('[evolution_service] fail http=' . $code . ' err=' . $err . ' body=' . $logBody);
+        error_log('[evolution_api] fail path=' . $path . ' http=' . $code . ' err=' . $err . ' body=' . $logBody);
         return [
             'ok' => false,
             'http_code' => $code,
@@ -153,6 +259,86 @@ function evo_send_text(PDO $pdo, string $number, string $text): array
         ];
     }
     return ['ok' => true, 'http_code' => $code, 'error' => '', 'body' => $bodyText];
+}
+
+function evo_go_request(PDO $pdo, string $method, string $path, ?array $payload = null, int $timeout = 20, bool $dryRun = false): array
+{
+    return evo_request($pdo, $method, $path, $payload, $timeout, $dryRun);
+}
+
+function evo_send_text_request(PDO $pdo, string $number, string $text, bool $dryRun = false): array
+{
+    $cfg = evo_http_config($pdo);
+    $instance = (string) ($cfg['instance'] ?? '');
+    if (!evo_is_configured($pdo)) {
+        return ['ok' => false, 'error' => 'Evolution API nao configurada. Configure URL/API key e conecte o WhatsApp no painel.'];
+    }
+    $number = evo_format_number($number);
+    if ($number === '' || trim($text) === '') {
+        return ['ok' => false, 'error' => 'Número ou texto inválido.'];
+    }
+    return evo_request($pdo, 'POST', '/message/sendText/' . rawurlencode($instance), [
+        'number' => $number,
+        'textMessage' => ['text' => $text],
+        'delay' => 1000,
+        'linkPreview' => false,
+    ], 2, $dryRun);
+}
+
+function evo_go_send_text(PDO $pdo, string $number, string $text, bool $dryRun = false): array
+{
+    return evo_send_text_request($pdo, $number, $text, $dryRun);
+}
+
+function evo_send_text(PDO $pdo, string $number, string $text): array
+{
+    return evo_send_text_request($pdo, $number, $text);
+}
+
+function evo_send_media_request(
+    PDO $pdo,
+    string $number,
+    string $base64Data,
+    string $fileName,
+    string $mimetype = 'application/pdf',
+    string $caption = '',
+    bool $dryRun = false
+): array {
+    $cfg = evo_http_config($pdo);
+    $instance = (string) ($cfg['instance'] ?? '');
+    if (!evo_is_configured($pdo)) {
+        return ['ok' => false, 'error' => 'Evolution API nao configurada. Configure URL/API key e conecte o WhatsApp no painel.'];
+    }
+    $number = evo_format_number($number);
+    $media = trim($base64Data);
+    if (strpos($media, ',') !== false && preg_match('/^data:[^;]+;base64,/i', $media) === 1) {
+        $parts = explode(',', $media, 2);
+        $media = trim((string)($parts[1] ?? ''));
+    }
+    if ($number === '' || $media === '' || trim($fileName) === '') {
+        return ['ok' => false, 'error' => 'Parâmetros inválidos para envio de mídia.'];
+    }
+    return evo_request($pdo, 'POST', '/message/sendMedia/' . rawurlencode($instance), [
+        'number' => $number,
+        'mediatype' => 'document',
+        'mimetype' => trim($mimetype) !== '' ? $mimetype : 'application/pdf',
+        'media' => $media,
+        'mediaBase64' => $media,
+        'fileName' => trim($fileName),
+        'caption' => (string)$caption,
+    ], 20, $dryRun);
+}
+
+function evo_go_send_media(
+    PDO $pdo,
+    string $number,
+    string $base64Data,
+    string $fileName,
+    string $mimetype = 'application/pdf',
+    string $caption = '',
+    bool $dryRun = false
+): array {
+    return evo_send_media_request($pdo, $number, $base64Data, $fileName, $mimetype, $caption, $dryRun);
 }
 
 function evo_send_media(
@@ -163,74 +349,50 @@ function evo_send_media(
     string $mimetype = 'application/pdf',
     string $caption = ''
 ): array {
-    $cfg = evo_http_config($pdo);
-    $url = (string) ($cfg['url'] ?? '');
-    $instance = (string) ($cfg['instance'] ?? '');
-    $apikey = (string) ($cfg['apikey'] ?? '');
-    if ($url === '' || $instance === '' || $apikey === '') {
-        return ['ok' => false, 'error' => 'Evolution API não configurada (.env URL/KEY global e instância ativa são obrigatórios).'];
-    }
-    $number = preg_replace('/[^0-9]/', '', (string)$number) ?? '';
-    $media = trim($base64Data);
-    if (strpos($media, ',') !== false && preg_match('/^data:[^;]+;base64,/i', $media) === 1) {
-        $parts = explode(',', $media, 2);
-        $media = trim((string)($parts[1] ?? ''));
-    }
-    if ($number === '' || $media === '' || trim($fileName) === '') {
-        return ['ok' => false, 'error' => 'Parâmetros inválidos para envio de mídia.'];
-    }
-    if (!function_exists('curl_init')) {
-        return ['ok' => false, 'error' => 'cURL indisponível no servidor.'];
-    }
-    $endpoint = $url . '/message/sendMedia/' . rawurlencode($instance);
-    $payload = json_encode([
-        'number' => $number,
-        'mediatype' => 'document',
-        'mimetype' => trim($mimetype) !== '' ? $mimetype : 'application/pdf',
-        'media' => $media,
-        // Compatibilidade entre versões/gateways da Evolution.
-        'mediaBase64' => $media,
-        'fileName' => trim($fileName),
-        'caption' => (string)$caption,
-    ], JSON_UNESCAPED_UNICODE);
-    try {
-        $ch = curl_init();
-        if ($ch === false) {
-            throw new RuntimeException('Falha ao inicializar cURL.');
+    return evo_send_media_request($pdo, $number, $base64Data, $fileName, $mimetype, $caption);
+}
+
+function evo_go_send_button(
+    PDO $pdo,
+    string $number,
+    string $title,
+    string $description,
+    array $buttonDefinitions,
+    string $fallbackText = ''
+): array {
+    $text = trim($fallbackText) !== ''
+        ? trim($fallbackText)
+        : evo_go_button_to_text_message($title, $description, $buttonDefinitions);
+    $result = evo_send_text_request($pdo, $number, $text);
+    $result['button_disabled'] = true;
+    $result['send_type'] = 'text';
+    return $result;
+}
+
+function evo_go_button_to_text_message(string $title, string $description, array $buttonDefinitions = []): string
+{
+    $lines = [];
+    $title = trim($title);
+    $description = trim($description);
+    if ($title !== '') $lines[] = $title;
+    if ($description !== '') $lines[] = $description;
+    foreach ($buttonDefinitions as $item) {
+        if (!is_array($item)) continue;
+        $label = trim((string)($item['displayText'] ?? $item['text'] ?? $item['label'] ?? ''));
+        $value = trim((string)($item['copyCode'] ?? $item['url'] ?? $item['link'] ?? ''));
+        if ($label !== '' && $value !== '') {
+            $lines[] = $label . ":\n" . $value;
+        } elseif ($value !== '') {
+            $lines[] = $value;
         }
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $endpoint,
-            CURLOPT_POST => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'apikey: ' . $apikey,
-            ],
-            CURLOPT_POSTFIELDS => $payload,
-        ]);
-        $body = curl_exec($ch);
-        $err = curl_error($ch);
-        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-    } catch (Throwable $e) {
-        error_log('[evolution_service] sendMedia exception: ' . $e->getMessage());
-        return ['ok' => false, 'http_code' => 0, 'error' => 'Falha cURL: ' . $e->getMessage(), 'body' => ''];
     }
-    $bodyText = is_string($body) ? $body : '';
-    $ok = ($err === '' && $code >= 200 && $code < 300);
-    if (!$ok) {
-        $logBody = function_exists('mb_substr') ? mb_substr($bodyText, 0, 1200) : substr($bodyText, 0, 1200);
-        error_log('[evolution_service] sendMedia fail http=' . $code . ' err=' . $err . ' body=' . $logBody);
-        return [
-            'ok' => false,
-            'http_code' => $code,
-            'error' => evo_compose_send_error($code, $err, $bodyText),
-            'body' => $bodyText
-        ];
-    }
-    return ['ok' => true, 'http_code' => $code, 'error' => '', 'body' => $bodyText];
+    $lines[] = 'Se preferir, responda esta mensagem para falar com a pousada.';
+    return trim(implode("\n\n", array_filter($lines, static fn($line) => trim((string)$line) !== '')));
+}
+
+function evo_send_button(PDO $pdo, string $number, string $title, string $description, array $buttonDefinitions, string $fallbackText = ''): array
+{
+    return evo_go_send_button($pdo, $number, $title, $description, $buttonDefinitions, $fallbackText);
 }
 
 function evo_send_pix(
@@ -239,100 +401,36 @@ function evo_send_pix(
     string $messageText,
     string $pixName,
     string $pixKeyType,
-    string $pixKey
+    string $pixKey,
+    bool $dryRun = false
 ): array {
-    $cfg = evo_http_config($pdo);
-    $url = (string) ($cfg['url'] ?? '');
-    $instance = (string) ($cfg['instance'] ?? '');
-    $apikey = (string) ($cfg['apikey'] ?? '');
-    if ($url === '' || $instance === '' || $apikey === '') {
-        return ['ok' => false, 'error' => 'Evolution API não configurada (.env URL/KEY global e instância ativa são obrigatórios).'];
+    if (!evo_is_configured($pdo)) {
+        return ['ok' => false, 'error' => 'Evolution API nao configurada. Configure URL/API key e conecte o WhatsApp no painel.'];
     }
-    $number = preg_replace('/[^0-9]/', '', (string)$number) ?? '';
+    $number = evo_format_number($number);
     $pixName = trim($pixName);
     $pixKeyType = strtoupper(trim($pixKeyType));
     $pixKey = trim($pixKey);
     if ($number === '' || trim($messageText) === '' || $pixName === '' || $pixKeyType === '' || $pixKey === '') {
         return ['ok' => false, 'error' => 'Parâmetros inválidos para envio de PIX.'];
     }
-    if (!function_exists('curl_init')) {
-        return ['ok' => false, 'error' => 'cURL indisponível no servidor.'];
+    $text = trim($messageText);
+    if (strpos($text, $pixKey) === false) {
+        $text .= "\n\n🔑 Chave PIX ({$pixKeyType}):\n{$pixKey}";
     }
-    $endpoint = $url . '/message/sendButtons/' . rawurlencode($instance);
-    error_log('URL Final: ' . $endpoint);
-    $payload = json_encode([
-        'number' => $number,
-        'title' => ($pixName !== '' ? $pixName : 'Pagamento PIX'),
-        'description' => $messageText,
-        'footer' => 'Clique abaixo para copiar a chave',
-        'buttons' => [
-            [
-                'type' => 'copy',
-                'displayText' => 'Copiar Chave PIX',
-                'copyCode' => $pixKey
-            ]
-        ]
-    ], JSON_UNESCAPED_UNICODE);
-    try {
-        $ch = curl_init();
-        if ($ch === false) throw new RuntimeException('Falha ao inicializar cURL.');
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $endpoint,
-            CURLOPT_POST => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_CONNECTTIMEOUT => 5,
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'apikey: ' . $apikey,
-            ],
-            CURLOPT_POSTFIELDS => $payload,
-        ]);
-        $body = curl_exec($ch);
-        $err = curl_error($ch);
-        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-    } catch (Throwable $e) {
-        error_log('[evolution_service] sendPix exception: ' . $e->getMessage());
-        return ['ok' => false, 'http_code' => 0, 'error' => 'Falha cURL: ' . $e->getMessage(), 'body' => ''];
-    }
-    $bodyText = is_string($body) ? $body : '';
-    $httpOk = ($err === '' && in_array($code, [200, 201], true));
-    $successOk = false;
-    if ($bodyText !== '') {
-        $decoded = json_decode($bodyText, true);
-        if (is_array($decoded)) {
-            if (array_key_exists('success', $decoded)) {
-                $successOk = ($decoded['success'] === true);
-            } else {
-                // Compatibilidade: alguns gateways retornam apenas HTTP 200/201.
-                $successOk = true;
-            }
-        }
-    }
-    $ok = ($httpOk && $successOk);
-    if (!$ok) {
-        $logBody = function_exists('mb_substr') ? mb_substr($bodyText, 0, 1200) : substr($bodyText, 0, 1200);
-        error_log('[evolution_service] sendPix fail http=' . $code . ' err=' . $err . ' http_ok=' . ($httpOk ? '1' : '0') . ' success_ok=' . ($successOk ? '1' : '0') . ' body=' . $logBody);
-        return [
-            'ok' => false,
-            'http_code' => $code,
-            'error' => evo_compose_send_error($code, $err, $bodyText),
-            'body' => $bodyText
-        ];
-    }
-    return ['ok' => true, 'http_code' => $code, 'error' => '', 'body' => $bodyText];
+    $text .= "\n\nApós o pagamento, envie o comprovante por aqui.";
+    return evo_send_text_request($pdo, $number, $text, $dryRun);
 }
 
 function evo_build_folio_receipt_pdf_base64(array $data): array
 {
     $autoloadPath = __DIR__ . '/../vendor/autoload.php';
     if (!is_file($autoloadPath)) {
-        return ['ok' => false, 'error' => 'Dependências PHP não instaladas (vendor/autoload.php ausente).'];
+        return ['ok' => false, 'error' => 'Recurso de PDF indisponível neste ambiente.'];
     }
     require_once $autoloadPath;
     if (!class_exists(\Dompdf\Dompdf::class) || !class_exists(\Dompdf\Options::class)) {
-        return ['ok' => false, 'error' => 'Dompdf indisponível para gerar recibo PDF.'];
+        return ['ok' => false, 'error' => 'Recurso de PDF indisponível neste ambiente.'];
     }
     $brand = htmlspecialchars((string)($data['brand'] ?? 'Hospedagem'), ENT_QUOTES, 'UTF-8');
     $guestName = htmlspecialchars((string)($data['guest_name'] ?? 'Hóspede'), ENT_QUOTES, 'UTF-8');
@@ -379,11 +477,11 @@ function evo_build_dummy_pdf_base64(string $title, string $subtitle): array
 {
     $autoloadPath = __DIR__ . '/../vendor/autoload.php';
     if (!is_file($autoloadPath)) {
-        return ['ok' => false, 'error' => 'Dependências PHP não instaladas (vendor/autoload.php ausente).'];
+        return ['ok' => false, 'error' => 'Recurso de PDF indisponível neste ambiente.'];
     }
     require_once $autoloadPath;
     if (!class_exists(\Dompdf\Dompdf::class) || !class_exists(\Dompdf\Options::class)) {
-        return ['ok' => false, 'error' => 'Dompdf indisponível para gerar PDF de teste.'];
+        return ['ok' => false, 'error' => 'Recurso de PDF indisponível neste ambiente.'];
     }
     $html = '<!doctype html><html><head><meta charset="utf-8"><style>
         body{font-family:DejaVu Sans,sans-serif;margin:24px;color:#111}
@@ -504,6 +602,25 @@ function evo_message_for_recipient(PDO $pdo, array $reservation, string $event, 
                 . ($checkoutBr !== '' ? "Check-out: {$checkoutBr}\n" : '')
                 . ($totalText !== '' ? "Valor: {$totalText}\n" : '')
                 . "Sistema: {$brand}";
+        }
+        $customTemplate = trim(evo_setting($pdo, 'evolution_reservation_message', ''));
+        if ($customTemplate === '') {
+            $legacySettings = json_decode(evo_setting($pdo, 'evolutionSettings', ''), true);
+            if (is_array($legacySettings)) {
+                $customTemplate = trim((string)($legacySettings['reservationMsg'] ?? ''));
+            }
+        }
+        if ($customTemplate !== '') {
+            return strtr($customTemplate, [
+                '{nome}' => $name,
+                '{pousada}' => $brand,
+                '{checkin}' => $checkinBr,
+                '{checkout}' => $checkoutBr,
+                '{total}' => $totalText,
+                '{id}' => (string)($reservation['id'] ?? ''),
+                '{chale}' => $chaletName,
+                '{chalet}' => $chaletName,
+            ]);
         }
         return "Olá, {$name}! Sua reserva na {$brand} foi recebida com sucesso.\n\n"
             . ($chaletName !== '' ? "Chalé: {$chaletName}\n" : '')
@@ -635,6 +752,7 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
     $data = json_decode((string) file_get_contents('php://input'), true);
     if (!is_array($data)) jsonResponse(['ok' => false, 'error' => 'Payload inválido'], 400);
     $action = strtolower(trim((string) ($data['action'] ?? 'send_text')));
+    $dryRun = !empty($data['dry_run']);
     if ($action === 'notify_event') {
         $event = strtolower(trim((string) ($data['event'] ?? 'reserva')));
         $reservation = $data['reservation'] ?? [];
@@ -651,16 +769,15 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
             jsonResponse(['ok' => false, 'error' => 'O número de telefone (phone) é obrigatório para teste.'], 400);
         }
         $brand = evo_brand_name($pdo);
-        $testMessage = "🚀 Teste de Sistema: A integração de {$brand} com a Evolution API está funcionando perfeitamente!";
+        $testMessage = "Teste de Sistema: a integracao de {$brand} com a Evolution API esta funcionando corretamente.";
 
-        $ownerResult = evo_send_text($pdo, $ownerPhone, $testMessage);
+        $ownerResult = evo_send_text_request($pdo, $ownerPhone, $testMessage, $dryRun);
         if (!empty($ownerResult['ok'])) {
-            jsonResponse(['ok' => true, 'message' => 'Teste enviado']);
+            jsonResponse(['ok' => true, 'message' => $dryRun ? 'Dry-run gerado' : 'Teste enviado', 'result' => $ownerResult]);
         }
         jsonResponse([
             'ok' => false,
-            'error' => (string)($ownerResult['error'] ?? 'Falha ao enviar teste'),
-            'details' => $ownerResult
+            'error' => (string)($ownerResult['error'] ?? 'Falha ao enviar teste')
         ], 400);
     }
 
@@ -674,21 +791,20 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
         $kind = $action === 'test_contract_media' ? 'Contrato' : 'Recibo';
         $dummy = evo_build_dummy_pdf_base64(
             "Teste de {$kind} - {$brand}",
-            "Documento de teste da integração Evolution API ({$kind})."
+            "Documento de teste da integracao Evolution API ({$kind})."
         );
         if (empty($dummy['ok'])) {
             jsonResponse(['ok' => false, 'error' => (string)($dummy['error'] ?? 'Falha ao gerar PDF de teste')], 400);
         }
         $fileName = strtolower($action === 'test_contract_media' ? 'teste_contrato.pdf' : 'teste_recibo.pdf');
         $caption = "Teste de envio de {$kind} em PDF via WhatsApp.";
-        $r = evo_send_media($pdo, $number, (string)$dummy['base64'], $fileName, 'application/pdf', $caption);
+        $r = evo_send_media_request($pdo, $number, (string)$dummy['base64'], $fileName, 'application/pdf', $caption, $dryRun);
         if (!empty($r['ok'])) {
-            jsonResponse(['ok' => true, 'message' => 'Teste enviado']);
+            jsonResponse(['ok' => true, 'message' => $dryRun ? 'Dry-run gerado' : 'Teste enviado', 'result' => $r]);
         }
         jsonResponse([
             'ok' => false,
-            'error' => (string)($r['error'] ?? 'Falha ao enviar teste de mídia'),
-            'details' => $r
+            'error' => (string)($r['error'] ?? 'Falha ao enviar teste de mídia')
         ], 400);
     }
 
@@ -709,7 +825,7 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
         if ($template === '') {
             $template = "Olá, {nome}! Recebemos o seu pedido de pré-reserva na {pousada} (ID: {id}).\n"
                 . "🏠 Acomodação: {chale}\n📅 Check-in: {checkin}\n📅 Check-out: {checkout}\n"
-                . "💰 Total: R$ {total}\nPara garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e realize o pagamento! 👇";
+                . "💰 Total: R$ {total}\n\n🔑 Chave PIX:\n{chave_pix}\n\nApós o pagamento, envie o comprovante por aqui.";
         }
         $filled = strtr($template, [
             '{nome}' => 'Hóspede Teste',
@@ -721,18 +837,20 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
             '{total}' => '850,00',
             '{chave_pix}' => $pixKey
         ]);
-        $r = evo_send_pix($pdo, $number, $filled, $pixReceiverName, $pixKeyType, $pixKey);
+        $r = evo_send_pix($pdo, $number, $filled, $pixReceiverName, $pixKeyType, $pixKey, $dryRun);
         if (!empty($r['ok'])) {
-            jsonResponse(['ok' => true, 'message' => 'Teste PIX enviado']);
+            jsonResponse(['ok' => true, 'message' => $dryRun ? 'Dry-run gerado' : 'Teste PIX enviado', 'result' => $r]);
         }
         jsonResponse([
             'ok' => false,
-            'error' => (string)($r['error'] ?? 'Falha ao enviar teste PIX'),
-            'details' => $r
+            'error' => (string)($r['error'] ?? 'Falha ao enviar teste PIX')
         ], 400);
     }
 
     if ($action === 'resend_contract_media') {
+        if (function_exists('isPdfFeatureAvailable') && !isPdfFeatureAvailable()) {
+            jsonResponse(['ok' => false, 'error' => 'Recurso de PDF indisponível neste ambiente.'], 503);
+        }
         $reservationId = (int)($data['reservation_id'] ?? 0);
         if ($reservationId <= 0) {
             jsonResponse(['ok' => false, 'error' => 'reservation_id é obrigatório.'], 400);
@@ -786,6 +904,9 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
     $text = trim((string) ($data['text'] ?? ''));
 
     if ($action === 'folio_receipt') {
+        if (function_exists('isPdfFeatureAvailable') && !isPdfFeatureAvailable()) {
+            jsonResponse(['ok' => false, 'error' => 'Recurso de PDF indisponível neste ambiente.'], 503);
+        }
         $brand = evo_brand_name($pdo);
         $reservationId = (int) ($data['reservation_id'] ?? 0);
         $guestName = trim((string) ($data['guest_name'] ?? 'Hóspede'));
@@ -810,7 +931,7 @@ if (PHP_SAPI !== 'cli' && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? ''))
     }
 
     if ($text === '') jsonResponse(['ok' => false, 'error' => 'text é obrigatório'], 400);
-    $r = evo_send_text($pdo, $number, $text);
+    $r = evo_send_text_request($pdo, $number, $text, $dryRun);
     jsonResponse($r, $r['ok'] ? 200 : 400);
 }
 

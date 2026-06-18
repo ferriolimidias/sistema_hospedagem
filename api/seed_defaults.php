@@ -6,6 +6,10 @@
  */
 require_once __DIR__ . '/db.php';
 header('Content-Type: application/json; charset=utf-8');
+be_require_admin_auth($pdo);
+if (strtolower(trim(be_env_value('APP_DEBUG', 'false'))) !== 'true') {
+    jsonResponse(['error' => 'Carga de dados padrão desativada em produção.'], 403);
+}
 
 $defaultCustomization = [
     'heroTitle' => 'Bem-vindo ao Sistema Modelo',
@@ -25,7 +29,7 @@ $defaultCustomization = [
     'feat3Desc' => 'Vaga de estacionamento para seu veículo.',
     'feat4Title' => 'Ambiente confortável 🛏️',
     'feat4Desc' => 'Espaço aconchegante para relaxar e descansar.',
-    'feat5Title' => 'Pet friendly 🐾',
+    'feat5Title' => 'Aceita pets 🐾',
     'feat5Desc' => 'Seu amigo de quatro patas é muito bem-vindo aqui.',
     'testi1Name' => 'Hóspede Exemplo',
     'testi1Location' => 'Avaliação verificada',
@@ -81,7 +85,6 @@ try {
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode([
-        'error' => 'Erro ao inserir dados',
-        'details' => $e->getMessage()
+        'error' => 'Erro ao inserir dados padrão. Tente novamente em instantes.'
     ]);
 }

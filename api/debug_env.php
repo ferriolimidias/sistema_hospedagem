@@ -2,6 +2,12 @@
 declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
+require_once __DIR__ . '/db.php';
+
+be_require_admin_auth($pdo);
+if (strtolower(trim(be_env_value('APP_DEBUG', 'false'))) !== 'true') {
+    jsonResponse(['error' => 'Diagnóstico desativado em produção.'], 403);
+}
 
 function mask_value($value): string
 {
@@ -36,8 +42,10 @@ $result = [
     'env_vars' => [
         'parse_success' => false,
         'error' => null,
-        'EVOLUTION_GLOBAL_URL' => '',
-        'EVOLUTION_GLOBAL_KEY' => '',
+        'EVOLUTION_BASE_URL' => '',
+        'EVOLUTION_API_KEY' => '',
+        'EVOLUTION_GLOBAL_URL_LEGACY' => '',
+        'EVOLUTION_GLOBAL_KEY_LEGACY' => '',
     ],
     'dns_test' => [
         'host' => null,
@@ -60,8 +68,10 @@ if ($result['env_file']['exists'] && $result['env_file']['is_readable']) {
     if (is_array($parsed)) {
         $envData = $parsed;
         $result['env_vars']['parse_success'] = true;
-        $result['env_vars']['EVOLUTION_GLOBAL_URL'] = mask_value((string)($parsed['EVOLUTION_GLOBAL_URL'] ?? ''));
-        $result['env_vars']['EVOLUTION_GLOBAL_KEY'] = mask_value((string)($parsed['EVOLUTION_GLOBAL_KEY'] ?? ''));
+        $result['env_vars']['EVOLUTION_BASE_URL'] = mask_value((string)($parsed['EVOLUTION_BASE_URL'] ?? ''));
+        $result['env_vars']['EVOLUTION_API_KEY'] = mask_value((string)($parsed['EVOLUTION_API_KEY'] ?? ''));
+        $result['env_vars']['EVOLUTION_GLOBAL_URL_LEGACY'] = mask_value((string)($parsed['EVOLUTION_GLOBAL_URL'] ?? ''));
+        $result['env_vars']['EVOLUTION_GLOBAL_KEY_LEGACY'] = mask_value((string)($parsed['EVOLUTION_GLOBAL_KEY'] ?? ''));
     } else {
         $result['env_vars']['error'] = 'Falha ao interpretar .env com parse_ini_file';
     }
@@ -69,7 +79,7 @@ if ($result['env_file']['exists'] && $result['env_file']['is_readable']) {
     $result['env_vars']['error'] = '.env inexistente ou sem permissão de leitura';
 }
 
-$url = is_array($envData) ? (string)($envData['EVOLUTION_GLOBAL_URL'] ?? '') : '';
+$url = is_array($envData) ? (string)($envData['EVOLUTION_BASE_URL'] ?? ($envData['EVO_BASE_URL'] ?? '')) : '';
 $host = (string) (parse_url($url, PHP_URL_HOST) ?? '');
 $result['dns_test']['host'] = $host !== '' ? $host : null;
 if ($host !== '') {
@@ -112,4 +122,3 @@ if ($result['outbound_test']['curl_available']) {
 }
 
 echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-

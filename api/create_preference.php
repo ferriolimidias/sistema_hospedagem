@@ -222,19 +222,20 @@ try {
     curl_close($ch);
 
     if ($response === false) {
-        jsonResponse(['error' => 'Erro ao comunicar com Mercado Pago', 'details' => $curlError], 502);
+        error_log('create_preference: erro cURL Mercado Pago: ' . $curlError);
+        jsonResponse(['error' => 'Não foi possível iniciar o pagamento no momento. Tente novamente em instantes.'], 502);
     }
 
     $mpResponse = json_decode($response, true);
     if (!is_array($mpResponse)) {
-        jsonResponse(['error' => 'Resposta inválida do Mercado Pago', 'raw' => $response], 502);
+        error_log('create_preference: resposta inválida Mercado Pago: ' . substr((string) $response, 0, 500));
+        jsonResponse(['error' => 'O provedor de pagamento retornou uma resposta inválida. Tente novamente em instantes.'], 502);
     }
 
     if ($httpCode < 200 || $httpCode >= 300 || empty($mpResponse['init_point'])) {
+        error_log('create_preference: falha Mercado Pago HTTP ' . $httpCode . ' body=' . substr(json_encode($mpResponse, JSON_UNESCAPED_UNICODE), 0, 500));
         jsonResponse([
-            'error' => 'Falha ao criar preferência no Mercado Pago',
-            'status' => $httpCode,
-            'mercado_pago' => $mpResponse
+            'error' => 'Não foi possível gerar o checkout de pagamento. Verifique os dados da reserva ou tente novamente.'
         ], 502);
     }
 
@@ -258,6 +259,7 @@ try {
         'idempotent' => false
     ]);
 } catch (Exception $e) {
-    jsonResponse(['error' => 'Erro interno ao criar preferência', 'details' => $e->getMessage()], 500);
+    error_log('create_preference: erro interno: ' . $e->getMessage());
+    jsonResponse(['error' => 'Erro ao preparar pagamento. Tente novamente em instantes.'], 500);
 }
 ?>

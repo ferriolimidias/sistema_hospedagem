@@ -15,7 +15,7 @@ $installErrorDetail = '';
 $installChecklist = [
     'db_connection' => ['label' => 'Conexão com o Banco de Dados', 'ok' => false, 'detail' => ''],
     'base_tables' => ['label' => 'Criação das Tabelas Base', 'ok' => false, 'detail' => ''],
-    'guest_folio' => ['label' => 'Módulo de Consumo (Guest Folio)', 'ok' => false, 'detail' => ''],
+    'guest_folio' => ['label' => 'Módulo de Consumo (Conta da Hospedagem)', 'ok' => false, 'detail' => ''],
     'fnrh' => ['label' => 'Módulo Gov.br (FNRH)', 'ok' => false, 'detail' => ''],
     'evolution' => ['label' => 'Chaves Evolution API', 'ok' => false, 'detail' => ''],
 ];
@@ -30,8 +30,10 @@ $formData = [
     'admin_pass' => $_POST['admin_pass'] ?? '',
 ];
 
-if (file_exists($configPath) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('Location: /index.php');
+if (file_exists($configPath)) {
+    http_response_code(403);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Instalador bloqueado</title></head><body><h1>Instalador bloqueado</h1><p>O sistema já está instalado. Por segurança, remova ou renomeie este arquivo no ambiente de produção.</p></body></html>';
     exit;
 }
 

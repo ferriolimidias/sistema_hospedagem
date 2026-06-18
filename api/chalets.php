@@ -1,9 +1,10 @@
 <?php
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
 require_once 'db.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
+if (in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+    be_require_admin_auth($pdo);
+}
 
 function chaletImagePathUsable($path): bool
 {
@@ -300,7 +301,7 @@ switch ($method) {
                 $pdo->rollBack();
             }
             error_log('Chalets API save error: ' . $e->getMessage());
-            jsonResponse(['error' => 'Falha ao salvar chalé', 'details' => $e->getMessage()], 500);
+            jsonResponse(['error' => 'Falha ao salvar chalé. Tente novamente em instantes.'], 500);
         }
         break;
 
@@ -335,7 +336,7 @@ switch ($method) {
                 $pdo->rollBack();
             }
             error_log('Chalets API delete error: ' . $e->getMessage());
-            jsonResponse(['error' => 'Falha ao excluir chalé', 'details' => $e->getMessage()], 500);
+            jsonResponse(['error' => 'Falha ao excluir chalé. Tente novamente em instantes.'], 500);
         }
         break;
 

@@ -1,6 +1,13 @@
 <?php
 declare(strict_types=1);
 
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === __FILE__) {
+    http_response_code(404);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['error' => 'Recurso indisponível para acesso direto.']);
+    exit;
+}
+
 /**
  * Raiz do projeto (pasta que contém /api e /images).
  */
@@ -139,7 +146,7 @@ function runInitialDataSeed(PDO $pdo): void
             'Vaga de estacionamento para seu veículo.',
             'Ambiente confortável 🛏️',
             'Espaço aconchegante para relaxar e descansar.',
-            'Pet friendly 🐾',
+            'Aceita pets 🐾',
             'Seu amigo de quatro patas é muito bem-vindo aqui.',
             'Hóspede Exemplo',
             'Avaliação verificada',
@@ -835,7 +842,9 @@ function runInitialSchema(PDO $pdo): void
         $st->execute([$__defaultPreCheckin]);
     } catch (PDOException $e) { /* existe */ }
 
-    // Comunicação e Integrações (Evolution API nativa)
+    // Comunicação e Integrações (Evolution API normal; chaves legadas preservadas)
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evolution_provider', 'evolution_api') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_url', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* existe */ }
     try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_instance', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* existe */ }
     try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_apikey', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* existe */ }
     try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_reserva', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* existe */ }
@@ -844,4 +853,3 @@ function runInitialSchema(PDO $pdo): void
 
     runInitialDataSeed($pdo);
 }
-

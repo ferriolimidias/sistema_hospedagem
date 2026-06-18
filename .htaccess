@@ -6,3 +6,10 @@ RewriteRule ^index\.html$ index.php [L,R=301]
 
 # Diretório padrão (apenas index.php - evita servir index.html com conteúdo antigo)
 DirectoryIndex index.php
+
+# Bloqueio de arquivos e diretórios sensíveis em produção.
+<FilesMatch "^(\.env.*|composer\.(json|lock)|package(-lock)?\.json|.*\.(sql|sqlite|log|zip))$">
+    Require all denied
+</FilesMatch>
+
+RedirectMatch 403 ^/(config|backups|vendor|node_modules|storage/private|uploads/private)(/|$)

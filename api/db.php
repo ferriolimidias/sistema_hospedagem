@@ -15,15 +15,82 @@ if ($isProd) {
     ini_set('display_errors', '1');
 }
 
-// CORS com credenciais e origem dinâmica
-$origin = $_SERVER['HTTP_ORIGIN'] ?? $_SERVER['HTTP_HOST'] ?? '*';
-header("Access-Control-Allow-Origin: $origin");
+function be_env_value(string $key, string $default = ''): string
+{
+    static $envFile = null;
+
+    $value = getenv($key);
+    if (is_string($value) && $value !== '') {
+        return $value;
+    }
+    if (isset($_SERVER[$key]) && is_string($_SERVER[$key]) && $_SERVER[$key] !== '') {
+        return $_SERVER[$key];
+    }
+
+    if ($envFile === null) {
+        $envFile = [];
+        $envPath = __DIR__ . '/../.env';
+        if (is_file($envPath) && is_readable($envPath)) {
+            $parsed = @parse_ini_file($envPath, false, INI_SCANNER_TYPED);
+            if (is_array($parsed)) {
+                $envFile = $parsed;
+            }
+        }
+    }
+
+    $fileValue = $envFile[$key] ?? null;
+    return is_scalar($fileValue) && (string) $fileValue !== '' ? (string) $fileValue : $default;
+}
+
+function be_request_origin(): string
+{
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    $scheme = $https ? 'https' : 'http';
+    $host = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    return $scheme . '://' . $host;
+}
+
+function be_allowed_origins(): array
+{
+    $origins = [be_request_origin()];
+    foreach (['APP_URL', 'SITE_URL', 'PUBLIC_BASE_URL'] as $key) {
+        $value = trim(be_env_value($key));
+        if ($value !== '') {
+            $origins[] = rtrim($value, '/');
+        }
+    }
+    $configured = be_env_value('ALLOWED_ORIGINS');
+    foreach (explode(',', $configured) as $origin) {
+        $origin = rtrim(trim($origin), '/');
+        if ($origin !== '') {
+            $origins[] = $origin;
+        }
+    }
+    return array_values(array_unique($origins));
+}
+
+function be_is_allowed_origin(string $origin): bool
+{
+    $origin = rtrim(trim($origin), '/');
+    return $origin !== '' && in_array($origin, be_allowed_origins(), true);
+}
+
+// CORS com credenciais apenas para origens permitidas.
+$requestOrigin = isset($_SERVER['HTTP_ORIGIN']) ? rtrim((string) $_SERVER['HTTP_ORIGIN'], '/') : '';
+$corsOrigin = $requestOrigin !== '' && be_is_allowed_origin($requestOrigin) ? $requestOrigin : be_request_origin();
+header("Access-Control-Allow-Origin: $corsOrigin");
 header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Internal-Key');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Internal-Key, X-CSRF-Token');
+header('Vary: Origin');
 
 // Tratamento de preflight request
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+    if ($requestOrigin !== '' && !be_is_allowed_origin($requestOrigin)) {
+        http_response_code(403);
+        exit;
+    }
     http_response_code(200);
     exit;
 }
@@ -191,7 +258,7 @@ function jsonResponse($data, int $statusCode = 200): void
 }
 
 /**
- * Configuração global da Evolution (modelo SaaS gerenciado).
+ * Configuracao global da Evolution API.
  *
  * @return array{enabled:bool,url:string,key:string,env_found:bool}
  */
@@ -212,8 +279,8 @@ function be_evolution_global_config(): array
             $env = $parsed;
         }
     }
-    $url = trim((string) ($env['EVOLUTION_GLOBAL_URL'] ?? ''));
-    $key = trim((string) ($env['EVOLUTION_GLOBAL_KEY'] ?? ''));
+    $url = trim((string) ($env['EVOLUTION_BASE_URL'] ?? ($env['EVO_BASE_URL'] ?? ($env['EVOLUTION_API_URL'] ?? ''))));
+    $key = trim((string) ($env['EVOLUTION_API_KEY'] ?? ($env['EVO_API_KEY'] ?? ($env['EVOLUTION_GLOBAL_KEY'] ?? ''))));
     $enabled = ($url !== '' && $key !== '');
     $cache = [
         'enabled' => $enabled,
@@ -270,6 +337,40 @@ function be_get_admin_from_cookie(PDO $pdo): ?array
     return $row ?: null;
 }
 
+function be_validate_admin_request_origin(): void
+{
+    $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    if (!in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+        return;
+    }
+
+    $origin = isset($_SERVER['HTTP_ORIGIN']) ? rtrim((string) $_SERVER['HTTP_ORIGIN'], '/') : '';
+    if ($origin !== '') {
+        if (!be_is_allowed_origin($origin)) {
+            jsonResponse(['error' => 'Origem da requisição não autorizada.'], 403);
+        }
+        return;
+    }
+
+    $referer = (string) ($_SERVER['HTTP_REFERER'] ?? '');
+    if ($referer === '') {
+        jsonResponse(['error' => 'Não foi possível validar a origem da requisição.'], 403);
+    }
+    $refererScheme = parse_url($referer, PHP_URL_SCHEME);
+    $refererHost = parse_url($referer, PHP_URL_HOST);
+    if (!is_string($refererScheme) || !is_string($refererHost) || $refererScheme === '' || $refererHost === '') {
+        jsonResponse(['error' => 'Origem da requisição inválida.'], 403);
+    }
+    $refererOrigin = $refererScheme . '://' . $refererHost;
+    $port = parse_url($referer, PHP_URL_PORT);
+    if ($port !== null) {
+        $refererOrigin .= ':' . $port;
+    }
+    if (!be_is_allowed_origin($refererOrigin)) {
+        jsonResponse(['error' => 'Origem da requisição não autorizada.'], 403);
+    }
+}
+
 function be_require_admin_auth(PDO $pdo): array
 {
     // Ignorar CORS preflight.
@@ -277,6 +378,7 @@ function be_require_admin_auth(PDO $pdo): array
         http_response_code(200);
         exit;
     }
+    be_validate_admin_request_origin();
     $admin = be_get_admin_from_cookie($pdo);
     if (!$admin) {
         jsonResponse(['error' => 'Sessão administrativa inválida'], 401);
@@ -518,14 +620,15 @@ try {
     $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('pre_checkin_message', ?) ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute([$defaultPreCheckinMsg]);
 } catch (PDOException $e) { /* chave já existe */ }
 
-// Comunicação e Integrações (Evolution API nativa)
+// Comunicação e Integrações (Evolution API normal; chaves legadas preservadas).
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evolution_provider', 'evolution_api') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
+try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_url', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_instance', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_apikey', '') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_reserva', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_checkin', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
 try { $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('evo_notify_checkout', '1') ON DUPLICATE KEY UPDATE setting_value = setting_value")->execute(); } catch (PDOException $e) { /* chave já existe */ }
-// Limpeza automática de legado: URL da Evolution não é mais persistida no banco.
-try { $pdo->prepare("DELETE FROM settings WHERE setting_key = 'evo_url'")->execute(); } catch (PDOException $e) { /* ignora em ambientes sem tabela/settings */ }
+// Não removemos `evo_url` legado automaticamente: ambientes antigos podem precisar de auditoria/migração manual.
 
 // Coluna payment_method identifica se a reserva veio do MP (automática) ou manual (PIX/WhatsApp).
 try {

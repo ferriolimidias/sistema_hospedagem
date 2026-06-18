@@ -71,6 +71,7 @@ try {
         'blocked_intervals' => $blockedIntervals
     ]);
 } catch (Exception $e) {
-    jsonResponse(['error' => 'Falha ao consultar disponibilidade', 'details' => $e->getMessage()], 500);
+    error_log('[availability] falha ao consultar disponibilidade: ' . $e->getMessage());
+    jsonResponse(['error' => 'Falha ao consultar disponibilidade. Tente novamente em instantes.'], 500);
 }
 ?>

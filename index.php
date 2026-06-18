@@ -180,9 +180,9 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
             <?php if (!empty($c['logoPrincipalImg']) || !empty($c['logoAlternativaImg'])): ?>
             <?php $logoDark = !empty($c['logoAlternativaImg']) ? $c['logoAlternativaImg'] : $c['logoPrincipalImg']; ?>
             <?php $logoLight = !empty($c['logoPrincipalImg']) ? $c['logoPrincipalImg'] : $c['logoAlternativaImg']; ?>
-            <a href="#" class="logo"><img src="<?= $h($logoDark) ?>" alt="<?= $h($siteTitle) ?>" style="max-height: 45px; object-fit: contain; margin-right: 10px;" data-light="<?= $h($logoDark) ?>" data-dark="<?= $h($logoLight) ?>"></a>
+            <a href="#" class="logo"><img class="site-logo-img" src="<?= $h($logoDark) ?>" alt="<?= $h($siteTitle) ?>" data-light="<?= $h($logoDark) ?>" data-dark="<?= $h($logoLight) ?>"></a>
             <?php elseif ($companyLogo): ?>
-            <a href="#" class="logo"><img src="<?= $h($companyLogoLight ?: $companyLogo) ?>" alt="<?= $h($siteTitle) ?>" style="height: 40px;" data-light="<?= $h($companyLogoLight ?: $companyLogo) ?>" data-dark="<?= $h($companyLogo) ?>"></a>
+            <a href="#" class="logo"><img class="site-logo-img" src="<?= $h($companyLogoLight ?: $companyLogo) ?>" alt="<?= $h($siteTitle) ?>" data-light="<?= $h($companyLogoLight ?: $companyLogo) ?>" data-dark="<?= $h($companyLogo) ?>"></a>
             <?php else: ?>
             <a href="#" class="logo"><i class="ph ph-mountains"></i><span><?= $h($siteTitle) ?></span></a>
             <?php endif; ?>
@@ -192,7 +192,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 <a href="#chalets">Acomodações</a>
                 <a href="#amenities">Comodidades</a>
                 <?php if (!empty($faqsList)): ?><a href="#faq">FAQ</a><?php endif; ?>
-                <a href="#booking" class="btn btn-primary">Reservar Agora</a>
+                <a href="#booking" class="btn btn-primary">Reservar agora</a>
             </nav>
 
             <button class="menu-toggle" aria-label="Abrir menu"><i class="ph ph-list"></i></button>
@@ -254,7 +254,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
         <div class="container">
             <div class="section-header text-center">
                 <span class="subtitle">Diferenciais</span>
-                <h2 class="section-title">Comodidades Premium</h2>
+                <h2 class="section-title">Comodidades Especiais</h2>
             </div>
             <div class="amenities-grid">
                 <div class="amenity-item">
@@ -357,7 +357,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
             <div class="section-header text-center">
                 <span class="subtitle">Dúvidas Comuns</span>
                 <h2 class="section-title">Perguntas Frequentes</h2>
-                <p class="faq-intro">Reunimos aqui as respostas para as dúvidas mais comuns dos nossos hóspedes. Não encontrou o que procurava? Fale connosco pelo WhatsApp.</p>
+                <p class="faq-intro">Reunimos aqui as respostas para as dúvidas mais comuns dos nossos hóspedes. Não encontrou o que procurava? Fale conosco pelo WhatsApp.</p>
             </div>
             <div class="faq-accordion" itemscope itemtype="https://schema.org/FAQPage">
                 <?php foreach ($faqsList as $idx => $faq): ?>
@@ -454,7 +454,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
         <div class="modal-content glass-card premium-shadow">
             <button class="close-modal" id="closeModal"><i class="ph ph-x"></i></button>
             <div class="modal-header">
-                <h3>Finalizar Reserva</h3>
+                <h3>Finalizar reserva</h3>
                 <p id="modalChaletName"></p>
             </div>
             <div class="modal-body">
@@ -508,7 +508,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 <form id="finalBookingForm">
                     <div class="form-group"><label>Nome Completo</label><input type="text" id="bookingName" placeholder="Seu nome" required></div>
                     <div class="form-group"><label>E-mail</label><input type="email" id="bookingEmail" placeholder="seu@email.com" required></div>
-                    <div class="form-group"><label>WhatsApp</label><input type="tel" id="bookingPhone" placeholder="11999999999" required></div>
+                    <div class="form-group"><label>WhatsApp</label><input type="tel" id="bookingPhone" placeholder="(11) 99999-9999" required></div>
                     <div class="form-group payment-methods" id="paymentMethodsGroup" style="display:none;">
                         <label>Forma de Pagamento</label>
                         <div class="payment-methods-list" id="paymentMethodsList"></div>
@@ -517,7 +517,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                         <label>Condição de Pagamento</label>
                         <div class="payment-options-list" id="paymentOptionsList"></div>
                     </div>
-                    <button type="submit" class="btn btn-primary btn-block" id="confirmBookingBtn" disabled>Confirmar Reserva e Pagar</button>
+                    <button type="submit" class="btn btn-primary btn-block" id="confirmBookingBtn" disabled>Confirmar reserva e pagar</button>
                     <small id="confirmBookingHint" style="display:block; text-align:center; margin-top:0.5rem; color:#888;">*A reserva só será confirmada após o pagamento.</small>
                 </form>
             </div>
@@ -556,7 +556,7 @@ $faviconHref = !empty($c['favicon']) ? $c['favicon'] : "data:image/svg+xml,<svg 
                 </div>
                 <div id="chaletDetailsFullDescription" style="line-height: 1.8; color: var(--text-light); margin-bottom: 2rem; white-space: pre-wrap;"></div>
                 <div style="text-align: center; border-top: 1px solid rgba(0,0,0,0.05); padding-top: 2rem;">
-                    <button class="btn btn-primary" id="bookThisChaletBtn" style="padding: 1rem 3rem; font-size: 1.1rem;">Verificar Disponibilidade & Reservar</button>
+                    <button class="btn btn-primary" id="bookThisChaletBtn" style="padding: 1rem 3rem; font-size: 1.1rem;">Verificar disponibilidade e reservar</button>
                 </div>
             </div>
         </div>

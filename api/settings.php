@@ -5,11 +5,28 @@ require_once 'db.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $isAdminAuthenticated = be_get_admin_from_cookie($pdo) !== null;
+$sensitiveSettingKeys = [
+    'internalApiKey',
+    'mercadoPagoSettings',
+    'evolutionSettings',
+    'evo_url',
+    'evo_apikey',
+    'evo_instance',
+    'evolution_go_base_url',
+    'evolution_go_api_key',
+    'evolution_go_apikey',
+    'evolution_go_instance',
+    'fnrh_api_key',
+];
 
 switch ($method) {
     case 'GET':
         // Busca todas as configurações (ou uma específica se chave informada)
         if (isset($_GET['key'])) {
+            $requestedKey = (string) $_GET['key'];
+            if (!$isAdminAuthenticated && in_array($requestedKey, $sensitiveSettingKeys, true)) {
+                jsonResponse([$requestedKey => null]);
+            }
             if ($_GET['key'] === 'evolutionSettings') {
                 jsonResponse([$_GET['key'] => null]);
             }
@@ -29,6 +46,11 @@ switch ($method) {
             $stmt = $pdo->query("SELECT setting_key, setting_value FROM settings");
             $settings = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
             unset($settings['evolutionSettings']);
+            if (!$isAdminAuthenticated) {
+                foreach ($sensitiveSettingKeys as $sensitiveKey) {
+                    unset($settings[$sensitiveKey]);
+                }
+            }
 
             // Decodar os que parecem JSON - sempre retornar objeto para o frontend
             $parsedSettings = [];
@@ -113,9 +135,8 @@ switch ($method) {
         break;
 
     case 'POST':
-        if (!$isAdminAuthenticated) {
-            jsonResponse(['error' => 'Sessão administrativa inválida'], 401);
-        }
+        be_require_admin_auth($pdo);
+        $isAdminAuthenticated = true;
         $uploadDir = __DIR__ . '/../images/uploads/';
         if (isset($_FILES['logo']) && $_FILES['logo']['error'] === UPLOAD_ERR_OK) {
             $r = validateAndSaveImageUpload($_FILES['logo'], 'logo', $uploadDir);
@@ -201,7 +222,7 @@ switch ($method) {
                     $data = $decoded;
                 } elseif ($isJsonRequest) {
                     error_log('[settings.php] JSON inválido: ' . json_last_error_msg());
-                    jsonResponse(['error' => 'JSON inválido no corpo da requisição.', 'details' => json_last_error_msg()], 400);
+                    jsonResponse(['error' => 'JSON inválido no corpo da requisição.'], 400);
                 }
             }
         }
@@ -245,7 +266,7 @@ switch ($method) {
         catch (Exception $e) {
             $pdo->rollBack();
             error_log('[settings.php] Erro ao salvar: ' . $e->getMessage());
-            jsonResponse(['error' => 'Erro ao salvar configurações', 'details' => $e->getMessage()], 500);
+            jsonResponse(['error' => 'Erro ao salvar configurações. Tente novamente em instantes.'], 500);
         }
         break;
 

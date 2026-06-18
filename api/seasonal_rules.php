@@ -141,7 +141,8 @@ if ($method === 'GET') {
         unset($row);
         jsonResponse($rows);
     } catch (Throwable $e) {
-        jsonResponse(['error' => 'Falha ao carregar regras sazonais.', 'details' => $e->getMessage()], 500);
+        error_log('[seasonal_rules] falha ao carregar regras: ' . $e->getMessage());
+        jsonResponse(['error' => 'Falha ao carregar regras sazonais.'], 500);
     }
 }
 

@@ -174,12 +174,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         const financeiroNav = document.querySelector('.nav-item[data-view="financeiro"]');
         const couponsNav = document.querySelector('.nav-item[data-view="coupons"]');
         const seasonalNav = document.querySelector('.nav-item[data-view="seasonalRules"]');
+        const whatsappCampaignsNav = document.querySelector('.nav-item[data-view="whatsappCampaigns"]');
         if (settingsNav) settingsNav.style.display = 'none';
         if (customizationNav) customizationNav.style.display = 'none';
         if (usersNav) usersNav.style.display = 'none';
         if (financeiroNav) financeiroNav.style.display = 'none';
         if (couponsNav) couponsNav.style.display = 'none';
         if (seasonalNav) seasonalNav.style.display = 'none';
+        if (whatsappCampaignsNav) whatsappCampaignsNav.style.display = 'none';
     }
 
     /* =========================================
@@ -219,6 +221,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     let reservationsData = [];
     let internalApiKey = '';
     let evolutionGlobalManaged = false;
+    let evolutionStatusTimer = null;
+    let evolutionStatusAttempts = 0;
+    let systemCapabilities = {
+        pdf_available: false,
+        pdf_message: 'Recurso de PDF indisponível neste ambiente.',
+        evolution_configured: false,
+        whatsapp_configured: false,
+        csv_available: true
+    };
 
     /* ------------------------------------------------------------------
      * CHAVE INTERNA (X-Internal-Key) — NÃO duplicar fora deste bloco.
@@ -665,16 +676,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 throw new Error('Chave interna indisponível para a requisição.');
             }
             const requestKey = getStoredInternalApiKey();
-            const [resChalets, resReservations, resBookingOptions] = await Promise.all([
+            const [resChalets, resReservations, resBookingOptions, resCapabilities] = await Promise.all([
                 fetch('../api/chalets.php').then(res => res.json()),
                 fetch('../api/reservations.php', {
                     headers: { 'X-Internal-Key': requestKey }
                 }).then(res => res.json()),
-                fetch('../api/booking_options.php').then(res => res.json()).catch(() => ({}))
+                fetch('../api/booking_options.php').then(res => res.json()).catch(() => ({})),
+                fetch('../api/system_capabilities.php').then(res => res.json()).catch(() => ({}))
             ]);
             chaletsData = Array.isArray(resChalets) ? resChalets : [];
             reservationsData = Array.isArray(resReservations) ? resReservations : [];
             paymentPolicies = normalizePaymentPolicies(resBookingOptions.payment_policies);
+            if (resCapabilities && typeof resCapabilities === 'object') {
+                systemCapabilities = { ...systemCapabilities, ...resCapabilities };
+            }
             window.reservationsDataGlobal = reservationsData; // Expose to global
         } catch (e) {
             console.error("Erro ao buscar dados da API:", e);
@@ -1095,7 +1110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             return `
             <div class="page-header">
-                <h1 class="page-title">Dashboard</h1>
+                <h1 class="page-title">Painel</h1>
                 <button class="btn" id="btn-dashboard-report"><i class="ph ph-download-simple"></i> Relatório</button>
             </div>
 
@@ -1301,10 +1316,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     <td class="reservation-actions-cell">
                                         <div class="reservation-actions-wrap">
                                         <button type="button" class="btn-icon btn-icon-labeled" title="Editar" data-action="edit-reservation" data-index="${index}"><i class="ph ph-pencil-simple"></i><span>Editar</span></button>
-                                        ${r.contract_filename
+                                        ${systemCapabilities.pdf_available ? (r.contract_filename
                                             ? `<button type="button" class="btn-icon btn-icon-labeled" title="Ver Contrato PDF" data-action="pdf-reservation" data-index="${index}"><i class="ph ph-file-pdf"></i><span>Contrato</span></button>
                                                <button type="button" class="btn-icon btn-icon-labeled" title="Enviar Contrato no WhatsApp" data-action="send-contract-whatsapp" data-index="${index}" style="color:#16a34a"><i class="ph ph-whatsapp-logo"></i><span>WhatsApp</span></button>`
-                                            : `<button type="button" class="btn-icon btn-icon-labeled" title="Gerar Contrato Manualmente" data-action="generate-contract" data-index="${index}" style="color:var(--primary-color, #2563eb)"><i class="ph ph-file-plus"></i><span>Gerar</span></button>`
+                                            : `<button type="button" class="btn-icon btn-icon-labeled" title="Gerar Contrato Manualmente" data-action="generate-contract" data-index="${index}" style="color:var(--primary-color, #2563eb)"><i class="ph ph-file-plus"></i><span>Gerar</span></button>`)
+                                            : `<button type="button" class="btn-icon btn-icon-labeled" title="${systemCapabilities.pdf_message || 'PDF indisponível'}" disabled style="opacity:.5;cursor:not-allowed"><i class="ph ph-file-pdf"></i><span>PDF off</span></button>`
                                         }
                                         ${__balancePending
                                             ? `<button type="button" class="btn-icon btn-icon-labeled" title="Receber Saldo" data-action="pay-balance" data-index="${index}" style="color:#198754"><i class="ph ph-currency-circle-dollar"></i><span>Saldo</span></button>`
@@ -1327,7 +1343,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                             ? `<br><span class="badge danger" style="font-size:0.72rem; padding:0.2rem 0.45rem; margin-top:0.3rem; display:inline-block; background:#dc3545; color:#fff; border-radius:0.25rem; font-weight:600;">Falta Pagar: ${__fmtBR(__pendingAmount)}</span>${__isCheckinDue ? `<br><span style="display:inline-block; margin-top:0.3rem; padding:0.2rem 0.45rem; background:#f59e0b; color:#fff; border-radius:0.25rem; font-size:0.7rem; font-weight:700; letter-spacing:0.02em;"><i class="ph ph-warning-circle"></i> Cobrar Saldo!</span>` : ''}`
                                             : ''}
                                         ${Number(r.balance_paid || 0) === 1
-                                            ? `<br><span class="badge success" style="font-size:0.7rem; padding:0.15rem 0.3rem; margin-top:0.25rem; display:inline-block">Total Pago</span>${r.balance_paid_at ? `<br><small style="color:#198754; font-size:0.68rem; display:block; margin-top:0.2rem;">${formatBalancePaidAtDisplay(r.balance_paid_at)}</small>` : ''}`
+                                            ? `<br><span class="badge success" style="font-size:0.7rem; padding:0.15rem 0.3rem; margin-top:0.25rem; display:inline-block">Total pago</span>${r.balance_paid_at ? `<br><small style="color:#198754; font-size:0.68rem; display:block; margin-top:0.2rem;">${formatBalancePaidAtDisplay(r.balance_paid_at)}</small>` : ''}`
                                             : ''}
                                     </td>
                                     <td>
@@ -1450,6 +1466,106 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <button type="button" class="btn btn-primary" id="finExAdd">Adicionar</button>
                 </div>
                 <div class="table-container"><table class="data-table"><thead><tr><th>Nome</th><th>Preço</th><th>Ativo</th><th></th></tr></thead><tbody id="finExtrasBody"></tbody></table></div>
+            </div>
+        `,
+        whatsappCampaigns: `
+            <div class="page-header">
+                <h1 class="page-title">Campanhas WhatsApp</h1>
+                <button type="button" class="btn btn-outline" id="wcRefreshBtn"><i class="ph ph-arrows-clockwise"></i> Atualizar</button>
+            </div>
+
+            <div class="grid-cards" style="grid-template-columns:minmax(320px,1.1fr) minmax(320px,.9fr);align-items:start;">
+                <div class="card">
+                    <h3 style="margin-bottom:1rem;">Nova campanha</h3>
+                    <form id="wcCampaignForm" onsubmit="return false;">
+                        <div class="form-group">
+                            <label>Título interno</label>
+                            <input type="text" id="wcTitle" class="form-control" maxlength="160" placeholder="Ex.: Promoção baixa temporada">
+                        </div>
+                        <div class="form-group">
+                            <label>Público</label>
+                            <select id="wcAudience" class="form-control">
+                                <option value="all">Todos os hóspedes com telefone</option>
+                                <option value="confirmed">Reservas confirmadas/pagas</option>
+                                <option value="completed">Hóspedes que já finalizaram estadia</option>
+                                <option value="last_6_months">Reservas dos últimos 6 meses</option>
+                                <option value="last_12_months">Reservas dos últimos 12 meses</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Mensagem</label>
+                            <textarea id="wcMessage" class="form-control" rows="8" placeholder="Olá {primeiro_nome}, temos uma condição especial na {pousada}."></textarea>
+                            <small style="color:var(--text-muted);">Campos disponíveis: {nome}, {primeiro_nome}, {pousada}, {telefone}. A seleção usa somente hóspedes já cadastrados.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Imagem opcional</label>
+                            <input type="file" id="wcImage" class="form-control" accept="image/jpeg,image/png,image/webp">
+                            <small id="wcImageStatus" style="color:var(--text-muted);display:block;margin-top:.35rem;"></small>
+                        </div>
+                        <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+                            <button type="button" class="btn btn-outline" id="wcPreviewBtn"><i class="ph ph-eye"></i> Prévia</button>
+                            <button type="button" class="btn btn-outline" id="wcDryRunBtn"><i class="ph ph-flask"></i> Dry-run</button>
+                            <button type="button" class="btn btn-primary" id="wcStartBtn"><i class="ph ph-paper-plane-tilt"></i> Iniciar campanha</button>
+                        </div>
+                    </form>
+                    <div id="wcPreviewBox" style="margin-top:1rem;"></div>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin-bottom:1rem;">Progresso</h3>
+                    <div id="wcCampaignsList"></div>
+                </div>
+
+                <div class="card" style="grid-column:1 / -1;">
+                    <details open>
+                        <summary style="cursor:pointer;font-weight:700;margin-bottom:1rem;">Configurações de Automação</summary>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem;align-items:end;">
+                            <div class="form-group" style="margin:0;">
+                                <label>Worker URL para cron-job.org</label>
+                                <input type="text" id="wcWorkerUrl" class="form-control" readonly>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Chave do worker</label>
+                                <input type="text" id="wcWorkerKeyMasked" class="form-control" readonly>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>API key cron-job.org (opcional)</label>
+                                <input type="password" id="wcCronApiKey" class="form-control" placeholder="Cole para salvar ou deixe vazio">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Job ID</label>
+                                <input type="text" id="wcCronJobId" class="form-control" readonly>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Delay mínimo (s)</label>
+                                <input type="number" id="wcMinDelay" class="form-control" min="5" max="3600">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Delay máximo (s)</label>
+                                <input type="number" id="wcMaxDelay" class="form-control" min="5" max="7200">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>Enviar por chamada</label>
+                                <input type="number" id="wcMaxPerRun" class="form-control" min="1" max="10">
+                            </div>
+                            <label style="display:flex;gap:.5rem;align-items:center;margin:0 0 .35rem;">
+                                <input type="checkbox" id="wcAppendOptOut"> Incluir texto de opt-out
+                            </label>
+                        </div>
+                        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem;">
+                            <button type="button" class="btn btn-outline" id="wcCopyWorkerBtn"><i class="ph ph-copy"></i> Copiar URL</button>
+                            <button type="button" class="btn btn-outline" id="wcGenerateKeyBtn"><i class="ph ph-key"></i> Gerar nova chave</button>
+                            <button type="button" class="btn btn-primary" id="wcSaveSettingsBtn"><i class="ph ph-floppy-disk"></i> Salvar automação</button>
+                            <button type="button" class="btn btn-outline" id="wcCronSyncBtn"><i class="ph ph-cloud-arrow-up"></i> Criar/atualizar cron-job.org</button>
+                            <button type="button" class="btn btn-outline" id="wcCronDisableBtn"><i class="ph ph-pause-circle"></i> Desativar job</button>
+                        </div>
+                        <div id="wcCronStatus" style="margin-top:.75rem;color:var(--text-muted);font-size:.9rem;"></div>
+                        <div style="margin-top:1rem;padding:1rem;background:#f8fafc;border:1px solid var(--border-color);border-radius:8px;">
+                            <strong>Configuração manual no cron-job.org</strong>
+                            <p style="margin:.35rem 0 0;color:var(--text-muted);font-size:.9rem;">Crie um job HTTP GET para a Worker URL acima, com execução a cada 1 minuto. O worker processa a fila em banco, respeita agendamento por destinatário e não usa loop longo nem sleep.</p>
+                        </div>
+                    </details>
+                </div>
             </div>
         `,
         settings: `
@@ -1621,30 +1737,61 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="card" style="grid-column: 1 / -1; margin-top: 1.5rem;">
                     <h3 style="margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
                         <i class="ph ph-whatsapp-logo" style="color: #25D366; margin-right: 0.5rem; vertical-align: bottom;"></i>
-                        Comunicação e Integrações
+                        WhatsApp / Evolution API
                     </h3>
-                    <p style="margin-bottom: 1.5rem; color: #666; font-size: 0.9rem;">Configure a integração nativa da Evolution API e escolha em quais eventos o PMS deve disparar mensagens automáticas.</p>
+                    <p style="margin-bottom: 1.5rem; color: #666; font-size: 0.9rem;">Conecte o WhatsApp da hospedagem e escolha em quais eventos o PMS deve disparar mensagens automáticas.</p>
                     <form id="evolutionForm">
                         <div id="evoLegacyConfigWrap" style="display:none;"></div>
-                        <div id="evoManagedPanel" style="display:none; margin-top:0.85rem; border:1px solid var(--border-color); border-radius:10px; padding:0.85rem;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.65rem;">
+                        <details id="evoConfigPanel" style="margin-top:0.85rem; border:1px solid var(--border-color); border-radius:8px; padding:0.85rem;">
+                            <summary style="cursor:pointer; font-weight:700;">Configurações da Evolution API</summary>
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:.75rem; margin-bottom:.85rem;">
+                                <div class="form-group" style="margin:0;">
+                                    <label>URL da Evolution API</label>
+                                    <input type="url" class="form-control" id="evoGoBaseUrl" placeholder="https://sua-evolution-api.example.com">
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label>API Key</label>
+                                    <input type="password" class="form-control" id="evoGoApiKey" placeholder="Preencha para salvar ou alterar">
+                                    <small id="evoGoApiKeyHint" style="display:block; margin-top:0.3rem; color:#777;"></small>
+                                </div>
+                            </div>
+                            <div style="display:flex; justify-content:flex-end;">
+                                <button type="button" class="btn btn-primary" id="btn-evo-save-config"><i class="ph ph-floppy-disk"></i> Salvar Configuração</button>
+                            </div>
+                            <details style="margin-top:.75rem;">
+                                <summary style="cursor:pointer; color:#4b5563;">Avançado</summary>
+                                <div class="form-group" style="margin:.75rem 0 0;">
+                                    <label>Instância atual</label>
+                                    <input type="text" class="form-control" id="evoGoInstance" placeholder="Gerenciada automaticamente pelo sistema" readonly>
+                                    <small id="evoGoInstanceHint" style="display:block; margin-top:0.3rem; color:#777;">Nenhuma instância criada.</small>
+                                </div>
+                            </details>
+                        </details>
+                        <div id="evoManagedPanel" style="display:block; margin-top:0.85rem; border:1px solid var(--border-color); border-radius:8px; padding:0.85rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:.75rem;">
                                 <div>
-                                    <strong>Conexão WhatsApp Gerenciada</strong>
-                                    <div id="evoConnectionStatus" style="margin-top:.3rem; color:#374151;">🔴 Desconectado</div>
+                                    <strong>Conexão WhatsApp / Evolution API</strong>
+                                    <div id="evoConnectionStatus" style="margin-top:.3rem; color:#374151;">Desconectado</div>
+                                    <div id="evoQrStatusText" style="font-size:.88rem; color:#4b5563; margin-top:.35rem;">Clique em Conectar WhatsApp para gerar o QR Code.</div>
                                 </div>
                                 <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
                                     <button type="button" class="btn" id="btn-evo-connect-qr" style="background:#0ea5e9;">📱 Conectar WhatsApp</button>
-                                    <button type="button" class="btn" id="btn-evo-check-status">🔄 Verificar Conexão</button>
-                                    <button type="button" class="btn" id="btn-evo-test-contract-media" style="background:#7c3aed;">Testar Envio de Contrato</button>
-                                    <button type="button" class="btn" id="btn-evo-test-receipt-media" style="background:#0f766e;">Testar Envio de Recibo</button>
-                                    <button type="button" class="btn" id="btn-evo-disconnect" style="background:#dc2626;">Desconectar</button>
+                                    <button type="button" class="btn" id="btn-evo-disconnect" style="background:#dc2626;">Resetar</button>
                                 </div>
+                            </div>
+                            <div id="evoQrCodeBox" style="margin-top:.75rem; min-height:160px; display:flex; align-items:center; justify-content:center; border:1px dashed #d1d5db; border-radius:8px; padding:.75rem;">
+                                <span style="color:#6b7280; font-size:.9rem;">QR Code aparecerá aqui ao conectar.</span>
                             </div>
                         </div>
                         <div class="form-group" style="margin-top: 0.75rem;">
                             <label>WhatsApp do Dono (alerta ativo)</label>
                             <input type="text" class="form-control" id="ownerWhatsapp" placeholder="Ex.: 5591999999999">
                             <small style="display:block; margin-top:0.35rem; color:#777;">Recebe alertas automáticos de nova reserva e eventos financeiros.</small>
+                        </div>
+                        <div class="form-group" style="margin-top: 0.75rem;">
+                            <label>Mensagem de reserva para o hóspede</label>
+                            <textarea class="form-control" id="evoReservationMsg" rows="4" placeholder="Olá {nome}! Sua reserva em {pousada} foi recebida. Check-in: {checkin}. Check-out: {checkout}."></textarea>
+                            <small style="display:block; margin-top:0.35rem; color:#777;">Variáveis aceitas: {nome}, {pousada}, {chale}, {checkin}, {checkout}, {total}, {id}.</small>
                         </div>
 
                         <div style="margin-top: 1rem; display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem;">
@@ -1664,21 +1811,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         <div style="margin-top: 1.5rem; text-align: right; display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
                             <button type="button" id="btn-test-evo" class="btn btn-outline-info btn-sm mt-2">
-                                <i class="bi bi-send"></i> Enviar Teste de Notificação
+                                <i class="bi bi-send"></i> Validar Mensagem
                             </button>
                             <button type="button" class="btn btn-primary" id="saveEvolutionBtn">
                                 <i class="ph ph-floppy-disk"></i> Salvar Comunicação e Integrações
                             </button>
-                        </div>
-                        <div id="evoQrModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:999999; align-items:center; justify-content:center; padding:1rem;">
-                            <div style="background:#fff; border-radius:12px; max-width:460px; width:100%; padding:1rem;">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem;">
-                                    <h4 style="margin:0;">Conectar WhatsApp</h4>
-                                    <button type="button" id="btn-evo-qr-close" class="btn-icon"><i class="ph ph-x"></i></button>
-                                </div>
-                                <div id="evoQrStatusText" style="font-size:.88rem; color:#4b5563; margin-bottom:.75rem;">Gerando QR Code...</div>
-                                <div id="evoQrCodeBox" style="min-height:180px; display:flex; align-items:center; justify-content:center; border:1px dashed #d1d5db; border-radius:8px; padding:.75rem;"></div>
-                            </div>
                         </div>
                     </form>
                 </div>
@@ -1761,7 +1898,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </div>
                         <div style="margin-top:0.6rem; text-align:right;">
                             <button type="button" class="btn" id="testPixMessageBtn" style="background:#0f766e;">
-                                <i class="ph ph-paper-plane-tilt"></i> Testar Mensagem PIX
+                                <i class="ph ph-paper-plane-tilt"></i> Validar Mensagem PIX
                             </button>
                         </div>
                     </div>
@@ -2062,10 +2199,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </div>
                         </div>
                         <div style="background: var(--bg-light); padding: 1rem; border-radius: 8px;">
-                            <h4>Item 5 – Pet friendly</h4>
+                            <h4>Item 5 - Aceita pets</h4>
                             <div class="form-group" style="margin-top: 0.5rem;">
                                 <label>Título</label>
-                                <input type="text" class="form-control" id="customFeat5Title" placeholder="Pet friendly 🐾">
+                                <input type="text" class="form-control" id="customFeat5Title" placeholder="Aceita pets 🐾">
                             </div>
                             <div class="form-group">
                                 <label>Descrição</label>
@@ -2947,7 +3084,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
         } else if (isSecretaryRole(adminRole)) {
-            const restrictedViews = ['settings', 'customization', 'users', 'financeiro', 'coupons', 'extras', 'seasonalRules'];
+            const restrictedViews = ['settings', 'customization', 'users', 'financeiro', 'coupons', 'extras', 'seasonalRules', 'whatsappCampaigns'];
             if (restrictedViews.includes(viewName)) {
                 document.getElementById('app').innerHTML = `<div class="card"><h2 style="color:var(--danger)">Acesso Negado</h2><p>Você não tem permissão para acessar esta página.</p></div>`;
                 return;
@@ -2999,20 +3136,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                     const saveEvolutionBtn = document.getElementById('saveEvolutionBtn');
                     if (saveEvolutionBtn) saveEvolutionBtn.addEventListener('click', saveEvolutionSettings);
+                    const evoSaveConfigBtnEl = document.getElementById('btn-evo-save-config');
+                    if (evoSaveConfigBtnEl) evoSaveConfigBtnEl.addEventListener('click', saveEvolutionGoConfig);
                     const testEvolutionBtnEl = document.getElementById('btn-test-evo');
                     if (testEvolutionBtnEl) testEvolutionBtnEl.addEventListener('click', testEvolutionConnection);
                     const evoConnectBtnEl = document.getElementById('btn-evo-connect-qr');
-                    if (evoConnectBtnEl) evoConnectBtnEl.addEventListener('click', openEvolutionQrModal);
-                    const evoStatusBtnEl = document.getElementById('btn-evo-check-status');
-                    if (evoStatusBtnEl) evoStatusBtnEl.addEventListener('click', refreshEvolutionConnectionStatus);
+                    if (evoConnectBtnEl) evoConnectBtnEl.addEventListener('click', connectWhatsAppEvolution);
                     const evoDisconnectBtnEl = document.getElementById('btn-evo-disconnect');
-                    if (evoDisconnectBtnEl) evoDisconnectBtnEl.addEventListener('click', disconnectEvolutionInstance);
-                    const evoTestContractMediaBtnEl = document.getElementById('btn-evo-test-contract-media');
-                    if (evoTestContractMediaBtnEl) evoTestContractMediaBtnEl.addEventListener('click', () => testEvolutionMedia('contract'));
-                    const evoTestReceiptMediaBtnEl = document.getElementById('btn-evo-test-receipt-media');
-                    if (evoTestReceiptMediaBtnEl) evoTestReceiptMediaBtnEl.addEventListener('click', () => testEvolutionMedia('receipt'));
-                    const evoQrCloseBtnEl = document.getElementById('btn-evo-qr-close');
-                    if (evoQrCloseBtnEl) evoQrCloseBtnEl.addEventListener('click', closeEvolutionQrModal);
+                    if (evoDisconnectBtnEl) evoDisconnectBtnEl.addEventListener('click', resetWhatsAppEvolution);
                     const savePaymentMethodsBtnEl = document.getElementById('savePaymentMethodsBtn');
                     if (savePaymentMethodsBtnEl) savePaymentMethodsBtnEl.addEventListener('click', savePaymentMethodsSettings);
                     const testPixMessageBtnEl = document.getElementById('testPixMessageBtn');
@@ -3076,7 +3207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     btn.addEventListener('click', async () => {
                         const id = btn.getAttribute('data-id');
                         if (!id) return;
-                        if (!confirm('Cancelar esta reserva expirada e libertar o calendário? Esta ação não pode ser desfeita.')) return;
+                        if (!confirm('Cancelar esta reserva expirada e liberar o calendário? Esta ação não pode ser desfeita.')) return;
                         btn.disabled = true;
                         btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> A cancelar...';
                         try {
@@ -3107,6 +3238,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (viewName === 'coupons') {
                 void initCouponsView();
+            }
+            if (viewName === 'whatsappCampaigns') {
+                void initWhatsappCampaignsView();
             }
             if (viewName === 'extras') {
                 void initExtrasView();
@@ -3927,42 +4061,83 @@ document.addEventListener('DOMContentLoaded', async () => {
         evolutionGlobalManaged = !!isManaged;
         const legacyWrap = document.getElementById('evoLegacyConfigWrap');
         const managedPanel = document.getElementById('evoManagedPanel');
-        if (managedPanel) managedPanel.style.display = evolutionGlobalManaged ? 'block' : 'none';
+        if (managedPanel) managedPanel.style.display = 'block';
         if (legacyWrap) legacyWrap.style.display = 'none';
         const saveBtn = document.getElementById('saveEvolutionBtn');
         if (saveBtn) {
-            saveBtn.innerHTML = evolutionGlobalManaged
-                ? '<i class="ph ph-floppy-disk"></i> Salvar Integração (Alertas)'
-                : '<i class="ph ph-floppy-disk"></i> Salvar Comunicação e Integrações';
+            saveBtn.innerHTML = '<i class="ph ph-floppy-disk"></i> Salvar Comunicação e Integrações';
         }
     }
 
-    function renderEvolutionConnectionStatus(status) {
+    function renderEvolutionStatus(status, message = '') {
         const statusEl = document.getElementById('evoConnectionStatus');
         if (!statusEl) return;
         const normalized = String(status || '').trim().toLowerCase();
         if (normalized === 'open' || normalized === 'connected') {
-            statusEl.textContent = '🟢 Conectado';
+            statusEl.textContent = 'Conectado';
             statusEl.style.color = '#047857';
+            if (message) {
+                const statusText = document.getElementById('evoQrStatusText');
+                if (statusText) statusText.textContent = message;
+            }
             return;
         }
         if (normalized === 'connecting') {
-            statusEl.textContent = '🟡 Conectando...';
+            statusEl.textContent = 'Conectando';
             statusEl.style.color = '#b45309';
+            if (message) {
+                const statusText = document.getElementById('evoQrStatusText');
+                if (statusText) statusText.textContent = message;
+            }
             return;
         }
-        statusEl.textContent = '🔴 Desconectado';
+        if (normalized === 'qr' || normalized === 'qrcode' || normalized === 'awaiting_qr') {
+            statusEl.textContent = 'Aguardando QR Code';
+            statusEl.style.color = '#0f766e';
+            if (message) {
+                const statusText = document.getElementById('evoQrStatusText');
+                if (statusText) statusText.textContent = message;
+            }
+            return;
+        }
+        if (normalized === 'error') {
+            statusEl.textContent = 'Erro na conexão';
+            statusEl.style.color = '#b91c1c';
+            if (message) {
+                const statusText = document.getElementById('evoQrStatusText');
+                if (statusText) statusText.textContent = message;
+            }
+            return;
+        }
+        statusEl.textContent = 'Desconectado';
         statusEl.style.color = '#b91c1c';
+        if (message) {
+            const statusText = document.getElementById('evoQrStatusText');
+            if (statusText) statusText.textContent = message;
+        }
     }
 
-    async function callEvolutionInstanceApi(action) {
+    function renderEvolutionConnectionStatus(status) {
+        renderEvolutionStatus(status);
+    }
+
+    function renderEvolutionInstanceHint(instance) {
+        const hintEl = document.getElementById('evoGoInstanceHint');
+        if (!hintEl) return;
+        const value = String(instance || '').trim();
+        hintEl.textContent = value
+            ? `Instância salva no banco/settings: ${value}`
+            : 'Nenhuma instância criada. Clique em Conectar WhatsApp para gerar QR Code.';
+    }
+
+    async function callEvolutionInstanceApi(action, payload = {}) {
         const req = await fetch('../api/evolution_instance.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-Internal-Key': window.internalKey || internalApiKey
             },
-            body: JSON.stringify({ action })
+            body: JSON.stringify({ action, ...payload })
         });
         const data = await req.json().catch(() => ({}));
         if (!req.ok || !data.ok) {
@@ -3972,67 +4147,171 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function closeEvolutionQrModal() {
-        const modal = document.getElementById('evoQrModal');
-        if (modal) modal.style.display = 'none';
-    }
-
-    async function openEvolutionQrModal() {
-        const modal = document.getElementById('evoQrModal');
         const statusText = document.getElementById('evoQrStatusText');
         const qrBox = document.getElementById('evoQrCodeBox');
-        if (!modal || !statusText || !qrBox) return;
-        if (!modal.dataset.boundClose) {
-            modal.addEventListener('click', (ev) => {
-                if (ev.target === modal) closeEvolutionQrModal();
-            });
-            modal.dataset.boundClose = '1';
-        }
-        modal.style.display = 'flex';
-        statusText.textContent = 'Gerando QR Code...';
-        qrBox.innerHTML = '<span style="color:#6b7280; font-size:.9rem;">Aguarde...</span>';
+        if (statusText) statusText.textContent = 'QR Code limpo. Clique em Conectar WhatsApp para gerar novamente.';
+        if (qrBox) qrBox.innerHTML = '<span style="color:#6b7280; font-size:.9rem;">QR Code aparecerá aqui ao conectar.</span>';
+    }
+
+    async function loadEvolutionConfig() {
         try {
-            const data = await callEvolutionInstanceApi('get_qr');
-            renderEvolutionConnectionStatus(data.status || 'connecting');
-            const qr = String(data.qr_base64 || '').trim();
-            if (!qr) {
-                statusText.textContent = 'QR não retornado. Tente novamente em alguns segundos.';
-                qrBox.innerHTML = '<span style="color:#b91c1c; font-size:.9rem;">QR indisponível</span>';
-                return;
+            const data = await callEvolutionInstanceApi('get_config');
+            const baseUrlEl = document.getElementById('evoGoBaseUrl');
+            const instanceEl = document.getElementById('evoGoInstance');
+            const keyHintEl = document.getElementById('evoGoApiKeyHint');
+            if (baseUrlEl) baseUrlEl.value = data.base_url || '';
+            if (instanceEl) instanceEl.value = data.instance || '';
+            renderEvolutionInstanceHint(data.instance || '');
+            if (keyHintEl) {
+                keyHintEl.textContent = data.api_key_configured
+                    ? `Chave salva: ${data.api_key_masked || '********'}. Preencha o campo apenas para alterar.`
+                    : 'Nenhuma chave salva.';
             }
+        } catch (error) {
+            const keyHintEl = document.getElementById('evoGoApiKeyHint');
+            if (keyHintEl) keyHintEl.textContent = error.message || 'Não foi possível carregar a configuração Evolution API.';
+            renderEvolutionInstanceHint('');
+        }
+    }
+
+    async function saveEvolutionGoConfig() {
+        const baseUrl = (document.getElementById('evoGoBaseUrl')?.value || '').trim();
+        const apiKey = (document.getElementById('evoGoApiKey')?.value || '').trim();
+        const instance = (document.getElementById('evoGoInstance')?.value || '').trim();
+        try {
+            const data = await callEvolutionInstanceApi('save_config', {
+                base_url: baseUrl,
+                api_key: apiKey,
+                instance
+            });
+            const apiKeyEl = document.getElementById('evoGoApiKey');
+            if (apiKeyEl) apiKeyEl.value = '';
+            await loadEvolutionConfig();
+            renderEvolutionStatus(data.status || 'close', 'Configuração salva. Clique em Conectar WhatsApp para gerar o QR Code.');
+            showAdminInfoToast('Configuração Evolution API salva com segurança.');
+        } catch (error) {
+            showAdminInfoToast(error.message || 'Falha ao salvar configuração Evolution API.');
+        }
+    }
+
+    function renderEvolutionQrCode(data) {
+        const statusText = document.getElementById('evoQrStatusText');
+        const qrBox = document.getElementById('evoQrCodeBox');
+        if (!statusText || !qrBox) return false;
+        const qr = String(data?.qr_base64 || '').trim();
+        const qrCode = String(data?.qr_code || data?.pairingCode || '').trim();
+        if (!qr && !qrCode) {
+            statusText.textContent = 'QR ou código de pareamento não retornado. Clique em Resetar e tente novamente.';
+            qrBox.innerHTML = '<span style="color:#b91c1c; font-size:.9rem;">QR indisponível</span>';
+            return false;
+        }
+        if (qr) {
             const src = qr.startsWith('data:image') ? qr : `data:image/png;base64,${qr}`;
             qrBox.innerHTML = `<img src="${src}" alt="QR Code WhatsApp" style="max-width:100%; width:280px; height:auto; border-radius:8px;">`;
-            statusText.textContent = 'Escaneie o QR no WhatsApp da hospedagem. Depois clique em "Verificar Conexão".';
+        } else {
+            qrBox.innerHTML = `<div style="font-size:1.5rem; font-weight:700; letter-spacing:.08em; color:#111827;">${qrCode}</div>`;
+        }
+        statusText.textContent = 'Escaneie o QR Code no WhatsApp. A conexão será verificada automaticamente.';
+        return true;
+    }
+
+    async function connectWhatsAppEvolution() {
+        const statusText = document.getElementById('evoQrStatusText');
+        const qrBox = document.getElementById('evoQrCodeBox');
+        stopEvolutionStatusPolling();
+        renderEvolutionStatus('connecting', 'Gerando QR Code...');
+        if (qrBox) qrBox.innerHTML = '<span style="color:#6b7280; font-size:.9rem;">Aguarde...</span>';
+        try {
+            const data = await callEvolutionInstanceApi('connect');
+            if (document.getElementById('evoGoInstance')) document.getElementById('evoGoInstance').value = data.instance || '';
+            renderEvolutionInstanceHint(data.instance || '');
+            if (renderEvolutionQrCode(data)) {
+                renderEvolutionStatus('awaiting_qr', 'Escaneie o QR Code no WhatsApp. A conexão será verificada automaticamente.');
+                startEvolutionStatusPolling();
+                return;
+            }
+            renderEvolutionStatus('error', 'Não foi possível obter o QR Code. Clique em Resetar e tente novamente.');
         } catch (error) {
-            statusText.textContent = 'Falha ao gerar QR Code.';
-            qrBox.innerHTML = `<span style="color:#b91c1c; font-size:.9rem;">${error.message || 'Erro inesperado'}</span>`;
+            const msg = error.message || 'Falha ao conectar WhatsApp.';
+            if (/configura/i.test(msg)) {
+                renderEvolutionStatus('error', 'Configure a URL e a API Key da Evolution API antes de conectar.');
+            } else {
+                renderEvolutionStatus('error', msg + ' Clique em Resetar se a conexão continuar falhando.');
+            }
+            if (statusText) statusText.textContent = document.getElementById('evoQrStatusText')?.textContent || msg;
         }
     }
 
     async function refreshEvolutionConnectionStatus() {
-        if (!evolutionGlobalManaged) return;
         try {
-            const data = await callEvolutionInstanceApi('check_status');
-            renderEvolutionConnectionStatus(data.status || 'close');
+            const data = await callEvolutionInstanceApi('status');
+            renderEvolutionStatus(data.status || 'close');
+            return data;
         } catch (error) {
-            renderEvolutionConnectionStatus('close');
-            showAdminInfoToast('Não foi possível consultar o status da conexão Evolution.');
+            renderEvolutionStatus('error', 'Não foi possível consultar o status da conexão.');
+            throw error;
         }
     }
 
-    async function disconnectEvolutionInstance() {
-        if (!evolutionGlobalManaged) return;
-        if (!confirm('Deseja desconectar esta instância do WhatsApp?')) return;
+    function stopEvolutionStatusPolling() {
+        if (evolutionStatusTimer) {
+            clearInterval(evolutionStatusTimer);
+            evolutionStatusTimer = null;
+        }
+        evolutionStatusAttempts = 0;
+    }
+
+    function startEvolutionStatusPolling() {
+        stopEvolutionStatusPolling();
+        evolutionStatusTimer = setInterval(async () => {
+            evolutionStatusAttempts += 1;
+            try {
+                const data = await callEvolutionInstanceApi('status');
+                const status = String(data.status || '').toLowerCase();
+                if (status === 'open' || status === 'connected') {
+                    stopEvolutionStatusPolling();
+                    renderEvolutionStatus('connected', 'WhatsApp conectado com sucesso.');
+                    return;
+                }
+                if (evolutionStatusAttempts >= 24) {
+                    stopEvolutionStatusPolling();
+                    renderEvolutionStatus('error', 'Ainda não foi possível confirmar a conexão. Escaneie o QR Code novamente ou clique em Resetar.');
+                }
+            } catch (error) {
+                if (evolutionStatusAttempts >= 3) {
+                    stopEvolutionStatusPolling();
+                    renderEvolutionStatus('error', 'Erro ao verificar a conexão. Clique em Resetar se necessário.');
+                }
+            }
+        }, 5000);
+    }
+
+    async function resetWhatsAppEvolution() {
+        if (!confirm('Isso vai reiniciar a conexão do WhatsApp e gerar um novo QR Code. Deseja continuar?')) return;
+        stopEvolutionStatusPolling();
+        renderEvolutionStatus('connecting', 'Resetando conexão e gerando novo QR Code...');
+        const qrBox = document.getElementById('evoQrCodeBox');
+        if (qrBox) qrBox.innerHTML = '<span style="color:#6b7280; font-size:.9rem;">Aguarde...</span>';
         try {
-            await callEvolutionInstanceApi('disconnect');
-            renderEvolutionConnectionStatus('close');
-            closeEvolutionQrModal();
-            showAdminInfoToast('Instância desconectada com sucesso.');
+            const data = await callEvolutionInstanceApi('reset');
+            if (document.getElementById('evoGoInstance')) document.getElementById('evoGoInstance').value = data.instance || '';
+            renderEvolutionInstanceHint(data.instance || '');
+            if (renderEvolutionQrCode(data)) {
+                renderEvolutionStatus('awaiting_qr', 'Escaneie o novo QR Code no WhatsApp. A conexão será verificada automaticamente.');
+                startEvolutionStatusPolling();
+                return;
+            }
+            await connectWhatsAppEvolution();
         } catch (error) {
-            showAdminInfoToast('Falha ao desconectar a instância Evolution.');
+            renderEvolutionStatus('error', (error.message || 'Falha ao resetar conexão.') + ' Tente conectar novamente.');
         }
     }
 
     async function testEvolutionMedia(kind = 'contract') {
+        if (!systemCapabilities.pdf_available) {
+            showAdminInfoToast(systemCapabilities.pdf_message || 'Recurso de PDF indisponível neste ambiente.');
+            return;
+        }
         let testPhone = prompt("Digite o número do WhatsApp com DDI e DDD (ex: 5511999999999) para receber o teste:");
         testPhone = String(testPhone || '').replace(/\D/g, '');
         if (!testPhone) return;
@@ -4044,11 +4323,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     'Content-Type': 'application/json',
                     'X-Internal-Key': window.internalKey || internalApiKey
                 },
-                body: JSON.stringify({ action, phone: testPhone })
+                body: JSON.stringify({ action, phone: testPhone, dry_run: true })
             });
             const data = await req.json().catch(() => ({}));
             if (data && data.ok) {
-                alert('✅ Sucesso! A mensagem de teste foi enviada.');
+                alert('Dry-run gerado com sucesso. Nenhuma mensagem real foi enviada.');
                 return;
             } else {
                 alert('Erro: ' + (data.error || 'Falha desconhecida.'));
@@ -4063,6 +4342,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function saveEvolutionSettings() {
         const settings = {
             owner_whatsapp: (document.getElementById('ownerWhatsapp')?.value || '').trim(),
+            evolution_reservation_message: (document.getElementById('evoReservationMsg')?.value || '').trim(),
             evo_notify_reserva: document.getElementById('evoNotifyReserva')?.checked ? '1' : '0',
             evo_notify_checkin: document.getElementById('evoNotifyCheckin')?.checked ? '1' : '0',
             evo_notify_checkout: document.getElementById('evoNotifyCheckout')?.checked ? '1' : '0'
@@ -4081,13 +4361,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         let testPhone = prompt("Digite o número do WhatsApp com DDI e DDD (ex: 5511999999999) para receber o teste:");
         testPhone = String(testPhone || '').replace(/\D/g, '');
         if (!testPhone) return;
-        if (!confirm('Deseja enviar um teste de notificação da Evolution API agora?')) {
-            return;
-        }
-
         const originalHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="margin-right:6px;"></span> Testando...';
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="margin-right:6px;"></span> Validando...';
 
         try {
             const response = await fetch('../api/evolution_service.php', {
@@ -4098,12 +4374,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 },
                 body: JSON.stringify({
                     action: 'test_notification',
-                    phone: testPhone
+                    phone: testPhone,
+                    dry_run: true
                 })
             });
             const result = await response.json().catch(() => ({}));
             if (result && result.ok) {
-                alert('✅ Sucesso! A mensagem de teste foi enviada.');
+                alert('Dry-run gerado com sucesso. Nenhuma mensagem real foi enviada.');
                 return;
             } else {
                 alert('Erro: ' + (result.error || 'Falha desconhecida.'));
@@ -4182,7 +4459,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 📅 Check-in: {checkin}
 📅 Check-out: {checkout}
 💰 Total: R$ {total}
-Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e realize o pagamento! 👇`;
+🔑 Chave PIX:
+{chave_pix}
+
+Após o pagamento, envie o comprovante por aqui.`;
     }
 
     function initPixTemplateHelpers() {
@@ -4219,7 +4499,8 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             manual_pix_key: (document.getElementById('manualPixKey')?.value || '').trim(),
             pix_key: (document.getElementById('manualPixKey')?.value || '').trim(),
             pix_receiver_name: (document.getElementById('pixReceiverName')?.value || '').trim(),
-            pix_key_type: (document.getElementById('pixKeyType')?.value || 'random').trim()
+            pix_key_type: (document.getElementById('pixKeyType')?.value || 'random').trim(),
+            dry_run: true
         };
         try {
             const req = await fetch('../api/evolution_service.php', {
@@ -4232,7 +4513,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             });
             const data = await req.json().catch(() => ({}));
             if (data && data.ok) {
-                alert('✅ Sucesso! A mensagem PIX de teste foi enviada.');
+                alert('Dry-run PIX gerado com sucesso. Nenhuma mensagem real foi enviada.');
                 return;
             }
             alert('Erro: ' + (data.error || 'Falha desconhecida.'));
@@ -4423,7 +4704,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 const delRes = await fetch(`../api/stay_discounts.php?id=${id}`, { method: 'DELETE', headers: { 'X-Internal-Key': window.internalKey || internalApiKey || '' } });
                 const delData = await delRes.json().catch(() => ({}));
                 if (!delRes.ok) {
-                    showInlineToast((delData.error || 'Não foi possível remover o desconto.') + (delData.details ? ' ' + String(delData.details) : ''), 'error');
+                    showInlineToast(delData.error || 'Não foi possível remover o desconto.', 'error');
                     return;
                 }
                 await loadStayDiscounts();
@@ -4471,8 +4752,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            const detail = data.details ? ` ${String(data.details)}` : '';
-            showInlineToast((data.error || 'Não foi possível salvar o desconto.') + detail, 'error');
+            showInlineToast(data.error || 'Não foi possível salvar o desconto.', 'error');
             return;
         }
         if (minEl) minEl.value = '';
@@ -4689,12 +4969,11 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             try {
                 body = JSON.parse(rawText);
             } catch (_) {
-                body = { error: rawText.length > 400 ? rawText.slice(0, 400) + '…' : rawText };
+                body = { error: 'Resposta inválida do servidor.' };
             }
         }
         const apiError = typeof body.error === 'string' ? body.error : '';
-        const detailPart = body.details ? String(body.details) : '';
-        const combined = apiError && detailPart ? `${apiError}: ${detailPart}` : (apiError || detailPart).trim();
+        const combined = apiError;
         if (!res.ok) {
             const fallback = body.message && typeof body.message === 'string' ? body.message : '';
             throw new Error(combined || fallback || `Falha ao salvar configurações (HTTP ${res.status}).`);
@@ -4852,9 +5131,11 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                 return s === '1' || s === 'true' || s === 'on' || s === 'yes';
             };
             if (document.getElementById('ownerWhatsapp')) document.getElementById('ownerWhatsapp').value = data.owner_whatsapp || '';
+            if (document.getElementById('evoReservationMsg')) document.getElementById('evoReservationMsg').value = data.evolution_reservation_message || '';
             try {
                 renderEvolutionManagedUi(!!data.evolution_global_managed);
-                if (data.evolution_global_managed && document.getElementById('evoManagedPanel')) {
+                if (document.getElementById('evoManagedPanel')) {
+                    await loadEvolutionConfig();
                     renderEvolutionConnectionStatus('close');
                     try {
                         await refreshEvolutionConnectionStatus();
@@ -4979,8 +5260,8 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             const brandEl = document.getElementById('adminBrandName');
             if (brandEl) brandEl.textContent = brandName;
             const titleEl = document.getElementById('adminPageTitle');
-            if (titleEl) titleEl.textContent = 'Admin · ' + brandName;
-            try { document.title = 'Admin · ' + brandName; } catch (_) { /* noop */ }
+            if (titleEl) titleEl.textContent = 'Painel · ' + brandName;
+            try { document.title = 'Painel · ' + brandName; } catch (_) { /* noop */ }
 
             // Popula Customization
             const customView = document.getElementById('customHeroTitle');
@@ -5239,7 +5520,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                     if (xhr.status >= 200 && xhr.status < 300) {
                         resolve(response);
                     } else {
-                        reject(new Error(response.error || response.details || xhr.statusText || 'Erro desconhecido'));
+                        reject(new Error(response.error || xhr.statusText || 'Erro desconhecido'));
                     }
                 };
 
@@ -5700,7 +5981,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             if (payload.guest_address.length < 8) { showAlert('err', 'Informe o endereço completo do hóspede.'); return; }
 
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> A processar…';
+            submitBtn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Processando...';
 
             try {
                 // 1) Se houver saldo pendente, regista o recebimento.
@@ -6049,7 +6330,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
         showInlineToast('Período bloqueado com sucesso.', 'success');
     }
 
-    // Reservation Handling (Guest Folio centralizado com abas)
+    // Gerenciamento de reservas (Conta da hospedagem centralizada com abas)
     window.openEditReservationModal = function (index) {
         const isEditing = index !== null;
         const res = isEditing ? reservationsData[index] : {
@@ -6071,7 +6352,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             `<option value="${c.id}" ${res.chalet_id == c.id ? 'selected' : ''}>${c.name}</option>`
         ).join('');
 
-        const formTitle = isEditing ? `Guest Folio #${String(res.id).padStart(3, '0')}` : 'Criar Nova Reserva';
+        const formTitle = isEditing ? `Conta da hospedagem #${String(res.id).padStart(3, '0')}` : 'Criar nova reserva';
         const jsParamId = isEditing ? res.id : 'null';
         const canUseLifecycleTabs = isEditing && !!res.id;
 
@@ -6422,7 +6703,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             const folioTemplate = `
                 <div class="doc {{VIA_CLASS}}">
                     <div class="head">
-                        <div><div class="brand">${safeBrand}</div><h1>Folio de Hospedagem / Extrato de Conta</h1></div>
+                        <div><div class="brand">${safeBrand}</div><h1>Conta da hospedagem / Extrato</h1></div>
                         <div style="text-align:right;">
                             <div class="via-badge">{{VIA_LABEL}}</div>
                             <div class="rec">${receiptNo}</div>
@@ -6460,7 +6741,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             const viaHospede = folioTemplate.replace('{{VIA_LABEL}}', 'Via do Hóspede').replace('{{VIA_CLASS}}', 'via-guest');
             const viaEstabelecimento = folioTemplate.replace('{{VIA_LABEL}}', 'Via do Estabelecimento').replace('{{VIA_CLASS}}', 'via-establishment');
 
-            const html = `<!doctype html><html><head><meta charset="utf-8"><title>Folio ${receiptNo}</title>
+            const html = `<!doctype html><html><head><meta charset="utf-8"><title>Conta ${receiptNo}</title>
                 <style>
                     @page { size: A4; margin: 10mm; }
                     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -6578,11 +6859,11 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
                     <button type="button" id="folioPrintStatementBtn" class="btn btn-outline" style="justify-content:center;">
                         <i class="ph ph-printer"></i> Imprimir Extrato
                     </button>
-                    <button type="button" id="folioSendStatementBtn" class="btn btn-outline" style="justify-content:center; color:#16a34a; border-color:#86efac;">
+                    <button type="button" id="folioSendStatementBtn" class="btn btn-outline" style="justify-content:center; color:#16a34a; border-color:#86efac;" ${systemCapabilities.pdf_available ? '' : 'disabled title="Recurso de PDF indisponível neste ambiente."'}>
                         <i class="ph ph-whatsapp-logo"></i> Enviar Extrato por WhatsApp
                     </button>
                 </div>
-                <button type="button" id="folioResendContractBtn" class="btn btn-outline" style="width:100%; justify-content:center; margin-bottom:.5rem; color:#2563eb; border-color:#93c5fd;">
+                <button type="button" id="folioResendContractBtn" class="btn btn-outline" style="width:100%; justify-content:center; margin-bottom:.5rem; color:#2563eb; border-color:#93c5fd;" ${systemCapabilities.pdf_available ? '' : 'disabled title="Recurso de PDF indisponível neste ambiente."'}>
                     <i class="ph ph-file-pdf"></i> Reenviar Contrato via WhatsApp
                 </button>
                 <div id="folioLastContractSentInfo" style="margin:0 0 .6rem 0; font-size:.82rem; color:#6b7280;">
@@ -6612,6 +6893,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             }
             if (sendBtn) {
                 sendBtn.addEventListener('click', async () => {
+                    if (!systemCapabilities.pdf_available) return alert(systemCapabilities.pdf_message || 'Recurso de PDF indisponível neste ambiente.');
                     const phoneRaw = String(res.guest_phone || '').trim();
                     const phone = phoneRaw.replace(/\D/g, '');
                     if (!phone) return alert('Telefone do hóspede não informado.');
@@ -6647,6 +6929,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             }
             if (resendContractBtn) {
                 resendContractBtn.addEventListener('click', async () => {
+                    if (!systemCapabilities.pdf_available) return alert(systemCapabilities.pdf_message || 'Recurso de PDF indisponível neste ambiente.');
                     const ok = await ensureInternalApiKey();
                     if (!ok) return alert('Não foi possível validar sessão interna.');
                     const previousHtml = resendContractBtn.innerHTML;
@@ -6871,6 +7154,10 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
     }
 
     window.openReservationContract = async function (index) {
+        if (!systemCapabilities.pdf_available) {
+            alert(systemCapabilities.pdf_message || 'Recurso de PDF indisponível neste ambiente.');
+            return;
+        }
         const res = reservationsData[index];
         if (!res || !res.id || !res.contract_filename) {
             alert('Contrato ainda não foi gerado para esta reserva.');
@@ -6901,6 +7188,10 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
     }
 
     window.generateReservationContractManual = async function (index) {
+        if (!systemCapabilities.pdf_available) {
+            alert(systemCapabilities.pdf_message || 'Recurso de PDF indisponível neste ambiente.');
+            return;
+        }
         const res = reservationsData[index];
         if (!res || !res.id) {
             alert('Reserva inválida para geração de contrato.');
@@ -6933,6 +7224,10 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
     }
 
     window.sendContractWhatsApp = async function (index, sourceBtn = null) {
+        if (!systemCapabilities.pdf_available) {
+            alert(systemCapabilities.pdf_message || 'Recurso de PDF indisponível neste ambiente.');
+            return;
+        }
         const res = reservationsData[index];
         if (!res || !res.id) {
             alert('Reserva inválida para envio de contrato.');
@@ -7115,8 +7410,8 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             } else {
                 const text = await res.text();
                 let err = {};
-                try { err = JSON.parse(text); } catch { err = { error: 'Resposta inválida', details: text ? text.substring(0, 300) : res.statusText }; }
-                const msg = err.details ? `${err.error}\n\nDetalhe: ${err.details}` : (err.error || 'Erro desconhecido');
+                try { err = JSON.parse(text); } catch { err = { error: 'Resposta inválida do servidor.' }; }
+                const msg = err.error || 'Erro desconhecido';
                 alert('Erro ao salvar chalé: ' + msg);
             }
         } catch (err) {
@@ -7148,16 +7443,227 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
     };
 
     /* =========================================
+       CAMPANHAS WHATSAPP
+       ========================================= */
+    const wcState = { imagePath: '' };
+
+    function wcEsc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function wcApi(action, payload = {}, options = {}) {
+        const fetchOptions = {
+            method: options.method || 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+        };
+        if (options.formData) {
+            fetchOptions.body = options.formData;
+        } else {
+            fetchOptions.headers = { 'Content-Type': 'application/json' };
+            fetchOptions.body = JSON.stringify({ action, ...payload });
+        }
+        const res = await fetch(`../api/whatsapp_campaigns.php?action=${encodeURIComponent(action)}&_t=${Date.now()}`, fetchOptions);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error) {
+            throw new Error(data.error || data.message || `HTTP ${res.status}`);
+        }
+        return data;
+    }
+
+    function wcStatusBadge(status) {
+        const labels = { draft: 'Rascunho', sending: 'Enviando', paused: 'Pausada', cancelled: 'Cancelada', completed: 'Concluída' };
+        return `<span class="badge">${labels[status] || status || '-'}</span>`;
+    }
+
+    async function wcLoadSettings() {
+        const data = await wcApi('settings_get');
+        const s = data.settings || {};
+        const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = value || ''; };
+        setVal('wcWorkerUrl', data.worker_url || '');
+        setVal('wcWorkerKeyMasked', s.worker_key_masked || '');
+        setVal('wcCronJobId', s.cron_job_id || '');
+        setVal('wcMinDelay', s.min_delay_seconds || '20');
+        setVal('wcMaxDelay', s.max_delay_seconds || '30');
+        setVal('wcMaxPerRun', s.max_per_worker_run || '1');
+        const opt = document.getElementById('wcAppendOptOut');
+        if (opt) opt.checked = String(s.append_opt_out_text || '1') === '1';
+        const status = document.getElementById('wcCronStatus');
+        if (status) {
+            status.innerHTML = `Última execução: ${wcEsc(s.cron_last_run_at || '-')} · Último status: ${wcEsc(s.cron_last_status || '-')} · Último erro: ${wcEsc(s.cron_last_error || '-')}`;
+        }
+    }
+
+    async function wcLoadCampaigns() {
+        const box = document.getElementById('wcCampaignsList');
+        if (!box) return;
+        box.innerHTML = '<div style="color:var(--text-muted);">Carregando campanhas...</div>';
+        try {
+            const data = await wcApi('list');
+            const campaigns = data.campaigns || [];
+            if (!campaigns.length) {
+                box.innerHTML = '<div style="color:var(--text-muted);">Nenhuma campanha criada.</div>';
+                return;
+            }
+            box.innerHTML = campaigns.map((c) => {
+                const total = Number(c.total_recipients || 0);
+                const sent = Number(c.sent_count || 0);
+                const failed = Number(c.failed_count || 0);
+                const pending = Number(c.pending_count || 0);
+                const pct = total > 0 ? Math.round(((sent + failed) / total) * 100) : 0;
+                return `
+                    <div style="border:1px solid var(--border-color);border-radius:8px;padding:.85rem;margin-bottom:.75rem;">
+                        <div style="display:flex;justify-content:space-between;gap:.5rem;align-items:flex-start;">
+                            <div>
+                                <strong>${wcEsc(c.title)}</strong>
+                                <div style="color:var(--text-muted);font-size:.85rem;">${wcEsc(c.created_at || '')}</div>
+                            </div>
+                            ${wcStatusBadge(c.status)}
+                        </div>
+                        <div style="height:8px;background:#e5e7eb;border-radius:999px;margin:.75rem 0;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--primary);"></div></div>
+                        <div style="display:flex;gap:.75rem;flex-wrap:wrap;color:var(--text-muted);font-size:.9rem;">
+                            <span>Total: ${total}</span><span>Pendentes: ${pending}</span><span>Enviados: ${sent}</span><span>Falhas: ${failed}</span>
+                        </div>
+                        <div style="display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.75rem;">
+                            <button type="button" class="btn btn-outline btn-sm" data-wc-action="details" data-id="${c.id}"><i class="ph ph-list-magnifying-glass"></i> Detalhes</button>
+                            <button type="button" class="btn btn-outline btn-sm" data-wc-action="pause" data-id="${c.id}"><i class="ph ph-pause"></i> Pausar</button>
+                            <button type="button" class="btn btn-outline btn-sm" data-wc-action="resume" data-id="${c.id}"><i class="ph ph-play"></i> Retomar</button>
+                            <button type="button" class="btn btn-outline btn-sm" data-wc-action="cancel" data-id="${c.id}"><i class="ph ph-x-circle"></i> Cancelar</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            box.querySelectorAll('[data-wc-action]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const action = btn.getAttribute('data-wc-action');
+                    const id = Number(btn.getAttribute('data-id') || 0);
+                    if (action === 'details') {
+                        await wcShowDetails(id);
+                        return;
+                    }
+                    if (action === 'cancel' && !confirm('Cancelar esta campanha e pular destinatários pendentes?')) return;
+                    await wcApi(action, { campaign_id: id });
+                    await wcLoadCampaigns();
+                });
+            });
+        } catch (e) {
+            box.innerHTML = `<div style="color:var(--danger);">${wcEsc(e.message || e)}</div>`;
+        }
+    }
+
+    async function wcPreviewRecipients() {
+        const box = document.getElementById('wcPreviewBox');
+        if (!box) return;
+        const audience = document.getElementById('wcAudience')?.value || 'all';
+        const data = await wcApi('preview_recipients', { audience });
+        box.innerHTML = `
+            <div style="padding:1rem;border:1px solid var(--border-color);border-radius:8px;background:#f8fafc;">
+                <strong>${Number(data.count || 0)} destinatários elegíveis</strong>
+                <div style="color:var(--text-muted);font-size:.9rem;margin-top:.35rem;">Ignorados: inválidos ${Number(data.skipped?.invalid_phone || 0)}, duplicados ${Number(data.skipped?.duplicate || 0)}, opt-out ${Number(data.skipped?.opt_out || 0)}.</div>
+                <div style="margin-top:.5rem;color:var(--text-muted);font-size:.9rem;">Amostra: ${(data.sample || []).map(r => `${wcEsc(r.guest_name || '-')}: ${wcEsc(r.phone_masked || '-')}`).join(' · ') || '-'}</div>
+            </div>
+        `;
+    }
+
+    async function wcUploadImageIfNeeded() {
+        const input = document.getElementById('wcImage');
+        const status = document.getElementById('wcImageStatus');
+        if (!input || !input.files || !input.files[0]) return wcState.imagePath || '';
+        const form = new FormData();
+        form.append('action', 'upload_image');
+        form.append('image', input.files[0]);
+        const data = await wcApi('upload_image', {}, { formData: form });
+        wcState.imagePath = data.path || '';
+        if (status) status.textContent = 'Imagem anexada: ' + wcState.imagePath;
+        return wcState.imagePath;
+    }
+
+    async function wcStartCampaign() {
+        const title = document.getElementById('wcTitle')?.value.trim() || '';
+        const message = document.getElementById('wcMessage')?.value.trim() || '';
+        const audience = document.getElementById('wcAudience')?.value || 'all';
+        if (!title || !message) {
+            showInlineToast('Informe título e mensagem da campanha.', 'error');
+            return;
+        }
+        const imagePath = await wcUploadImageIfNeeded();
+        const data = await wcApi('start_campaign', { title, message, image_path: imagePath, audience });
+        showInlineToast(`Campanha iniciada com ${Number(data.recipient_count || 0)} destinatários.`, 'success');
+        await wcLoadCampaigns();
+    }
+
+    async function wcDryRun() {
+        const title = document.getElementById('wcTitle')?.value.trim() || '';
+        const message = document.getElementById('wcMessage')?.value.trim() || '';
+        if (!title || !message) {
+            await wcPreviewRecipients();
+            showInlineToast('Dry-run de envio exige uma campanha ativa; prévia de público carregada.', 'info');
+            return;
+        }
+        await wcPreviewRecipients();
+    }
+
+    async function wcShowDetails(id) {
+        const data = await wcApi('get', { campaign_id: id });
+        const rows = (data.recipients || []).slice(0, 20).map(r => `${wcEsc(r.guest_name || '-')} · ${wcEsc(r.phone_masked || '-')} · ${wcEsc(r.status || '-')}`).join('\n');
+        alert(`Campanha: ${data.campaign?.title || id}\n\nÚltimos destinatários:\n${rows || 'Sem destinatários registrados.'}`);
+    }
+
+    async function wcSaveSettings(generateKey = false) {
+        const payload = {
+            min_delay_seconds: document.getElementById('wcMinDelay')?.value || '20',
+            max_delay_seconds: document.getElementById('wcMaxDelay')?.value || '30',
+            max_per_worker_run: document.getElementById('wcMaxPerRun')?.value || '1',
+            append_opt_out_text: document.getElementById('wcAppendOptOut')?.checked ? 1 : 0,
+            cron_provider_api_key: document.getElementById('wcCronApiKey')?.value || '',
+            generate_worker_key: generateKey ? 1 : 0,
+        };
+        await wcApi('settings_save', payload);
+        if (generateKey) wcState.imagePath = '';
+        await wcLoadSettings();
+        showInlineToast('Configurações de automação salvas.', 'success');
+    }
+
+    async function initWhatsappCampaignsView() {
+        document.getElementById('wcRefreshBtn')?.addEventListener('click', async () => { await wcLoadSettings(); await wcLoadCampaigns(); });
+        document.getElementById('wcPreviewBtn')?.addEventListener('click', () => wcPreviewRecipients().catch(e => showInlineToast(e.message || String(e), 'error')));
+        document.getElementById('wcDryRunBtn')?.addEventListener('click', () => wcDryRun().catch(e => showInlineToast(e.message || String(e), 'error')));
+        document.getElementById('wcStartBtn')?.addEventListener('click', () => wcStartCampaign().catch(e => showInlineToast(e.message || String(e), 'error')));
+        document.getElementById('wcSaveSettingsBtn')?.addEventListener('click', () => wcSaveSettings(false).catch(e => showInlineToast(e.message || String(e), 'error')));
+        document.getElementById('wcGenerateKeyBtn')?.addEventListener('click', () => {
+            if (confirm('Gerar nova chave invalida a URL configurada no cron atual. Continuar?')) wcSaveSettings(true).catch(e => showInlineToast(e.message || String(e), 'error'));
+        });
+        document.getElementById('wcCopyWorkerBtn')?.addEventListener('click', async () => {
+            const url = document.getElementById('wcWorkerUrl')?.value || '';
+            if (navigator.clipboard && url) await navigator.clipboard.writeText(url);
+            showInlineToast('URL do worker copiada.', 'success');
+        });
+        document.getElementById('wcCronSyncBtn')?.addEventListener('click', async () => {
+            await wcApi('cron_create_or_update');
+            await wcLoadSettings();
+            showInlineToast('Job cron-job.org sincronizado.', 'success');
+        });
+        document.getElementById('wcCronDisableBtn')?.addEventListener('click', async () => {
+            await wcApi('cron_disable');
+            await wcLoadSettings();
+            showInlineToast('Job externo desativado.', 'success');
+        });
+        await wcLoadSettings();
+        await wcLoadCampaigns();
+    }
+
+    /* =========================================
        USUÁRIOS (CRUD)
        ========================================= */
     const MENU_OPTIONS = [
-        { id: 'dashboard', label: 'Dashboard' },
+        { id: 'dashboard', label: 'Painel' },
         { id: 'reservations', label: 'Reservas' },
         { id: 'chalets', label: 'Hospedagens' },
         { id: 'financeiro', label: 'Financeiro' },
         { id: 'coupons', label: 'Cupons' },
         { id: 'seasonalRules', label: 'Regras de Reserva' },
         { id: 'faqs', label: 'Perguntas Frequentes' },
+        { id: 'whatsappCampaigns', label: 'Campanhas WhatsApp' },
         { id: 'settings', label: 'Configurações' },
         { id: 'customization', label: 'Personalização' },
         { id: 'users', label: 'Usuários' }
@@ -7318,8 +7824,8 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
             const brandEl = document.getElementById('adminBrandName');
             if (brandEl) brandEl.textContent = brandName;
             const titleEl = document.getElementById('adminPageTitle');
-            if (titleEl) titleEl.textContent = 'Admin · ' + brandName;
-            try { document.title = 'Admin · ' + brandName; } catch (_) { /* noop */ }
+            if (titleEl) titleEl.textContent = 'Painel · ' + brandName;
+            try { document.title = 'Painel · ' + brandName; } catch (_) { /* noop */ }
             return true;
         } catch (e) {
             // Usa tema padrão quando não conseguir carregar.
@@ -7330,7 +7836,7 @@ Para garantir sua reserva, clique no botão Pix abaixo para copiar nossa chave e
     // Initialize the admin app
     await loadAdminThemeFromSettings();
     const hashView = String(window.location.hash || '').replace(/^#/, '').trim();
-    const allowedViews = ['dashboard', 'reservations', 'chalets', 'financeiro', 'coupons', 'seasonalRules', 'faqs', 'settings', 'customization', 'users'];
+    const allowedViews = ['dashboard', 'reservations', 'chalets', 'financeiro', 'coupons', 'seasonalRules', 'faqs', 'whatsappCampaigns', 'settings', 'customization', 'users'];
     const initialView = allowedViews.includes(hashView) ? hashView : 'dashboard';
     await renderView(initialView);
     removeAddChaletButtonsForSecretary(document);

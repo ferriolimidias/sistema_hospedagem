@@ -71,6 +71,7 @@ try {
     readfile($filePath);
     exit;
 } catch (Throwable $e) {
-    jsonResponse(['error' => 'Falha ao processar download do contrato', 'details' => $e->getMessage()], 500);
+    error_log('download_contract: falha ao processar contrato: ' . $e->getMessage());
+    jsonResponse(['error' => 'Falha ao processar download do contrato. Tente novamente em instantes.'], 500);
 }
 

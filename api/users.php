@@ -2,6 +2,7 @@
 require_once 'db.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
+be_require_admin_auth($pdo);
 
 switch ($method) {
     case 'GET':

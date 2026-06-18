@@ -148,10 +148,14 @@ if ($stmt->rowCount() > 0) {
 
 if ($stmt->rowCount() > 0) {
     // Gera contrato PDF automaticamente no momento da confirmação.
-    try {
-        generateContractForReservation($pdo, $reservationId);
-    } catch (Throwable $e) {
-        error_log('MP Webhook: Falha ao gerar contrato da reserva #' . $reservationId . ' - ' . $e->getMessage());
+    if (function_exists('isPdfFeatureAvailable') && isPdfFeatureAvailable()) {
+        try {
+            generateContractForReservation($pdo, $reservationId);
+        } catch (Throwable $e) {
+            error_log('MP Webhook: Falha ao gerar contrato da reserva #' . $reservationId . ' - ' . $e->getMessage());
+        }
+    } else {
+        error_log('MP Webhook: geração de contrato ignorada para reserva #' . $reservationId . ' - PDF indisponível.');
     }
 
     // Buscar dados da reserva e enviar WhatsApp via evolution_service (fonte única).

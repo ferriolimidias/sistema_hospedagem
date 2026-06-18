@@ -12,8 +12,11 @@ require_once __DIR__ . '/schema.php';
 header('Content-Type: application/json; charset=utf-8');
 
 $optionalKey = (string) ($_GET['key'] ?? $_POST['key'] ?? '');
-$expected = (string) (getenv('SYNC_ASSETS_KEY') ?: '');
-if ($expected !== '' && !hash_equals($expected, $optionalKey)) {
+$expected = trim(be_env_value('SYNC_ASSETS_KEY'));
+if ($expected === '') {
+    jsonResponse(['error' => 'Sincronização de assets desativada: chave interna não configurada.'], 403);
+}
+if (!hash_equals($expected, $optionalKey)) {
     jsonResponse(['error' => 'Chave inválida ou em falta.'], 403);
 }
 

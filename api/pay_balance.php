@@ -153,5 +153,6 @@ try {
         'balance_paid_at' => $res['balance_paid_at'] ?? null
     ]);
 } catch (Throwable $e) {
-    jsonResponse(['error' => 'Falha ao registrar baixa de saldo', 'details' => $e->getMessage()], 500);
+    error_log('[pay_balance] falha ao registrar baixa de saldo: ' . $e->getMessage());
+    jsonResponse(['error' => 'Falha ao registrar baixa de saldo. Tente novamente em instantes.'], 500);
 }

@@ -16,6 +16,9 @@ if ($reservationId <= 0) {
 }
 
 try {
+    if (function_exists('isPdfFeatureAvailable') && !isPdfFeatureAvailable()) {
+        jsonResponse(['success' => false, 'error' => pdfFeatureUnavailableMessage()], 503);
+    }
     $result = generateContractForReservation($pdo, $reservationId);
     $notify = ['attempted' => false, 'ok' => false];
     try {
@@ -52,6 +55,10 @@ try {
         'whatsapp_send' => $notify
     ]);
 } catch (Throwable $e) {
-    jsonResponse(['error' => 'Falha ao gerar contrato', 'details' => $e->getMessage()], 500);
+    error_log('[generate_contract] falha ao gerar contrato: ' . $e->getMessage());
+    $safeMessage = $e->getMessage() === pdfFeatureUnavailableMessage()
+        ? pdfFeatureUnavailableMessage()
+        : 'Falha ao gerar contrato. Tente novamente em instantes.';
+    jsonResponse(['success' => false, 'error' => $safeMessage], $safeMessage === pdfFeatureUnavailableMessage() ? 503 : 500);
 }
 

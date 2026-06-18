@@ -1,2 +1,26 @@
-api/_sessions/
+.env
+.env.*
+!.env.example
+!.env.homologacao.example
 
+config/database.php
+config/.installed.lock
+
+api/_sessions/
+uploads/private/
+storage/private/
+backups/
+
+node_modules/
+
+*.zip
+*.sql
+*.sqlite
+*.log
+
+dumps/
+dump/
+tokens/
+credenciais/
+credentials/
+secrets/

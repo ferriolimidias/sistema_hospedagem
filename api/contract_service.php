@@ -4,6 +4,21 @@ declare(strict_types=1);
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
+function pdfFeatureUnavailableMessage(): string
+{
+    return 'Recurso de PDF indisponível neste ambiente.';
+}
+
+function isPdfFeatureAvailable(): bool
+{
+    $autoloadPath = __DIR__ . '/../vendor/autoload.php';
+    if (!is_file($autoloadPath)) {
+        return false;
+    }
+    require_once $autoloadPath;
+    return class_exists(Dompdf::class) && class_exists(Options::class);
+}
+
 function ensureContractsStorageDir(): string
 {
     $dir = realpath(__DIR__ . '/../storage');
@@ -204,11 +219,9 @@ HTML;
 
 function generateContractForReservation(PDO $pdo, int $reservationId): array
 {
-    $autoloadPath = __DIR__ . '/../vendor/autoload.php';
-    if (!file_exists($autoloadPath)) {
-        throw new RuntimeException('Dependências PHP não instaladas. Execute "composer install".');
+    if (!isPdfFeatureAvailable()) {
+        throw new RuntimeException(pdfFeatureUnavailableMessage());
     }
-    require_once $autoloadPath;
 
     $stmt = $pdo->prepare("
         SELECT r.*, c.name AS chalet_name

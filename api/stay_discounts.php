@@ -67,7 +67,8 @@ if ($method === 'POST') {
         $stmt->execute([$minNights, $percentage]);
         jsonResponse(['status' => 'ok', 'id' => (int)$pdo->lastInsertId()], 201);
     } catch (Throwable $e) {
-        jsonResponse(['error' => 'Falha ao gravar no banco de dados.', 'details' => $e->getMessage()], 500);
+        error_log('[stay_discounts] falha ao gravar: ' . $e->getMessage());
+        jsonResponse(['error' => 'Falha ao gravar no banco de dados.'], 500);
     }
 }
 
@@ -81,7 +82,8 @@ if ($method === 'DELETE') {
         $stmt->execute([$id]);
         jsonResponse(['status' => 'ok']);
     } catch (Throwable $e) {
-        jsonResponse(['error' => 'Falha ao excluir no banco de dados.', 'details' => $e->getMessage()], 500);
+        error_log('[stay_discounts] falha ao excluir: ' . $e->getMessage());
+        jsonResponse(['error' => 'Falha ao excluir no banco de dados.'], 500);
     }
 }
 

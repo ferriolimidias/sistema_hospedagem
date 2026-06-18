@@ -360,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!srcDark && !srcLight) return false;
         const headerLogo = document.querySelector('.navbar .logo');
         if (!headerLogo) return false;
-        headerLogo.innerHTML = `<img src="${srcDark || srcLight}" alt="${brandAlt}" style="max-height: 45px; object-fit: contain; margin-right: 10px;" data-light="${srcDark || srcLight}" data-dark="${srcLight || srcDark}">`;
+        headerLogo.innerHTML = `<img class="site-logo-img" src="${srcDark || srcLight}" alt="${brandAlt}" data-light="${srcDark || srcLight}" data-dark="${srcLight || srcDark}">`;
         window.dispatchEvent(new Event('scroll'));
         return true;
     }
@@ -487,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Init is now at the end of the script
 
     /* =========================================
-       BOOKING MODAL LOGIC (MOCK)
+       BOOKING MODAL LOGIC
        ========================================= */
     const modal = document.getElementById('bookingModal');
     const closeModalBtn = document.getElementById('closeModal');
@@ -771,7 +771,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         block.style.display = 'block';
         host.innerHTML = Array.from({ length: count }).map((_, idx) => `
-            <input type="number" class="form-control child-age-input" min="0" max="17" step="1" placeholder="Idade da Criança ${idx + 1}" required>
+            <input type="number" class="form-control child-age-input" min="0" max="17" step="1" placeholder="Idade da criança ${idx + 1}" required>
         `).join('');
     }
 
@@ -1207,7 +1207,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (checkinStr >= checkoutStr) {
             availMsg.className = '';
-            availMsg.textContent = "Data de Check-out deve ser após o Check-in.";
+            availMsg.textContent = "A data de check-out deve ser posterior ao check-in.";
             availMsg.style.display = 'block';
             nightsEl.textContent = '0';
             if (lodgingEl) lodgingEl.textContent = 'R$ 0,00';
@@ -1407,12 +1407,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const checkout = document.getElementById('checkout').value;
 
             if (!checkin || !checkout) {
-                alert("Por favor, preencha as datas de Check-in e Check-out.");
+                alert("Preencha as datas de check-in e check-out.");
                 return;
             }
 
             if (checkin >= checkout) {
-                alert("A data de Check-out deve ser posterior ao Check-in.");
+                alert("A data de check-out deve ser posterior ao check-in.");
                 return;
             }
 
@@ -1553,7 +1553,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Handle Final Booking Form Submit (Mock)
+    // Handle Final Booking Form Submit
     if (finalBookingForm) {
         finalBookingForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1566,7 +1566,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (submitBtn) submitBtn.disabled = false;
             };
             if (submitBtn) {
-                submitBtn.textContent = 'Processando Reserva...';
+                submitBtn.textContent = 'Processando reserva...';
                 submitBtn.disabled = true;
             }
 
@@ -1696,7 +1696,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!response.ok) {
                 console.error("Erro ao criar preferência no backend:", data);
-                alert("Houve um erro com o gateway de pagamento. Confirme as chaves e tente novamente.");
+                alert("Não foi possível iniciar o pagamento. Tente novamente em instantes.");
                 return false;
             }
 
@@ -1709,7 +1709,7 @@ document.addEventListener('DOMContentLoaded', () => {
             alert("Não foi possível iniciar o checkout do Mercado Pago.");
         } catch (error) {
             console.error("Erro ao comunicar com o backend de pagamento", error);
-            alert("Erro de conexão com o MercadoPago.");
+            alert("Falha de conexão com o Mercado Pago. Tente novamente.");
         }
 
         return false;
@@ -1897,21 +1897,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.company_logo) {
                 const headerLogo = document.querySelector('.navbar .logo');
                 if (headerLogo && !hasCustomNavbarLogo) {
-                    headerLogo.innerHTML = `<img src="${data.company_logo_light || data.company_logo}" alt="${brandAlt}" style="height: 40px;" data-light="${data.company_logo_light || data.company_logo}" data-dark="${data.company_logo}">`;
+                    headerLogo.innerHTML = `<img class="site-logo-img" src="${data.company_logo_light || data.company_logo}" alt="${brandAlt}" data-light="${data.company_logo_light || data.company_logo}" data-dark="${data.company_logo}">`;
                     window.dispatchEvent(new Event('scroll'));
                 }
-                const footerLogo = document.querySelector('.footer-brand .logo');
-                if (footerLogo) {
-                    // Footer usually has a dark background, so prefer the light logo if available
-                    const logoSrc = data.company_logo_light ? data.company_logo_light : data.company_logo;
-                    footerLogo.innerHTML = `<img src="${logoSrc}" alt="${brandAlt}" style="height: 50px;">`;
-                }
-                const aboutLogo = document.getElementById('aboutSectionLogo');
-                if (aboutLogo) {
-                    // About section has light background, use standard logo
-                    aboutLogo.innerHTML = `<img src="${data.company_logo}" alt="${brandAlt}" style="max-height: 80px; width: auto;">`;
-                }
-            } else {
+            }
+
+            const footerLogo = document.querySelector('.footer-brand .logo');
+            const footerLogoSrc = customLogoPrincipalImg || data.company_logo_light || data.company_logo || customLogoAlternativaImg || '';
+            if (footerLogo && footerLogoSrc) {
+                footerLogo.innerHTML = `<img class="site-logo-img site-logo-img-footer" src="${footerLogoSrc}" alt="${brandAlt}">`;
+            }
+            const aboutLogo = document.getElementById('aboutSectionLogo');
+            const aboutLogoSrc = customLogoPrincipalImg || data.company_logo || customLogoAlternativaImg || data.company_logo_light || '';
+            if (aboutLogo && aboutLogoSrc) {
+                aboutLogo.innerHTML = `<img class="site-logo-img site-logo-img-about" src="${aboutLogoSrc}" alt="${brandAlt}">`;
+            }
+            if (!customLogoPrincipalImg && !customLogoAlternativaImg && !data.company_logo) {
                 // Sem logo configurado: atualiza o texto do fallback (<span>) para refletir o nome dinâmico.
                 document.querySelectorAll('.navbar .logo span, .footer-brand .logo span, #aboutSectionLogo .logo span')
                     .forEach((el) => { el.textContent = brandName; });
@@ -2401,9 +2402,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
-
-
-
 
 
 
